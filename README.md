@@ -25,7 +25,7 @@ streamlit run app.py
 
 左侧导航栏包含全局配置：
 
-- 项目根目录：默认 `d:\AHEU\GP`
+- 项目根目录：默认 `d:\AHEU\GP\MatReflect_NN`
 - Mitsuba 目录：默认 `d:\mitsuba\dist`
 - Mitsuba 可执行文件 / Mtsutil 可执行文件
 - 场景 XML：默认指向 `Neural-BRDF\mitsuba\sample_scene.xml`

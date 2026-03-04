@@ -26,7 +26,12 @@ if "eval_result" not in st.session_state:
 if "root_dir" not in st.session_state:
     st.session_state.root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if "mitsuba_dir" not in st.session_state:
-    st.session_state.mitsuba_dir = r"d:\mitsuba\dist"
+    # 优先检测项目根目录下的 mitsuba
+    local_mitsuba = Path(st.session_state.root_dir) / "mitsuba" / "dist"
+    if local_mitsuba.exists():
+        st.session_state.mitsuba_dir = str(local_mitsuba)
+    else:
+        st.session_state.mitsuba_dir = r"d:\mitsuba\dist"
 if "mitsuba_exe" not in st.session_state:
     st.session_state.mitsuba_exe = str(Path(st.session_state.mitsuba_dir) / "mitsuba.exe")
 if "mtsutil_exe" not in st.session_state:
@@ -225,18 +230,20 @@ def render_batch(render_selected, render_mode, input_dir, output_dir, auto_conve
         progress.progress(int((idx / total) * 100))
         root = ET.fromstring(scene_xml_text)
         tree = ET.ElementTree(root)
+        # 修正 XML 中的相对路径资源 (如 envmap.exr, matpreview.serialized)
         scene_dir = os.path.dirname(os.path.abspath(scene_path))
         for string_node in root.iter("string"):
             if string_node.get("name") == "filename":
                 val = string_node.get("value")
                 if val and not os.path.isabs(val):
+                    # 优先尝试在模板 XML 目录下寻找资源
                     abs_val = os.path.abspath(os.path.join(scene_dir, val))
                     if os.path.exists(abs_val):
                         string_node.set("value", abs_val.replace("\\", "/"))
                     else:
-                        abs_val_2 = os.path.abspath(os.path.join(str(base_dir), val))
-                        if os.path.exists(abs_val_2):
-                            string_node.set("value", abs_val_2.replace("\\", "/"))
+                        # 即使找不到也强行设为绝对路径，方便报错
+                        string_node.set("value", abs_val.replace("\\", "/"))
+                        log(f"⚠️ 警告: 场景引用的资源不存在: {abs_val}")
         target_bsdf = None
         for bsdf in root.iter("bsdf"):
             if bsdf.get("type") in ["merl", "fullmerl", "nbrdf_npy"]:

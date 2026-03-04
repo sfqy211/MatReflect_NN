@@ -27,11 +27,15 @@ st.markdown("""
 3. 进入 **Mitsuba Render Tool** 页面开始工作。
 
 ### 系统状态
-- **项目根目录**: `d:\AHEU\GP`
+- **项目根目录**: `d:\AHEU\GP\MatReflect_NN`
 - **渲染器状态**: 检测中...
 """)
 
-mitsuba_path = Path(r"d:\mitsuba\dist\mitsuba.exe")
+root_dir = Path(__file__).parent
+local_mitsuba = root_dir / "mitsuba" / "dist" / "mitsuba.exe"
+default_mitsuba = Path(r"d:\mitsuba\dist\mitsuba.exe")
+
+mitsuba_path = local_mitsuba if local_mitsuba.exists() else default_mitsuba
 if mitsuba_path.exists():
     st.success(f"✅ 检测到 Mitsuba 渲染器: `{mitsuba_path}`")
 else:
