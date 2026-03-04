@@ -8,7 +8,7 @@ def render_neural_brdf_tab():
     col1, col2 = st.columns(2)
     with col1:
         st.subheader("1. 权重转换 (binary -> npy)")
-        merl_dir = st.text_input("MERL 材质目录", value=str(actions.NEURAL_BRDF_DIR / "binary"), key="nb_merl_dir")
+        merl_dir = st.text_input("MERL 材质目录", value=str(actions.ROOT_DIR / "data" / "inputs" / "brdfs"), key="nb_merl_dir")
         if os.path.exists(merl_dir):
             merl_files = actions.list_merl_files(merl_dir)
             selected_merl = st.selectbox("选择待转换材质", options=merl_files, key="nb_selected_merl")
