@@ -1,0 +1,88 @@
+<scene version="0.6.0">
+	<integrator type="path">
+		<!-- <default name="hideEmitters" value="true"/> -->
+	</integrator>
+
+	<sensor type="perspective" id="camera">
+		<string name="fovAxis" value="y" />
+		<float name="fov" value="28.8415" />
+		<float name="focusDistance" value="6.0" />
+		<transform name="toWorld">
+			<lookAt target="3.04072, -2.85176, 2.80939"
+					origin="3.69558, -3.46243, 3.25463"
+					up="-0.317366, 0.312466, 0.895346" />
+		</transform>
+
+		<sampler type="halton">
+			<integer name="sampleCount" value="256" />
+			<integer name="scramble" value="1" />
+		</sampler>
+
+		<film type="hdrfilm" id="film">
+			<integer name="width" value="512" />
+			<integer name="height" value="512" />
+			<rfilter type="gaussian" />
+			<boolean name="banner" value="false" />
+		</film>
+	</sensor>
+
+	<emitter type="envmap" id="emitter-envmap">
+		<string name="filename" value="envmap.exr" />
+		<transform name="toWorld">
+			<rotate y="1" angle="-180" />
+			<matrix value="-0.224951 -0.000001 -0.974370 0.000000 -0.974370 0.000000 0.224951 0.000000 0.000000 1.000000 -0.000001 8.870000 0.000000 0.000000 0.000000 1.000000" />
+		</transform>
+		<float name="scale" value="3" />
+	</emitter>
+
+	<bsdf type="diffuse" id="bsdf-diffuse">
+		<spectrum name="reflectance" value="0.18" />
+	</bsdf>
+
+	<texture type="checkerboard" id="texture-checkerboard">
+		<spectrum name="color0" value="0.4" />
+		<spectrum name="color1" value="0.2" />
+		<float name="uvscale" value="5.333333" />
+	</texture>
+
+	<bsdf type="diffuse" id="bsdf-plane">
+		<ref name="reflectance" id="texture-checkerboard" />
+	</bsdf>
+
+	<!-- MERL BSDF 配置 -->
+	<bsdf type="merl" id="bsdf-matpreview">
+		<string name="binary" value="D:/mitsuba/BRDFDatabase/brdfs/color-changing-paint1.binary" />
+		<spectrum name="reflectance" value="1.0"/>
+	</bsdf>
+
+	<shape type="serialized" id="shape-plane">
+		<string name="filename" value="matpreview.serialized" />
+		<integer name="shapeIndex" value="0" />
+		<transform name="toWorld">
+			<rotate z="1" angle="-4.3" />
+			<matrix value="3.38818 -4.06354 0 -1.74958 4.06354 3.38818 0 1.43683 0 0 5.29076 -0.0120714 0 0 0 1" />
+		</transform>
+		<ref name="bsdf" id="bsdf-plane" />
+	</shape>
+
+	<shape type="serialized" id="shape-matpreview-interior">
+		<string name="filename" value="matpreview.serialized" />
+		<integer name="shapeIndex" value="1" />
+		<transform name="toWorld">
+			<matrix value="1 0 0 0 0 1 0 0 0 0 1 0.0252155 0 0 0 1" />
+		</transform>
+		<ref name="bsdf" id="bsdf-diffuse" />
+	</shape>
+
+	<shape type="serialized" id="shape-matpreview-exterior">
+		<string name="filename" value="matpreview.serialized" />
+		<integer name="shapeIndex" value="2" />
+		<transform name="toWorld">
+			<matrix value="0.614046 0.614047 0 -1.78814e-07 -0.614047 0.614046 0 2.08616e-07 0 0 0.868393 1.02569 0 0 0 1" />
+			<translate z="0.01" />
+		</transform>
+
+		<ref name="bsdf" id="bsdf-matpreview" />
+	</shape>
+</scene>
+<!-- D:\mitsuba\dist\mitsuba.exe d:\mitsuba\matpreview\scene_merl.xml -->
