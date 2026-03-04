@@ -39,6 +39,9 @@ if "mtsutil_exe" not in st.session_state:
 if "scene_path" not in st.session_state:
     st.session_state.scene_path = str(Path(st.session_state.root_dir) / "scene" / "scene_merl.xml")
 
+# 使用全局列表作为共享内存来传递停止信号，绕过 Streamlit 在运行期间无法更新 session_state 的限制
+STOP_SIGNAL = []
+
 def log(msg, placeholder=None):
     # 过滤掉退格符等不可见字符
     clean_msg = msg.replace("\b", "").replace("\r", "")
@@ -222,8 +225,8 @@ def render_batch(render_selected, render_mode, input_dir, output_dir, auto_conve
         scene_xml_text = f.read()
     total = len(render_selected)
     for idx, filename in enumerate(render_selected):
-        if st.session_state.stop_render:
-            log("渲染已停止", log_placeholder)
+        if STOP_SIGNAL:
+            log("渲染已停止 (收到停止信号)", log_placeholder)
             break
         file_path = os.path.join(input_dir, filename).replace("\\", "/")
         basename = os.path.splitext(filename)[0]
@@ -300,42 +303,58 @@ def render_batch(render_selected, render_mode, input_dir, output_dir, auto_conve
         # 确定命令
         if custom_cmd:
             # 支持占位符替换
-            final_cmd_str = custom_cmd.replace("{mitsuba}", st.session_state.mitsuba_exe)\
-                                     .replace("{input}", temp_xml)\
-                                     .replace("{output}", exr_out)
+            # 为防止路径包含空格或反斜杠导致解析错误，将所有反斜杠统一替换为正斜杠，
+            # 并使用 shlex 的默认 POSIX 模式 (posix=True) 来正确剥离引号。
+            mitsuba_path = st.session_state.mitsuba_exe.replace("\\", "/")
+            input_path = temp_xml.replace("\\", "/")
+            output_path = exr_out.replace("\\", "/")
+            
+            final_cmd_str = custom_cmd.replace("{mitsuba}", mitsuba_path)\
+                                     .replace("{input}", input_path)\
+                                     .replace("{output}", output_path)
             import shlex
             cmd = shlex.split(final_cmd_str)
         else:
             cmd = [st.session_state.mitsuba_exe, "-o", exr_out, temp_xml]
             
         log(f"[{idx+1}/{total}] 渲染: {filename}", log_placeholder)
-        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=env)
-        for line in proc.stdout:
-            line_str = line.strip()
-            log(f"  > {line_str}", log_placeholder)
-            
-            # 解析 Mitsuba 进度条并更新总进度条
-            if "Rendering: [" in line_str:
-                try:
-                    content = line_str[line_str.find("[")+1 : line_str.find("]")]
-                    total_width = len(content)
-                    done_count = content.count("+")
-                    if total_width > 0:
-                        percent = done_count / total_width
-                        # 统一进度计算: (当前文件索引 + 当前文件内部百分比) / 总文件数
-                        overall_percent = (idx + percent) / total
-                        progress.progress(min(100, int(overall_percent * 100)))
-                except:
-                    pass
-        proc.wait()
-        if proc.returncode == 0:
-            log("  -> EXR 完成", log_placeholder)
-            if auto_convert:
-                cmd_conv = [st.session_state.mtsutil_exe, "tonemap", "-o", png_out, exr_out]
-                subprocess.run(cmd_conv, env=env, check=False)
-                log("  -> PNG 完成", log_placeholder)
-        else:
-            log("  -> 失败", log_placeholder)
+        
+        # 预检可执行文件是否存在
+        if not os.path.exists(cmd[0]):
+            log(f"  -> 错误: 未找到可执行文件 {cmd[0]}", log_placeholder)
+            continue
+
+        try:
+            proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=env)
+            for line in proc.stdout:
+                line_str = line.strip()
+                log(f"  > {line_str}", log_placeholder)
+                
+                # 解析 Mitsuba 进度条并更新总进度条
+                if "Rendering: [" in line_str:
+                    try:
+                        content = line_str[line_str.find("[")+1 : line_str.find("]")]
+                        total_width = len(content)
+                        done_count = content.count("+")
+                        if total_width > 0:
+                            percent = done_count / total_width
+                            # 统一进度计算: (当前文件索引 + 当前文件内部百分比) / 总文件数
+                            overall_percent = (idx + percent) / total
+                            progress.progress(min(100, int(overall_percent * 100)))
+                    except:
+                        pass
+            proc.wait()
+            if proc.returncode == 0:
+                log("  -> EXR 完成", log_placeholder)
+                if auto_convert:
+                    cmd_conv = [st.session_state.mtsutil_exe, "tonemap", "-o", png_out, exr_out]
+                    subprocess.run(cmd_conv, env=env, check=False)
+                    log("  -> PNG 完成", log_placeholder)
+            else:
+                log(f"  -> 渲染失败，退出码: {proc.returncode}", log_placeholder)
+        except Exception as e:
+            log(f"  -> 启动进程失败: {str(e)}", log_placeholder)
+        
         progress.progress(int((idx + 1) / total * 100))
     status.text("渲染完成")
 
@@ -358,11 +377,17 @@ def convert_exr(conv_selected, conv_input_dir, conv_output_dir, progress, status
         out_name = os.path.splitext(filename)[0] + ".png"
         out_path = os.path.join(conv_output_dir, out_name)
         cmd = [st.session_state.mtsutil_exe, "tonemap", "-o", out_path, in_path]
+        
+        # 预检可执行文件是否存在
+        if not os.path.exists(cmd[0]):
+            log(f"[转换] 错误: 未找到可执行文件 {cmd[0]}", log_placeholder)
+            continue
+            
         try:
             subprocess.run(cmd, env=env, check=True)
             log(f"[转换] 成功: {out_name}", log_placeholder)
-        except subprocess.CalledProcessError:
-            log(f"[转换] 失败: {filename}", log_placeholder)
+        except Exception as e:
+            log(f"[转换] 失败: {filename} ({str(e)})", log_placeholder)
     status.text("转换完成")
     progress.progress(100)
 
@@ -674,7 +699,7 @@ with tabs[0]:
     use_custom_cmd = st.checkbox("使用自定义渲染命令", value=False, key="use_custom_cmd")
     if use_custom_cmd:
         custom_cmd_str = st.text_input("自定义命令 (支持占位符: {mitsuba}, {input}, {output})", 
-                                      value='{mitsuba} -o "{output}" "{input}"', 
+                                      value='"{mitsuba}" -o "{output}" "{input}"', 
                                       key="custom_cmd_str")
     else:
         custom_cmd_str = None
@@ -697,12 +722,13 @@ with tabs[0]:
     col_start, col_stop = st.columns(2)
     with col_start:
         if st.button("开始批量渲染"):
-            st.session_state.stop_render = False
+            STOP_SIGNAL.clear() # 清除之前的停止信号
             render_batch(render_selected, render_mode, input_dir, output_dir, auto_convert, skip_existing, render_progress, render_status, base_dir, render_log_placeholder, custom_cmd_str)
     with col_stop:
         if st.button("停止渲染"):
-            st.session_state.stop_render = True
-            log("已请求停止渲染")
+            if not STOP_SIGNAL:
+                STOP_SIGNAL.append(True)
+            log("已发送停止信号，将在当前文件完成后中断...")
 
 with tabs[1]:
     st.header("EXR 转 PNG")
