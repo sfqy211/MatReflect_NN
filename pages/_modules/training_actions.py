@@ -9,7 +9,13 @@ import shutil
 ROOT_DIR = Path(__file__).resolve().parents[2]
 NEURAL_BRDF_DIR = ROOT_DIR / "Neural-BRDF"
 HYPER_BRDF_DIR = ROOT_DIR / "HyperBRDF"
+DATA_INPUTS_BRDFS = ROOT_DIR / "data" / "inputs" / "brdfs"
 DATA_INPUTS_NPY = ROOT_DIR / "data" / "inputs" / "npy"
+DATA_INTERMEDIATE_H5 = NEURAL_BRDF_DIR / "data" / "merl_nbrdf"
+BINARY_TO_NBRDF_DIR = NEURAL_BRDF_DIR / "binary_to_nbrdf"
+PYTORCH_SCRIPT = BINARY_TO_NBRDF_DIR / "pytorch_code" / "train_NBRDF_pytorch.py"
+KERAS_SCRIPT = BINARY_TO_NBRDF_DIR / "binary_to_nbrdf.py"
+H5_TO_NPY_SCRIPT = BINARY_TO_NBRDF_DIR / "h5_to_npy.py"
 
 def log_exp(msg, placeholder=None):
     if "train_logs" not in st.session_state:
@@ -21,45 +27,98 @@ def log_exp(msg, placeholder=None):
 def list_merl_files(merl_dir):
     return [os.path.basename(f) for f in glob.glob(os.path.join(merl_dir, "*.binary"))]
 
-def run_binary_to_npy(merl_dir, selected_merl, log_placeholder):
-    if not selected_merl:
+def resolve_binary_paths(merl_dir, selected_merls):
+    return [os.path.join(merl_dir, f) for f in selected_merls]
+
+def list_h5_files(h5_dir):
+    return [os.path.basename(f) for f in glob.glob(os.path.join(h5_dir, "*.h5"))]
+
+def run_pytorch_training(merl_dir, selected_merls, epochs, output_dir, log_placeholder):
+    if not selected_merls:
         st.warning("未选择材质文件")
         return
+    os.makedirs(output_dir, exist_ok=True)
     st.session_state.train_logs = []
-    script_path = NEURAL_BRDF_DIR / "binary_to_nbrdf" / "binary_to_nbrdf.py"
-    target_path = os.path.join(merl_dir, selected_merl)
-    cmd = ["python", str(script_path), target_path]
-    log_exp(f"启动转换: {' '.join(cmd)}", log_placeholder)
-    
-    # 确保目标输出目录存在
-    os.makedirs(DATA_INPUTS_NPY, exist_ok=True)
-    
-    try:
-        env = os.environ.copy()
-        env["PYTHONPATH"] = str(NEURAL_BRDF_DIR / "binary_to_nbrdf") + os.pathsep + env.get("PYTHONPATH", "")
-        
-        # 记录转换前 output 目录的文件列表，以便后续移动
-        output_dir = NEURAL_BRDF_DIR / "binary_to_nbrdf" / "output"
-        
-        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=env, cwd=str(NEURAL_BRDF_DIR / "binary_to_nbrdf"))
+    env = os.environ.copy()
+    env["PYTHONPATH"] = str(BINARY_TO_NBRDF_DIR) + os.pathsep + str(PYTORCH_SCRIPT.parent) + os.pathsep + env.get("PYTHONPATH", "")
+    for merl in resolve_binary_paths(merl_dir, selected_merls):
+        cmd = ["python", str(PYTORCH_SCRIPT), merl, "--outpath", str(output_dir), "--epochs", str(epochs)]
+        log_exp(f"启动 PyTorch 训练: {' '.join(cmd)}", log_placeholder)
+        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=env, cwd=str(PYTORCH_SCRIPT.parent))
         for line in proc.stdout:
             log_exp(line.strip(), log_placeholder)
         proc.wait()
-        
         if proc.returncode == 0:
-            # 移动生成的 npy 文件到指定目录
-            basename = os.path.splitext(selected_merl)[0]
-            generated_files = glob.glob(os.path.join(str(output_dir), f"{basename}*.npy"))
-            
-            if generated_files:
-                for f in generated_files:
-                    target_f = DATA_INPUTS_NPY / os.path.basename(f)
-                    shutil.move(f, str(target_f))
-                    log_exp(f"移动权重文件: {os.path.basename(f)} -> data/inputs/npy", log_placeholder)
-                st.success(f"转换并移动成功！权重已存放在: {DATA_INPUTS_NPY}")
-            else:
-                st.warning("转换完成但未找到生成的权重文件，请检查脚本输出。")
+            st.success(f"训练完成: {os.path.basename(merl)}")
         else:
-            st.error(f"转换失败，退出码: {proc.returncode}")
-    except Exception as e:
-        st.error(f"执行出错: {str(e)}")
+            st.error(f"训练失败: {os.path.basename(merl)} (退出码: {proc.returncode})")
+
+def run_h5_to_npy(h5_paths, output_dir, log_placeholder):
+    if not h5_paths:
+        st.warning("未选择 .h5 文件")
+        return
+    os.makedirs(output_dir, exist_ok=True)
+    env = os.environ.copy()
+    env["PYTHONPATH"] = str(BINARY_TO_NBRDF_DIR) + os.pathsep + env.get("PYTHONPATH", "")
+    cmd = ["python", str(H5_TO_NPY_SCRIPT), *h5_paths, "--destdir", str(output_dir)]
+    log_exp(f"启动 h5 -> npy 转换: {' '.join(cmd)}", log_placeholder)
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=env, cwd=str(BINARY_TO_NBRDF_DIR))
+    for line in proc.stdout:
+        log_exp(line.strip(), log_placeholder)
+    proc.wait()
+    if proc.returncode == 0:
+        st.success(f"转换完成，权重已存放在: {output_dir}")
+    else:
+        st.error(f"h5 转换失败，退出码: {proc.returncode}")
+
+def run_keras_training(merl_dir, selected_merls, cuda_device, h5_output_dir, npy_output_dir, log_placeholder):
+    if not selected_merls:
+        st.warning("未选择材质文件")
+        return
+    st.session_state.train_logs = []
+    os.makedirs(h5_output_dir, exist_ok=True)
+    
+    env = os.environ.copy()
+    env["PYTHONPATH"] = str(BINARY_TO_NBRDF_DIR) + os.pathsep + env.get("PYTHONPATH", "")
+    env["CUDA_VISIBLE_DEVICES"] = cuda_device
+    binary_paths = resolve_binary_paths(merl_dir, selected_merls)
+    
+    cmd = ["python", str(KERAS_SCRIPT), *binary_paths, "--cuda_device", cuda_device]
+    log_exp(f"启动 Keras 训练: {' '.join(cmd)}", log_placeholder)
+    
+    # Keras 脚本默认在当前工作目录生成文件，所以我们要在 H5 目标目录下运行，或者运行后移动
+    # 鉴于脚本内部使用了相对路径引用 coords 等模块，我们在 BINARY_TO_NBRDF_DIR 运行更稳妥，然后移动结果
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=env, cwd=str(BINARY_TO_NBRDF_DIR))
+    for line in proc.stdout:
+        log_exp(line.strip(), log_placeholder)
+    proc.wait()
+    
+    if proc.returncode != 0:
+        st.error(f"Keras 训练失败，退出码: {proc.returncode}")
+        return
+    
+    # 移动生成的 h5 和 json 文件到 h5_output_dir
+    h5_paths = []
+    for merl in selected_merls:
+        basename = os.path.splitext(merl)[0]
+        # 脚本在 BINARY_TO_NBRDF_DIR 下生成文件
+        src_h5 = BINARY_TO_NBRDF_DIR / f"{basename}.h5"
+        src_json = BINARY_TO_NBRDF_DIR / f"{basename}.json"
+        src_loss = BINARY_TO_NBRDF_DIR / f"lossplot_{basename}.png"
+        
+        target_h5 = Path(h5_output_dir) / f"{basename}.h5"
+        
+        if src_h5.exists():
+            shutil.move(str(src_h5), str(target_h5))
+            if src_json.exists():
+                shutil.move(str(src_json), str(Path(h5_output_dir) / f"{basename}.json"))
+            if src_loss.exists():
+                shutil.move(str(src_loss), str(Path(h5_output_dir) / f"lossplot_{basename}.png"))
+            
+            h5_paths.append(str(target_h5))
+            log_exp(f"已移动中间文件: {basename}.h5/json -> {h5_output_dir}", log_placeholder)
+            
+    if h5_paths:
+        run_h5_to_npy(h5_paths, npy_output_dir, log_placeholder)
+    else:
+        st.warning("训练完成但未找到对应 .h5 文件，请检查输出目录")

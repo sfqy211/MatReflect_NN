@@ -5,22 +5,39 @@ from . import training_actions as actions
 def render_neural_brdf_tab():
     st.header("Neural-BRDF 训练与转换")
     st.info("Neural-BRDF (Sztrajman et al. 2021) 将单个材质表达为 MLP 网络权重。")
+    merl_dir = st.text_input("MERL 材质目录", value=str(actions.DATA_INPUTS_BRDFS), key="nb_merl_dir")
+    if not os.path.exists(merl_dir):
+        st.error(f"目录不存在: {merl_dir}")
+        return
+    merl_files = actions.list_merl_files(merl_dir)
     col1, col2 = st.columns(2)
     with col1:
-        st.subheader("1. 权重转换 (binary -> npy)")
-        merl_dir = st.text_input("MERL 材质目录", value=str(actions.ROOT_DIR / "data" / "inputs" / "brdfs"), key="nb_merl_dir")
-        if os.path.exists(merl_dir):
-            merl_files = actions.list_merl_files(merl_dir)
-            selected_merl = st.selectbox("选择待转换材质", options=merl_files, key="nb_selected_merl")
-            nb_conv_log = st.empty()
-            if st.button("开始转换为 .npy"):
-                actions.run_binary_to_npy(merl_dir, selected_merl, nb_conv_log)
-        else:
-            st.error(f"目录不存在: {merl_dir}")
-    with col2:
-        st.subheader("2. PyTorch 完整训练")
-        st.write("待集成: 调用 `pytorch_code/train_NBRDF_pytorch.py` 进行大规模迭代训练。")
-        st.number_input("迭代次数 (Epochs)", value=100, key="nb_epochs")
-        st.selectbox("优化器", ["Adam", "LBFGS"], key="nb_optimizer")
+        st.subheader("1. PyTorch 训练 (直接输出 .npy)")
+        pt_selected = st.multiselect("选择材质 (可多选)", options=merl_files, key="nb_pt_selected")
+        pt_epochs = st.number_input("迭代次数 (Epochs)", value=100, min_value=1, key="nb_pt_epochs")
+        pt_output_dir = st.text_input("权重输出目录", value=str(actions.DATA_INPUTS_NPY), key="nb_pt_output_dir")
+        pt_log = st.empty()
         if st.button("开始 PyTorch 训练"):
-            st.warning("功能集成中...")
+            actions.run_pytorch_training(merl_dir, pt_selected, pt_epochs, pt_output_dir, pt_log)
+    with col2:
+        st.subheader("2. Keras 训练 + h5 -> npy")
+        keras_selected = st.multiselect("选择材质 (可多选)", options=merl_files, key="nb_keras_selected")
+        cuda_device = st.text_input("CUDA 设备", value="0", key="nb_keras_cuda_device")
+        keras_h5_dir = st.text_input("中间 H5 目录", value=str(actions.DATA_INTERMEDIATE_H5), key="nb_keras_h5_dir")
+        keras_npy_dir = st.text_input("权重输出目录", value=str(actions.DATA_INPUTS_NPY), key="nb_keras_npy_dir")
+        keras_log = st.empty()
+        if st.button("开始 Keras 训练并转换"):
+            actions.run_keras_training(merl_dir, keras_selected, cuda_device, keras_h5_dir, keras_npy_dir, keras_log)
+    st.subheader("3. 独立 H5 -> NPY 转换")
+    st.write("如果你已有 .h5 模型文件，可以在此直接转换为 .npy 权重。")
+    h5_dir = st.text_input("H5 文件目录", value=str(actions.DATA_INTERMEDIATE_H5), key="nb_h5_dir")
+    if os.path.exists(h5_dir):
+        h5_files = actions.list_h5_files(h5_dir)
+        selected_h5s = st.multiselect("选择 H5 文件", options=h5_files, key="nb_selected_h5s")
+        h5_conv_log = st.empty()
+        h5_npy_output_dir = st.text_input("权重输出目录", value=str(actions.DATA_INPUTS_NPY), key="nb_h5_npy_output_dir")
+        if st.button("开始转换 H5"):
+            h5_paths = [os.path.join(h5_dir, f) for f in selected_h5s]
+            actions.run_h5_to_npy(h5_paths, h5_npy_output_dir, h5_conv_log)
+    else:
+        st.error(f"H5 目录不存在: {h5_dir}")
