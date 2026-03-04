@@ -39,8 +39,14 @@ if "mtsutil_exe" not in st.session_state:
 if "scene_path" not in st.session_state:
     st.session_state.scene_path = str(Path(st.session_state.root_dir) / "scene" / "scene_merl.xml")
 
-def log(msg):
-    st.session_state.logs.append(msg)
+def log(msg, placeholder=None):
+    # 过滤掉退格符等不可见字符
+    clean_msg = msg.replace("\b", "").replace("\r", "")
+    st.session_state.logs.append(clean_msg)
+    if placeholder:
+        # 将最新的日志放在最上面，解决滚动条重置导致看不见最新日志的问题
+        recent_logs = "\n".join(st.session_state.logs[::-1][:20])
+        placeholder.text_area("实时日志 (最新在顶部)", value=recent_logs, height=200)
 
 def clear_logs():
     st.session_state.logs = []
@@ -63,7 +69,9 @@ def list_render_files(input_dir, render_mode):
     if not os.path.exists(input_dir):
         return []
     if render_mode == "npy":
-        return sorted([os.path.basename(p) for p in glob.glob(os.path.join(input_dir, "*fc1.npy"))])
+        # 参考 batch_render_tool.py 的逻辑：一个材质包含6个文件，只加载 fc1 作为代表
+        files = sorted(glob.glob(os.path.join(input_dir, "*fc1.npy")))
+        return [os.path.basename(f) for f in files]
     ext = "*.binary" if render_mode == "brdfs" else "*.fullbin"
     return sorted([os.path.basename(p) for p in glob.glob(os.path.join(input_dir, ext))])
 
@@ -193,13 +201,14 @@ def configure_bsdf_smart(bsdf_node, filename):
         alpha_val = "0.05"
     ET.SubElement(guide, "float", {"name": "alpha", "value": alpha_val})
 
-def render_batch(render_selected, render_mode, input_dir, output_dir, auto_convert, skip_existing, progress, status, base_dir):
+def render_batch(render_selected, render_mode, input_dir, output_dir, auto_convert, skip_existing, progress, status, base_dir, log_placeholder=None, custom_cmd=None):
     if not render_selected:
-        log("未选择渲染文件")
+        log("未选择渲染文件", log_placeholder)
         return
+    
     scene_path = st.session_state.scene_path
     if not os.path.exists(scene_path):
-        log(f"场景文件不存在: {scene_path}")
+        log(f"场景文件不存在: {scene_path}", log_placeholder)
         return
     os.makedirs(output_dir, exist_ok=True)
     exr_dir = os.path.join(output_dir, "exr")
@@ -214,7 +223,7 @@ def render_batch(render_selected, render_mode, input_dir, output_dir, auto_conve
     total = len(render_selected)
     for idx, filename in enumerate(render_selected):
         if st.session_state.stop_render:
-            log("渲染已停止")
+            log("渲染已停止", log_placeholder)
             break
         file_path = os.path.join(input_dir, filename).replace("\\", "/")
         basename = os.path.splitext(filename)[0]
@@ -223,11 +232,13 @@ def render_batch(render_selected, render_mode, input_dir, output_dir, auto_conve
         if skip_existing:
             target_file = png_out if auto_convert else exr_out
             if os.path.exists(target_file):
-                log(f"[{idx+1}/{total}] 跳过 (已存在): {basename}")
-                progress.progress(int((idx + 1) / total * 100))
+                log(f"[{idx+1}/{total}] 跳过 (已存在): {basename}", log_placeholder)
+                # 更新总进度
+                overall_percent = (idx + 1) / total
+                progress.progress(min(100, int(overall_percent * 100)))
                 continue
         status.text(f"正在渲染 ({idx+1}/{total}): {filename}")
-        progress.progress(int((idx / total) * 100))
+        
         root = ET.fromstring(scene_xml_text)
         tree = ET.ElementTree(root)
         # 修正 XML 中的相对路径资源 (如 envmap.exr, matpreview.serialized)
@@ -243,14 +254,14 @@ def render_batch(render_selected, render_mode, input_dir, output_dir, auto_conve
                     else:
                         # 即使找不到也强行设为绝对路径，方便报错
                         string_node.set("value", abs_val.replace("\\", "/"))
-                        log(f"⚠️ 警告: 场景引用的资源不存在: {abs_val}")
+                        log(f"⚠️ 警告: 场景引用的资源不存在: {abs_val}", log_placeholder)
         target_bsdf = None
         for bsdf in root.iter("bsdf"):
             if bsdf.get("type") in ["merl", "fullmerl", "nbrdf_npy"]:
                 target_bsdf = bsdf
                 break
         if target_bsdf is None:
-            log("错误: 场景中未找到 bsdf 节点")
+            log("错误: 场景中未找到 bsdf 节点", log_placeholder)
             return
         for child in list(target_bsdf):
             if child.get("name") in ["filename", "binary", "nn_basename"]:
@@ -264,34 +275,67 @@ def render_batch(render_selected, render_mode, input_dir, output_dir, auto_conve
             ET.SubElement(target_bsdf, "string", {"name": "filename", "value": file_path})
             configure_bsdf_smart(target_bsdf, filename)
         else:
+            # npy 渲染逻辑：参考 batch_render_tool.py
+            # 一个材质包含 fc1, fc2, fc3, b1, b2, b3 六个文件
             target_bsdf.set("type", "nbrdf_npy")
-            base_path = os.path.splitext(file_path)[0]
-            for suffix in ["fc1", "fc2", "fc3", "b1", "b2", "b3"]:
-                if base_path.endswith(suffix):
-                    base_path = base_path[:-len(suffix)]
-                    break
-            ET.SubElement(target_bsdf, "string", {"name": "nn_basename", "value": base_path})
+            # 去除后缀获取基础路径
+            base_path = file_path
+            if base_path.endswith("fc1.npy"):
+                base_path = base_path[:-7] # 移除 "fc1.npy"
+            elif base_path.endswith(".npy"):
+                base_path = base_path[:-4] # 移除 ".npy"
+            
+            # 移除旧的子节点并添加 nn_basename
             for child in list(target_bsdf):
-                if child.tag == "bsdf":
+                if child.tag == "bsdf" or child.get("name") == "nn_basename":
                     target_bsdf.remove(child)
+            
+            ET.SubElement(target_bsdf, "string", {"name": "nn_basename", "value": base_path})
+            
             if not any(c.get("name") == "reflectance" for c in target_bsdf):
                 ET.SubElement(target_bsdf, "spectrum", {"name": "reflectance", "value": "0.5"})
         temp_xml = os.path.join(temp_xml_dir, f"{basename}.xml")
         tree.write(temp_xml)
-        cmd = [st.session_state.mitsuba_exe, "-o", exr_out, temp_xml]
-        log(f"[{idx+1}/{total}] 渲染: {filename}")
+        
+        # 确定命令
+        if custom_cmd:
+            # 支持占位符替换
+            final_cmd_str = custom_cmd.replace("{mitsuba}", st.session_state.mitsuba_exe)\
+                                     .replace("{input}", temp_xml)\
+                                     .replace("{output}", exr_out)
+            import shlex
+            cmd = shlex.split(final_cmd_str)
+        else:
+            cmd = [st.session_state.mitsuba_exe, "-o", exr_out, temp_xml]
+            
+        log(f"[{idx+1}/{total}] 渲染: {filename}", log_placeholder)
         proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=env)
         for line in proc.stdout:
-            log(f"  > {line.strip()}")
+            line_str = line.strip()
+            log(f"  > {line_str}", log_placeholder)
+            
+            # 解析 Mitsuba 进度条并更新总进度条
+            if "Rendering: [" in line_str:
+                try:
+                    content = line_str[line_str.find("[")+1 : line_str.find("]")]
+                    total_width = len(content)
+                    done_count = content.count("+")
+                    if total_width > 0:
+                        percent = done_count / total_width
+                        # 统一进度计算: (当前文件索引 + 当前文件内部百分比) / 总文件数
+                        overall_percent = (idx + percent) / total
+                        progress.progress(min(100, int(overall_percent * 100)))
+                except:
+                    pass
         proc.wait()
         if proc.returncode == 0:
-            log("  -> EXR 完成")
+            log("  -> EXR 完成", log_placeholder)
             if auto_convert:
                 cmd_conv = [st.session_state.mtsutil_exe, "tonemap", "-o", png_out, exr_out]
                 subprocess.run(cmd_conv, env=env, check=False)
-                log("  -> PNG 完成")
+                log("  -> PNG 完成", log_placeholder)
         else:
-            log("  -> 失败")
+            log("  -> 失败", log_placeholder)
         progress.progress(int((idx + 1) / total * 100))
     status.text("渲染完成")
 
@@ -300,9 +344,9 @@ def list_exr_files(conv_input_dir):
         return []
     return sorted([os.path.basename(p) for p in glob.glob(os.path.join(conv_input_dir, "*.exr"))])
 
-def convert_exr(conv_selected, conv_input_dir, conv_output_dir, progress, status):
+def convert_exr(conv_selected, conv_input_dir, conv_output_dir, progress, status, log_placeholder=None):
     if not conv_selected:
-        log("未选择 EXR 文件")
+        log("未选择 EXR 文件", log_placeholder)
         return
     os.makedirs(conv_output_dir, exist_ok=True)
     env = os.environ.copy()
@@ -316,29 +360,35 @@ def convert_exr(conv_selected, conv_input_dir, conv_output_dir, progress, status
         cmd = [st.session_state.mtsutil_exe, "tonemap", "-o", out_path, in_path]
         try:
             subprocess.run(cmd, env=env, check=True)
-            log(f"[转换] 成功: {out_name}")
+            log(f"[转换] 成功: {out_name}", log_placeholder)
         except subprocess.CalledProcessError:
-            log(f"[转换] 失败: {filename}")
+            log(f"[转换] 失败: {filename}", log_placeholder)
     status.text("转换完成")
     progress.progress(100)
 
-def run_compile(compile_cmd, conda_env):
+def run_compile(compile_cmd, conda_env, log_placeholder=None):
     vswhere = os.path.expandvars(r"${ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe")
     if not os.path.exists(vswhere):
         vswhere = os.path.expandvars(r"${ProgramFiles}\Microsoft Visual Studio\Installer\vswhere.exe")
     if not os.path.exists(vswhere):
-        log("未找到 vswhere.exe")
+        log("未找到 vswhere.exe", log_placeholder)
         return
     cmd_vswhere = [vswhere, "-latest", "-products", "*", "-requires", "Microsoft.VisualStudio.Component.VC.Tools.x86.x64", "-property", "installationPath"]
     vs_path = subprocess.check_output(cmd_vswhere, text=True).strip()
     if not vs_path:
-        log("未找到安装了 VC++ 工具集的 Visual Studio")
+        log("未找到安装了 VC++ 工具集的 Visual Studio", log_placeholder)
         return
     vcvarsall = os.path.join(vs_path, r"VC\Auxiliary\Build\vcvarsall.bat")
     if not os.path.exists(vcvarsall):
-        log(f"未找到 vcvarsall.bat: {vcvarsall}")
+        log(f"未找到 vcvarsall.bat: {vcvarsall}", log_placeholder)
         return
-    work_dir = os.getcwd()
+    # 自动定位 Mitsuba 源码目录 (包含 SConstruct 的目录)
+    base_dir = Path(st.session_state.root_dir)
+    mitsuba_src_dir = base_dir / "mitsuba"
+    if not (mitsuba_src_dir / "SConstruct").exists():
+        mitsuba_src_dir = base_dir
+
+    work_dir = str(mitsuba_src_dir)
     dep_bin = os.path.join(work_dir, "dependencies", "bin")
     dep_lib = os.path.join(work_dir, "dependencies", "lib")
     bat_content = f"""
@@ -352,15 +402,15 @@ set PATH={dep_bin};{dep_lib};%PATH%
     bat_file = os.path.join(work_dir, "temp_build.bat")
     with open(bat_file, "w") as f:
         f.write(bat_content)
-    log(f"生成构建脚本: {bat_file}")
+    log(f"生成构建脚本: {bat_file}", log_placeholder)
     proc = subprocess.Popen(bat_file, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
     for line in proc.stdout:
-        log(line.strip())
+        log(line.strip(), log_placeholder)
     proc.wait()
     if proc.returncode == 0:
-        log("编译成功")
+        log("编译成功", log_placeholder)
     else:
-        log("编译失败")
+        log("编译失败", log_placeholder)
     if os.path.exists(bat_file):
         os.remove(bat_file)
 
@@ -579,6 +629,21 @@ def run_comp_generation(eval_gt_dir, eval_method1_dir, eval_method2_dir, comp_ou
         comp_img.save(out_path)
     log(f"对比拼图已生成: {comp_output_dir}")
 
+def on_render_mode_change():
+    base_dir, input_dir_map, output_dir_map = get_paths()
+    mode = st.session_state.render_mode
+    st.session_state.input_dir = str(input_dir_map.get(mode, ""))
+    st.session_state.output_dir = str(output_dir_map.get(mode, ""))
+    # 切换模式时清空已选文件，防止 multiselect 报错
+    st.session_state.render_selected = []
+
+def on_preview_dir_type_change():
+    base_dir, _, output_dir_map = get_paths()
+    p_type = st.session_state.preview_dir_type
+    st.session_state.preview_dir = str(output_dir_map.get(p_type, base_dir / "data" / "outputs" / p_type) / "png")
+    # 切换预览类型时清空已选图片
+    st.session_state.preview_selected_img = None
+
 st.sidebar.title("全局配置")
 st.sidebar.text_input("项目根目录", key="root_dir")
 st.sidebar.text_input("Mitsuba 目录", key="mitsuba_dir")
@@ -588,16 +653,32 @@ st.sidebar.text_input("场景 XML", key="scene_path")
 
 st.title("Mitsuba Render Tool")
 
-tabs = st.tabs(["批量渲染", "EXR 转 PNG", "编译", "量化评估", "网格拼图", "对比拼图", "日志"])
+tabs = st.tabs(["批量渲染", "EXR 转 PNG", "图片预览", "编译", "量化评估", "网格拼图", "对比拼图", "日志"])
 
 with tabs[0]:
     st.header("Mitsuba 批量渲染")
     base_dir, input_dir_map, output_dir_map = get_paths()
-    render_mode = st.radio("输入类型", ["brdfs", "fullbin", "npy"], horizontal=True, key="render_mode")
+    
+    # 确保 session_state 中有初始值
+    if "input_dir" not in st.session_state:
+        st.session_state.input_dir = str(input_dir_map.get("brdfs", ""))
+    if "output_dir" not in st.session_state:
+        st.session_state.output_dir = str(output_dir_map.get("brdfs", ""))
+
+    render_mode = st.radio("输入类型", ["brdfs", "fullbin", "npy"], horizontal=True, key="render_mode", on_change=on_render_mode_change)
     auto_convert = st.checkbox("渲染后自动转换为 PNG", value=True, key="auto_convert")
     skip_existing = st.checkbox("跳过已存在文件", value=False, key="skip_existing")
-    input_dir = st.text_input("输入目录", value=str(input_dir_map.get(render_mode, "")), key="input_dir")
-    output_dir = st.text_input("输出目录", value=str(output_dir_map.get(render_mode, "")), key="output_dir")
+    input_dir = st.text_input("输入目录", key="input_dir")
+    output_dir = st.text_input("输出目录", key="output_dir")
+    
+    use_custom_cmd = st.checkbox("使用自定义渲染命令", value=False, key="use_custom_cmd")
+    if use_custom_cmd:
+        custom_cmd_str = st.text_input("自定义命令 (支持占位符: {mitsuba}, {input}, {output})", 
+                                      value='{mitsuba} -o "{output}" "{input}"', 
+                                      key="custom_cmd_str")
+    else:
+        custom_cmd_str = None
+
     render_files = list_render_files(input_dir, render_mode)
     col_a, col_b, col_c = st.columns(3)
     with col_a:
@@ -612,11 +693,12 @@ with tabs[0]:
     render_selected = st.multiselect("待渲染文件", options=render_files, default=st.session_state.render_selected, key="render_selected")
     render_progress = st.progress(0)
     render_status = st.empty()
+    render_log_placeholder = st.empty()
     col_start, col_stop = st.columns(2)
     with col_start:
         if st.button("开始批量渲染"):
             st.session_state.stop_render = False
-            render_batch(render_selected, render_mode, input_dir, output_dir, auto_convert, skip_existing, render_progress, render_status, base_dir)
+            render_batch(render_selected, render_mode, input_dir, output_dir, auto_convert, skip_existing, render_progress, render_status, base_dir, render_log_placeholder, custom_cmd_str)
     with col_stop:
         if st.button("停止渲染"):
             st.session_state.stop_render = True
@@ -642,17 +724,47 @@ with tabs[1]:
     conv_selected = st.multiselect("待转换 EXR 文件", options=conv_files, default=st.session_state.conv_selected, key="conv_selected")
     conv_progress = st.progress(0)
     conv_status = st.empty()
+    conv_log_placeholder = st.empty()
     if st.button("开始 EXR -> PNG 转换"):
-        convert_exr(conv_selected, conv_input_dir, conv_output_dir, conv_progress, conv_status)
+        convert_exr(conv_selected, conv_input_dir, conv_output_dir, conv_progress, conv_status, conv_log_placeholder)
 
 with tabs[2]:
+    st.header("图片结果预览")
+    base_dir, _, output_dir_map = get_paths()
+    
+    # 确保 session_state 中有预览路径初始值
+    if "preview_dir" not in st.session_state:
+        st.session_state.preview_dir = str(output_dir_map.get("brdfs", base_dir / "data" / "outputs" / "brdfs") / "png")
+        
+    preview_dir_type = st.radio("预览类型", ["brdfs", "fullbin", "npy"], horizontal=True, key="preview_dir_type", on_change=on_preview_dir_type_change)
+    preview_dir = st.text_input("预览目录", key="preview_dir")
+    
+    if os.path.exists(preview_dir):
+        image_files = sorted([f for f in os.listdir(preview_dir) if f.lower().endswith(('.png', '.jpg', '.jpeg'))])
+        if image_files:
+            col1, col2 = st.columns([1, 3])
+            with col1:
+                selected_img = st.selectbox("选择图片", options=image_files, key="preview_selected_img")
+            with col2:
+                img_path = os.path.join(preview_dir, selected_img)
+                st.image(img_path, caption=selected_img, use_column_width=True)
+                
+                # 基本信息
+                st.info(f"文件名: {selected_img} | 路径: {img_path}")
+        else:
+            st.warning("该目录下没有图片文件。")
+    else:
+        st.error(f"目录不存在: {preview_dir}")
+
+with tabs[3]:
     st.header("编译")
     compile_cmd = st.text_input("编译命令", value="scons --parallelize", key="compile_cmd")
     conda_env = st.text_input("Conda 环境名", value="py27", key="conda_env")
+    compile_log_placeholder = st.empty()
     if st.button("开始编译"):
-        run_compile(compile_cmd, conda_env)
+        run_compile(compile_cmd, conda_env, compile_log_placeholder)
 
-with tabs[3]:
+with tabs[4]:
     st.header("量化评估")
     base_dir, _, output_dir_map = get_paths()
     eval_gt_dir = st.text_input("GT (BRDFs) PNG 目录", value=str(output_dir_map.get("brdfs", base_dir / "data" / "outputs" / "brdfs") / "png"), key="eval_gt_dir")
@@ -668,7 +780,7 @@ with tabs[3]:
             table_data.append({"Comparison": k, "PSNR (dB)": float(v[0]), "SSIM": float(v[1]), "Delta E": float(v[2])})
         st.table(table_data)
 
-with tabs[4]:
+with tabs[5]:
     st.header("网格拼图")
     base_dir, _, output_dir_map = get_paths()
     grid_input_dir = st.text_input("图片输入目录", value=str(output_dir_map.get("brdfs", base_dir / "data" / "outputs" / "brdfs") / "png"), key="grid_input_dir")
@@ -679,7 +791,7 @@ with tabs[4]:
     if st.button("生成网格大图"):
         run_grid_generation(grid_input_dir, grid_output_file, grid_show_names, grid_cell_width, grid_padding)
 
-with tabs[5]:
+with tabs[6]:
     st.header("对比拼图")
     base_dir, _, output_dir_map = get_paths()
     eval_gt_dir = st.text_input("GT (BRDFs) PNG 目录", value=str(output_dir_map.get("brdfs", base_dir / "data" / "outputs" / "brdfs") / "png"), key="comp_eval_gt_dir")
@@ -692,7 +804,7 @@ with tabs[5]:
     if st.button("生成对比拼图"):
         run_comp_generation(eval_gt_dir, eval_method1_dir, eval_method2_dir, comp_output_dir, comp_labels, comp_show_label, comp_show_filename)
 
-with tabs[6]:
+with tabs[7]:
     st.header("日志")
     col1, col2 = st.columns(2)
     with col1:
