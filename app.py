@@ -18,8 +18,8 @@ st.markdown("""
 请在左侧侧边栏选择相应的功能页面：
 
 - **🎨 Mitsuba Render Tool**: 集成了批量渲染、格式转换、项目编译、量化评估及图像处理等核心工具。
+- **🧠 Model Training**: 集成了 Neural-BRDF (Sztrajman et al. 2021) 与 HyperBRDF (Gokbudak et al. 2024) 两种主流材质神经网络表达方案。
 - **📊 (规划中) 数据分析**: 材质数据的统计分析与可视化。
-- **🧠 (规划中) 模型训练**: 神经网络模型的训练与监控。
 
 ### 快速开始
 1. 确保已配置好 Mitsuba 渲染器路径。

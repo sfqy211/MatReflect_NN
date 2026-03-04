@@ -1,5 +1,7 @@
 data/
 __pycache__/
 *.log
-mitsuba
+mitsuba/
 .vscode
+HyperBRDF/
+Neural-BRDF/
