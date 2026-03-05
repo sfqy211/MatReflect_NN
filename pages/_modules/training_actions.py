@@ -20,7 +20,9 @@ H5_TO_NPY_SCRIPT = BINARY_TO_NBRDF_DIR / "h5_to_npy.py"
 def log_exp(msg, placeholder=None):
     if "train_logs" not in st.session_state:
         st.session_state.train_logs = []
-    st.session_state.train_logs.append(msg)
+    # 清理控制字符
+    clean_msg = msg.replace("\b", "").replace("\r", "")
+    st.session_state.train_logs.append(clean_msg)
     if placeholder:
         placeholder.text_area("训练实时日志", value="\n".join(st.session_state.train_logs[::-1]), height=300)
 
@@ -33,20 +35,25 @@ def resolve_binary_paths(merl_dir, selected_merls):
 def list_h5_files(h5_dir):
     return [os.path.basename(f) for f in glob.glob(os.path.join(h5_dir, "*.h5"))]
 
-def run_pytorch_training(merl_dir, selected_merls, epochs, output_dir, log_placeholder):
+def run_pytorch_training(merl_dir, selected_merls, epochs, output_dir, log_placeholder, device="cpu"):
     if not selected_merls:
         st.warning("未选择材质文件")
         return
     os.makedirs(output_dir, exist_ok=True)
     st.session_state.train_logs = []
     env = os.environ.copy()
+    env["PYTHONUNBUFFERED"] = "1"
     env["PYTHONPATH"] = str(BINARY_TO_NBRDF_DIR) + os.pathsep + str(PYTORCH_SCRIPT.parent) + os.pathsep + env.get("PYTHONPATH", "")
     for merl in resolve_binary_paths(merl_dir, selected_merls):
-        cmd = ["python", str(PYTORCH_SCRIPT), merl, "--outpath", str(output_dir), "--epochs", str(epochs)]
-        log_exp(f"启动 PyTorch 训练: {' '.join(cmd)}", log_placeholder)
-        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=env, cwd=str(PYTORCH_SCRIPT.parent))
-        for line in proc.stdout:
-            log_exp(line.strip(), log_placeholder)
+        cmd = ["python", str(PYTORCH_SCRIPT), merl, "--outpath", str(output_dir), "--epochs", str(epochs), "--device", device]
+        log_exp(f"启动 PyTorch 训练 ({device}): {' '.join(cmd)}", log_placeholder)
+        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=env, cwd=str(PYTORCH_SCRIPT.parent), bufsize=1)
+        while True:
+            line = proc.stdout.readline()
+            if not line and proc.poll() is not None:
+                break
+            if line:
+                log_exp(line.strip(), log_placeholder)
         proc.wait()
         if proc.returncode == 0:
             st.success(f"训练完成: {os.path.basename(merl)}")
@@ -59,12 +66,17 @@ def run_h5_to_npy(h5_paths, output_dir, log_placeholder):
         return
     os.makedirs(output_dir, exist_ok=True)
     env = os.environ.copy()
+    env["PYTHONUNBUFFERED"] = "1"
     env["PYTHONPATH"] = str(BINARY_TO_NBRDF_DIR) + os.pathsep + env.get("PYTHONPATH", "")
     cmd = ["python", str(H5_TO_NPY_SCRIPT), *h5_paths, "--destdir", str(output_dir)]
     log_exp(f"启动 h5 -> npy 转换: {' '.join(cmd)}", log_placeholder)
-    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=env, cwd=str(BINARY_TO_NBRDF_DIR))
-    for line in proc.stdout:
-        log_exp(line.strip(), log_placeholder)
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=env, cwd=str(BINARY_TO_NBRDF_DIR), bufsize=1)
+    while True:
+        line = proc.stdout.readline()
+        if not line and proc.poll() is not None:
+            break
+        if line:
+            log_exp(line.strip(), log_placeholder)
     proc.wait()
     if proc.returncode == 0:
         st.success(f"转换完成，权重已存放在: {output_dir}")
@@ -79,6 +91,7 @@ def run_keras_training(merl_dir, selected_merls, cuda_device, h5_output_dir, npy
     os.makedirs(h5_output_dir, exist_ok=True)
     
     env = os.environ.copy()
+    env["PYTHONUNBUFFERED"] = "1"
     env["PYTHONPATH"] = str(BINARY_TO_NBRDF_DIR) + os.pathsep + env.get("PYTHONPATH", "")
     env["CUDA_VISIBLE_DEVICES"] = cuda_device
     binary_paths = resolve_binary_paths(merl_dir, selected_merls)
@@ -88,9 +101,13 @@ def run_keras_training(merl_dir, selected_merls, cuda_device, h5_output_dir, npy
     
     # Keras 脚本默认在当前工作目录生成文件，所以我们要在 H5 目标目录下运行，或者运行后移动
     # 鉴于脚本内部使用了相对路径引用 coords 等模块，我们在 BINARY_TO_NBRDF_DIR 运行更稳妥，然后移动结果
-    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=env, cwd=str(BINARY_TO_NBRDF_DIR))
-    for line in proc.stdout:
-        log_exp(line.strip(), log_placeholder)
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=env, cwd=str(BINARY_TO_NBRDF_DIR), bufsize=1)
+    while True:
+        line = proc.stdout.readline()
+        if not line and proc.poll() is not None:
+            break
+        if line:
+            log_exp(line.strip(), log_placeholder)
     proc.wait()
     
     if proc.returncode != 0:

@@ -24,6 +24,10 @@ def init_state():
         st.session_state.stop_render = False
     if "eval_result" not in st.session_state:
         st.session_state.eval_result = None
+    if "preview_dir_type" not in st.session_state:
+        st.session_state.preview_dir_type = "brdfs"
+    if "preview_selected_img" not in st.session_state:
+        st.session_state.preview_selected_img = None
     if "root_dir" not in st.session_state:
         st.session_state.root_dir = str(Path(__file__).resolve().parents[2])
     if "mitsuba_dir" not in st.session_state:
@@ -296,21 +300,27 @@ def render_batch(render_selected, render_mode, input_dir, output_dir, auto_conve
             log(f"  -> 错误: 未找到可执行文件 {cmd[0]}", log_placeholder)
             continue
         try:
-            proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=env)
-            for line in proc.stdout:
-                line_str = line.strip()
-                log(f"  > {line_str}", log_placeholder)
-                if "Rendering: [" in line_str:
-                    try:
-                        content = line_str[line_str.find("[")+1 : line_str.find("]")]
-                        total_width = len(content)
-                        done_count = content.count("+")
-                        if total_width > 0:
-                            percent = done_count / total_width
-                            overall_percent = (idx + percent) / total
-                            progress.progress(min(100, int(overall_percent * 100)))
-                    except:
-                        pass
+            env = os.environ.copy()
+            env["PYTHONUNBUFFERED"] = "1"
+            proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=env, bufsize=1)
+            while True:
+                line = proc.stdout.readline()
+                if not line and proc.poll() is not None:
+                    break
+                if line:
+                    line_str = line.strip()
+                    log(f"  > {line_str}", log_placeholder)
+                    if "Rendering: [" in line_str:
+                        try:
+                            content = line_str[line_str.find("[")+1 : line_str.find("]")]
+                            total_width = len(content)
+                            done_count = content.count("+")
+                            if total_width > 0:
+                                percent = done_count / total_width
+                                overall_percent = (idx + percent) / total
+                                progress.progress(min(100, int(overall_percent * 100)))
+                        except:
+                            pass
             proc.wait()
             if proc.returncode == 0:
                 log("  -> EXR 完成", log_placeholder)

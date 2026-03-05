@@ -15,18 +15,21 @@ def render_neural_brdf_tab():
         st.subheader("1. PyTorch 训练 (直接输出 .npy)")
         pt_selected = st.multiselect("选择材质 (可多选)", options=merl_files, key="nb_pt_selected")
         pt_epochs = st.number_input("迭代次数 (Epochs)", value=100, min_value=1, key="nb_pt_epochs")
+        pt_device = st.selectbox("训练设备", options=["cpu", "cuda"], index=0, key="nb_pt_device")
         pt_output_dir = st.text_input("权重输出目录", value=str(actions.DATA_INPUTS_NPY), key="nb_pt_output_dir")
         pt_log = st.empty()
         if st.button("开始 PyTorch 训练"):
-            actions.run_pytorch_training(merl_dir, pt_selected, pt_epochs, pt_output_dir, pt_log)
+            actions.run_pytorch_training(merl_dir, pt_selected, pt_epochs, pt_output_dir, pt_log, pt_device)
     with col2:
         st.subheader("2. Keras 训练 + h5 -> npy")
         keras_selected = st.multiselect("选择材质 (可多选)", options=merl_files, key="nb_keras_selected")
-        cuda_device = st.text_input("CUDA 设备", value="0", key="nb_keras_cuda_device")
+        cuda_device = st.text_input("CUDA 设备 ID", value="0", help="设置 GPU ID (如 0, 1)。输入 -1 使用 CPU 训练。", key="nb_keras_cuda_device")
         keras_h5_dir = st.text_input("中间 H5 目录", value=str(actions.DATA_INTERMEDIATE_H5), key="nb_keras_h5_dir")
         keras_npy_dir = st.text_input("权重输出目录", value=str(actions.DATA_INPUTS_NPY), key="nb_keras_npy_dir")
         keras_log = st.empty()
         if st.button("开始 Keras 训练并转换"):
+            if cuda_device == "-1":
+                st.info("已选择 CPU 模式进行 Keras 训练")
             actions.run_keras_training(merl_dir, keras_selected, cuda_device, keras_h5_dir, keras_npy_dir, keras_log)
     st.subheader("3. 独立 H5 -> NPY 转换")
     st.write("如果你已有 .h5 模型文件，可以在此直接转换为 .npy 权重。")
