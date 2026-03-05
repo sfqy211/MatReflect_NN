@@ -28,19 +28,24 @@ def init_state():
         st.session_state.preview_dir_type = "brdfs"
     if "preview_selected_img" not in st.session_state:
         st.session_state.preview_selected_img = None
-    if "root_dir" not in st.session_state:
-        st.session_state.root_dir = str(Path(__file__).resolve().parents[2])
-    if "mitsuba_dir" not in st.session_state:
+    if "root_dir" not in st.session_state or not st.session_state.root_dir:
+        # Use CWD as default if explicit path resolution fails or is empty
+        st.session_state.root_dir = os.getcwd()
+        
+    if "mitsuba_dir" not in st.session_state or not st.session_state.mitsuba_dir:
         local_mitsuba = Path(st.session_state.root_dir) / "mitsuba" / "dist"
         if local_mitsuba.exists():
             st.session_state.mitsuba_dir = str(local_mitsuba)
         else:
             st.session_state.mitsuba_dir = r"d:\mitsuba\dist"
-    if "mitsuba_exe" not in st.session_state:
+            
+    if "mitsuba_exe" not in st.session_state or not st.session_state.mitsuba_exe:
         st.session_state.mitsuba_exe = str(Path(st.session_state.mitsuba_dir) / "mitsuba.exe")
-    if "mtsutil_exe" not in st.session_state:
+        
+    if "mtsutil_exe" not in st.session_state or not st.session_state.mtsutil_exe:
         st.session_state.mtsutil_exe = str(Path(st.session_state.mitsuba_dir) / "mtsutil.exe")
-    if "scene_path" not in st.session_state:
+        
+    if "scene_path" not in st.session_state or not st.session_state.scene_path:
         st.session_state.scene_path = str(Path(st.session_state.root_dir) / "scene" / "scene_merl.xml")
 
 def log(msg, placeholder=None):
