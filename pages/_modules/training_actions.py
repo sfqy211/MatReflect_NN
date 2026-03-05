@@ -17,6 +17,11 @@ PYTORCH_SCRIPT = BINARY_TO_NBRDF_DIR / "pytorch_code" / "train_NBRDF_pytorch.py"
 KERAS_SCRIPT = BINARY_TO_NBRDF_DIR / "binary_to_nbrdf.py"
 H5_TO_NPY_SCRIPT = BINARY_TO_NBRDF_DIR / "h5_to_npy.py"
 
+# HyperBRDF 相关脚本
+HB_TEST_SCRIPT = HYPER_BRDF_DIR / "test.py"
+HB_PT_TO_FULLBIN_SCRIPT = HYPER_BRDF_DIR / "pt_to_fullmerl.py"
+HB_DEFAULT_MODEL = HYPER_BRDF_DIR / "results" / "test" / "MERL" / "checkpoint.pt"
+
 def log_exp(msg, placeholder=None):
     if "train_logs" not in st.session_state:
         st.session_state.train_logs = []
@@ -145,3 +150,73 @@ def run_keras_training(merl_dir, selected_merls, cuda_device, h5_output_dir, npy
         run_h5_to_npy(h5_paths, npy_output_dir, log_placeholder)
     else:
         st.warning("训练完成但未找到对应 .h5 文件，请检查输出目录")
+
+def run_hb_extraction(merl_dir, selected_merls, model_path, output_dir, log_placeholder, conda_env="hyperbrdf"):
+    if not selected_merls:
+        st.warning("未选择材质文件")
+        return
+    st.session_state.train_logs = []
+    os.makedirs(output_dir, exist_ok=True)
+    
+    env = os.environ.copy()
+    env["PYTHONUNBUFFERED"] = "1"
+    # 添加 HyperBRDF 目录到 PYTHONPATH
+    env["PYTHONPATH"] = str(HYPER_BRDF_DIR) + os.pathsep + env.get("PYTHONPATH", "")
+    
+    for merl in selected_merls:
+        binary_path = os.path.join(merl_dir, merl)
+        # cmd: python test.py --model {model} --binary {binary} --destdir {dest} --dataset MERL
+        cmd = ["conda", "run", "--no-capture-output", "-n", conda_env, "python", str(HB_TEST_SCRIPT), 
+               "--model", str(model_path), "--binary", str(binary_path), "--destdir", str(output_dir), "--dataset", "MERL"]
+        
+        log_exp(f"启动 HyperBRDF 参数提取: {merl}", log_placeholder)
+        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=env, cwd=str(HYPER_BRDF_DIR), shell=True)
+        
+        while True:
+            line = proc.stdout.readline()
+            if not line and proc.poll() is not None:
+                break
+            if line:
+                log_exp(line.strip(), log_placeholder)
+        proc.wait()
+        
+        if proc.returncode == 0:
+            st.success(f"参数提取完成: {merl}")
+        else:
+            st.error(f"参数提取失败: {merl} (退出码: {proc.returncode})")
+
+def run_hb_to_fullbin(pt_dir, selected_pts, output_dir, log_placeholder, conda_env="hyperbrdf"):
+    if not selected_pts:
+        st.warning("未选择 .pt 文件")
+        return
+    st.session_state.train_logs = []
+    os.makedirs(output_dir, exist_ok=True)
+    
+    env = os.environ.copy()
+    env["PYTHONUNBUFFERED"] = "1"
+    env["PYTHONPATH"] = str(HYPER_BRDF_DIR) + os.pathsep + env.get("PYTHONPATH", "")
+    
+    for pt_name in selected_pts:
+        pt_path = os.path.join(pt_dir, pt_name)
+        # cmd: python pt_to_fullmerl.py {pt} {dest} --dataset MERL
+        cmd = ["conda", "run", "--no-capture-output", "-n", conda_env, "python", str(HB_PT_TO_FULLBIN_SCRIPT), 
+               str(pt_path), str(output_dir), "--dataset", "MERL"]
+        
+        log_exp(f"启动 pt -> fullbin 转换: {pt_name}", log_placeholder)
+        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=env, cwd=str(HYPER_BRDF_DIR), shell=True)
+        
+        while True:
+            line = proc.stdout.readline()
+            if not line and proc.poll() is not None:
+                break
+            if line:
+                log_exp(line.strip(), log_placeholder)
+        proc.wait()
+        
+        if proc.returncode == 0:
+            st.success(f"转换完成: {pt_name}")
+        else:
+            st.error(f"转换失败: {pt_name} (退出码: {proc.returncode})")
+
+def list_pt_files(pt_dir):
+    return [os.path.basename(f) for f in glob.glob(os.path.join(pt_dir, "*.pt"))]
