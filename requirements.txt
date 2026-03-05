@@ -1,7 +1,4 @@
 streamlit
-tensorflow
-keras
-protobuf==3.20.3
 torch
 torchvision
 torchaudio
@@ -13,5 +10,4 @@ scikit-image
 scikit-learn
 Pillow
 scipy
-scons
 vswhere

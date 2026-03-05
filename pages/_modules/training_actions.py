@@ -68,9 +68,12 @@ def run_h5_to_npy(h5_paths, output_dir, log_placeholder):
     env = os.environ.copy()
     env["PYTHONUNBUFFERED"] = "1"
     env["PYTHONPATH"] = str(BINARY_TO_NBRDF_DIR) + os.pathsep + env.get("PYTHONPATH", "")
-    cmd = ["python", str(H5_TO_NPY_SCRIPT), *h5_paths, "--destdir", str(output_dir)]
-    log_exp(f"启动 h5 -> npy 转换: {' '.join(cmd)}", log_placeholder)
-    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=env, cwd=str(BINARY_TO_NBRDF_DIR), bufsize=1)
+    
+    # 同样使用 nbrdf-train 环境运行 H5 转换脚本
+    # 使用 shell=True 兼容 Windows 环境变量
+    cmd = ["conda", "run", "--no-capture-output", "-n", "nbrdf-train", "python", str(H5_TO_NPY_SCRIPT), *h5_paths, "--destdir", str(output_dir)]
+    log_exp(f"启动 h5 -> npy 转换 (nbrdf-train): {' '.join(cmd)}", log_placeholder)
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=env, cwd=str(BINARY_TO_NBRDF_DIR), bufsize=1, shell=True)
     while True:
         line = proc.stdout.readline()
         if not line and proc.poll() is not None:
@@ -96,12 +99,15 @@ def run_keras_training(merl_dir, selected_merls, cuda_device, h5_output_dir, npy
     env["CUDA_VISIBLE_DEVICES"] = cuda_device
     binary_paths = resolve_binary_paths(merl_dir, selected_merls)
     
-    cmd = ["python", str(KERAS_SCRIPT), *binary_paths, "--cuda_device", cuda_device]
-    log_exp(f"启动 Keras 训练: {' '.join(cmd)}", log_placeholder)
+    # 使用 nbrdf-train 环境运行 Keras 训练
+    # 在 Windows 上，subprocess 可能找不到 'conda'，需要用 shell=True 或绝对路径
+    cmd = ["conda", "run", "--no-capture-output", "-n", "nbrdf-train", "python", str(KERAS_SCRIPT), *binary_paths, "--cuda_device", cuda_device]
+    log_exp(f"启动 Keras 训练 (nbrdf-train): {' '.join(cmd)}", log_placeholder)
     
     # Keras 脚本默认在当前工作目录生成文件，所以我们要在 H5 目标目录下运行，或者运行后移动
     # 鉴于脚本内部使用了相对路径引用 coords 等模块，我们在 BINARY_TO_NBRDF_DIR 运行更稳妥，然后移动结果
-    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=env, cwd=str(BINARY_TO_NBRDF_DIR), bufsize=1)
+    # Windows 下使用 shell=True 来正确解析 conda 命令
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=env, cwd=str(BINARY_TO_NBRDF_DIR), bufsize=1, shell=True)
     while True:
         line = proc.stdout.readline()
         if not line and proc.poll() is not None:
