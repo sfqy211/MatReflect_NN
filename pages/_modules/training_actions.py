@@ -18,6 +18,7 @@ KERAS_SCRIPT = BINARY_TO_NBRDF_DIR / "binary_to_nbrdf.py"
 H5_TO_NPY_SCRIPT = BINARY_TO_NBRDF_DIR / "h5_to_npy.py"
 
 # HyperBRDF 相关脚本
+HB_MAIN_SCRIPT = HYPER_BRDF_DIR / "main.py"
 HB_TEST_SCRIPT = HYPER_BRDF_DIR / "test.py"
 HB_PT_TO_FULLBIN_SCRIPT = HYPER_BRDF_DIR / "pt_to_fullmerl.py"
 HB_DEFAULT_MODEL = HYPER_BRDF_DIR / "results" / "test" / "MERL" / "checkpoint.pt"
@@ -150,6 +151,39 @@ def run_keras_training(merl_dir, selected_merls, cuda_device, h5_output_dir, npy
         run_h5_to_npy(h5_paths, npy_output_dir, log_placeholder)
     else:
         st.warning("训练完成但未找到对应 .h5 文件，请检查输出目录")
+
+def run_hb_training(merl_dir, output_dir, epochs, sparse_samples, latent_dim, log_placeholder, conda_env="hyperbrdf", kl_weight=0.1, fw_weight=0.1, dataset="MERL"):
+    if not os.path.exists(merl_dir):
+        st.warning(f"目录不存在: {merl_dir}")
+        return
+    st.session_state.train_logs = []
+    os.makedirs(output_dir, exist_ok=True)
+    env = os.environ.copy()
+    env["PYTHONUNBUFFERED"] = "1"
+    env["PYTHONPATH"] = str(HYPER_BRDF_DIR) + os.pathsep + env.get("PYTHONPATH", "")
+    cmd = [
+        "conda", "run", "--no-capture-output", "-n", conda_env, "python", str(HB_MAIN_SCRIPT),
+        "--destdir", str(output_dir),
+        "--binary", str(merl_dir),
+        "--dataset", dataset,
+        "--epochs", str(epochs),
+        "--sparse_samples", str(sparse_samples),
+        "--kl_weight", str(kl_weight),
+        "--fw_weight", str(fw_weight)
+    ]
+    log_exp(f"启动 HyperBRDF 基础超网络训练: {' '.join(cmd)}", log_placeholder)
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=env, cwd=str(HYPER_BRDF_DIR), shell=True)
+    while True:
+        line = proc.stdout.readline()
+        if not line and proc.poll() is not None:
+            break
+        if line:
+            log_exp(line.strip(), log_placeholder)
+    proc.wait()
+    if proc.returncode == 0:
+        st.success(f"训练完成，模型已保存至: {output_dir}")
+    else:
+        st.error(f"训练失败 (退出码: {proc.returncode})")
 
 def run_hb_extraction(merl_dir, selected_merls, model_path, output_dir, log_placeholder, conda_env="hyperbrdf"):
     if not selected_merls:

@@ -8,6 +8,22 @@ def render_hyper_brdf_tab():
     st.info("HyperBRDF (Gokbudak et al. 2024) 使用 HyperNetwork 从稀疏采样中重建材质。")
     
     merl_dir = st.text_input("MERL 材质目录", value=str(actions.DATA_INPUTS_BRDFS), key="hb_merl_dir")
+
+    with st.expander("0. 训练基础超网络 (One-time)", expanded=False):
+        st.write("用于训练 HyperBRDF 的基础生成器模型，通常只需运行一次。")
+        col_t1, col_t2 = st.columns(2)
+        with col_t1:
+            hb_train_out = st.text_input("模型输出目录", value=str(actions.HYPER_BRDF_DIR / "results" / "test"), key="hb_train_out")
+            hb_epochs = st.number_input("训练轮次 (Epochs)", value=100, min_value=1, key="hb_train_epochs")
+            hb_kl_weight = st.number_input("KL 权重", value=0.1, min_value=0.0, key="hb_train_kl_weight")
+        with col_t2:
+            hb_sparse = st.number_input("稀疏采样点数", value=4000, min_value=100, key="hb_train_sparse")
+            hb_latent = st.number_input("潜在空间维度", value=40, min_value=1, disabled=True, key="hb_train_latent")
+            hb_fw_weight = st.number_input("FW 权重", value=0.1, min_value=0.0, key="hb_train_fw_weight")
+        hb_conda_env = st.text_input("Conda 环境名", value="hyperbrdf", key="hb_train_env")
+        hb_train_log = st.empty()
+        if st.button("开始训练基础模型"):
+            actions.run_hb_training(merl_dir, hb_train_out, hb_epochs, hb_sparse, hb_latent, hb_train_log, hb_conda_env, hb_kl_weight, hb_fw_weight)
     
     col_h1, col_h2 = st.columns(2)
     with col_h1:
