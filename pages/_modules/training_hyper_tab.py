@@ -1,6 +1,7 @@
 import streamlit as st
 import os
 from . import training_actions as actions
+from . import render_tool_actions as render_actions
 
 def render_hyper_brdf_tab():
     st.header("HyperBRDF 重建与预测")
@@ -14,7 +15,20 @@ def render_hyper_brdf_tab():
         st.write("将 `.binary` 材质通过超网络编码为 `.pt` 参数文件。")
         
         merl_files = actions.list_merl_files(merl_dir)
-        selected_merls = st.multiselect("选择材质", options=merl_files, key="hb_selected_merls")
+        
+        # Native File Dialog for Encoding
+        if st.button("📂 打开文件选择器 (Encoding)", key="hb_merl_open_dialog", use_container_width=True):
+            ftypes = [("Binary files", "*.binary"), ("All files", "*.*")]
+            selected_paths = render_actions.open_file_dialog(merl_dir, "请选择材质文件", ftypes)
+            if selected_paths:
+                selected_names = [os.path.basename(p) for p in selected_paths]
+                valid_names = [n for n in selected_names if n in merl_files]
+                if len(valid_names) < len(selected_names):
+                    st.warning("部分选择的文件不在当前目录中，已自动忽略。")
+                st.session_state.hb_selected_merls = valid_names
+                st.rerun()
+                
+        selected_merls = st.multiselect("选择材质", options=merl_files, default=st.session_state.get("hb_selected_merls", []), key="hb_selected_merls")
         
         checkpoint = st.text_input("Checkpoint (.pt)", value=str(actions.HB_DEFAULT_MODEL), key="hb_checkpoint")
         pt_output_dir = st.text_input("参数输出目录 (.pt)", value=str(actions.HYPER_BRDF_DIR / "results" / "extracted_pts"), key="hb_pt_out")
@@ -30,7 +44,20 @@ def render_hyper_brdf_tab():
         pt_dir = st.text_input("PT 参数目录", value=str(actions.HYPER_BRDF_DIR / "results" / "extracted_pts"), key="hb_pt_dir")
         if os.path.exists(pt_dir):
             pt_files = actions.list_pt_files(pt_dir)
-            selected_pts = st.multiselect("选择参数文件", options=pt_files, key="hb_selected_pts")
+            
+            # Native File Dialog for Decoding
+            if st.button("📂 打开文件选择器 (Decoding)", key="hb_pt_open_dialog", use_container_width=True):
+                ftypes = [("PT files", "*.pt"), ("All files", "*.*")]
+                selected_paths = render_actions.open_file_dialog(pt_dir, "请选择 PT 参数文件", ftypes)
+                if selected_paths:
+                    selected_names = [os.path.basename(p) for p in selected_paths]
+                    valid_names = [n for n in selected_names if n in pt_files]
+                    if len(valid_names) < len(selected_names):
+                        st.warning("部分选择的文件不在当前目录中，已自动忽略。")
+                    st.session_state.hb_selected_pts = valid_names
+                    st.rerun()
+            
+            selected_pts = st.multiselect("选择参数文件", options=pt_files, default=st.session_state.get("hb_selected_pts", []), key="hb_selected_pts")
             
             fullbin_out_dir = st.text_input("重建输出目录 (.fullbin)", value=str(actions.ROOT_DIR / "data" / "inputs" / "fullbin"), key="hb_fullbin_out")
             

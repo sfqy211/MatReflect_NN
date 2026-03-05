@@ -31,17 +31,39 @@ def render_page():
         else:
             custom_cmd_str = None
         render_files = actions.list_render_files(input_dir, render_mode)
-        col_a, col_b, col_c = st.columns(3)
-        with col_a:
-            if st.button("全选", key="render_select_all"):
-                st.session_state.render_selected = render_files
-        with col_b:
-            if st.button("全不选", key="render_select_none"):
-                st.session_state.render_selected = []
-        with col_c:
-            if st.button("刷新列表", key="render_refresh"):
+        
+        # Native File Dialog Button
+        col_dialog, col_ref = st.columns([1, 1])
+        with col_dialog:
+            if st.button("📂 打开文件选择器 (Windows 原生)", key="render_open_dialog", use_container_width=True):
+                # Determine file types
+                ftypes = [("All files", "*.*")]
+                if render_mode == "brdfs":
+                    ftypes = [("Binary files", "*.binary"), ("All files", "*.*")]
+                elif render_mode == "fullbin":
+                    ftypes = [("Fullbin files", "*.fullbin"), ("All files", "*.*")]
+                elif render_mode == "npy":
+                    ftypes = [("NPY files", "*.npy"), ("All files", "*.*")]
+                
+                selected_paths = actions.open_file_dialog(input_dir, "请选择待渲染文件", ftypes)
+                if selected_paths:
+                    # Filter files to ensure they are in the input directory list to avoid path issues
+                    selected_names = [os.path.basename(p) for p in selected_paths]
+                    valid_names = [n for n in selected_names if n in render_files]
+                    
+                    if len(valid_names) < len(selected_names):
+                        st.warning("部分选择的文件不在当前输入目录中，已被自动忽略。请确保选择的文件位于配置的输入目录内。")
+                    
+                    st.session_state.render_selected = valid_names
+                    st.rerun()
+                    
+        with col_ref:
+            if st.button("刷新文件列表", key="render_refresh", use_container_width=True):
                 pass
-        render_selected = st.multiselect("待渲染文件", options=render_files, default=st.session_state.render_selected, key="render_selected")
+
+        render_selected = st.multiselect("待渲染文件列表", options=render_files, default=st.session_state.render_selected, key="render_selected")
+        st.caption(f"已选择 {len(render_selected)} / {len(render_files)} 个文件")
+        
         render_progress = st.progress(0)
         render_status = st.empty()
         render_log_placeholder = st.empty()
@@ -62,17 +84,31 @@ def render_page():
         conv_input_dir = st.text_input("EXR 输入目录", value=str(Path(output_dir) / "exr"), key="conv_input_dir")
         conv_output_dir = st.text_input("PNG 输出目录", value=str(Path(output_dir) / "png"), key="conv_output_dir")
         conv_files = actions.list_exr_files(conv_input_dir)
-        col_c1, col_c2, col_c3 = st.columns(3)
-        with col_c1:
-            if st.button("全选", key="conv_select_all"):
-                st.session_state.conv_selected = conv_files
-        with col_c2:
-            if st.button("全不选", key="conv_select_none"):
-                st.session_state.conv_selected = []
-        with col_c3:
-            if st.button("刷新列表", key="conv_refresh"):
+        
+        # Native File Dialog Button (EXR)
+        c_dialog, c_ref = st.columns([1, 1])
+        with c_dialog:
+            if st.button("📂 打开文件选择器 (Windows 原生)", key="conv_open_dialog", use_container_width=True):
+                ftypes = [("EXR files", "*.exr"), ("All files", "*.*")]
+                
+                selected_paths = actions.open_file_dialog(conv_input_dir, "请选择 EXR 文件", ftypes)
+                if selected_paths:
+                    selected_names = [os.path.basename(p) for p in selected_paths]
+                    valid_names = [n for n in selected_names if n in conv_files]
+                    
+                    if len(valid_names) < len(selected_names):
+                        st.warning("部分选择的文件不在当前输入目录中，已被自动忽略。")
+                    
+                    st.session_state.conv_selected = valid_names
+                    st.rerun()
+                    
+        with c_ref:
+            if st.button("刷新文件列表", key="conv_refresh", use_container_width=True):
                 pass
-        conv_selected = st.multiselect("待转换 EXR 文件", options=conv_files, default=st.session_state.conv_selected, key="conv_selected")
+
+        conv_selected = st.multiselect("待转换 EXR 文件列表", options=conv_files, default=st.session_state.conv_selected, key="conv_selected")
+        st.caption(f"已选择 {len(conv_selected)} / {len(conv_files)} 个文件")
+        
         conv_progress = st.progress(0)
         conv_status = st.empty()
         conv_log_placeholder = st.empty()

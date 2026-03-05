@@ -10,8 +10,32 @@ import cv2
 from skimage import metrics, color
 import concurrent.futures
 from PIL import Image, ImageDraw, ImageFont
+import fnmatch
+import tkinter as tk
+from tkinter import filedialog
 
 STOP_SIGNAL = []
+
+def open_file_dialog(initial_dir, title="选择文件", filetypes=None):
+    """
+    Opens a native file dialog to select multiple files.
+    """
+    try:
+        root = tk.Tk()
+        root.withdraw()  # Hide the main window
+        root.attributes('-topmost', True)  # Make the dialog appear on top
+        
+        file_paths = filedialog.askopenfilenames(
+            initialdir=initial_dir,
+            title=title,
+            filetypes=filetypes
+        )
+        
+        root.destroy()
+        return file_paths
+    except Exception as e:
+        st.error(f"无法打开文件选择器: {e}")
+        return []
 
 def init_state():
     if "logs" not in st.session_state:
