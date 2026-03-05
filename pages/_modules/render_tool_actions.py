@@ -391,8 +391,24 @@ def run_compile(compile_cmd, conda_env, log_placeholder=None):
     bat_content = f"""
 @echo off
 cd /d "{work_dir}"
+echo [1/4] Setting up Visual Studio environment...
 call "{vcvarsall}" x64
-call activate {conda_env}
+
+echo [2/4] Activating Conda environment '{conda_env}'...
+@rem Try multiple ways to activate conda
+if exist "%CONDA_EXE%" (
+    for /f "delims=" %%i in ("%CONDA_EXE%") do set "CONDA_ROOT=%%~dpi.."
+)
+if exist "%CONDA_ROOT%\Scripts\activate.bat" (
+    call "%CONDA_ROOT%\Scripts\activate.bat" {conda_env}
+) else (
+    call activate {conda_env} 2>nul || conda activate {conda_env} 2>nul
+)
+
+echo [3/4] Python Version:
+python --version
+
+echo [4/4] Setting dependency paths and running: {compile_cmd}
 set PATH={dep_bin};{dep_lib};%PATH%
 {compile_cmd}
 """

@@ -81,7 +81,7 @@ def render_page():
     with tabs[2]:
         st.header("编译")
         compile_cmd = st.text_input("编译命令", value="scons --parallelize", key="compile_cmd")
-        conda_env = st.text_input("Conda 环境名", value="py27", key="conda_env")
+        conda_env = st.text_input("Conda 环境名", value="mitsuba-build", key="conda_env")
         compile_log_placeholder = st.empty()
         if st.button("开始编译"):
             actions.run_compile(compile_cmd, conda_env, compile_log_placeholder)

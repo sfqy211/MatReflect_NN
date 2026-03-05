@@ -299,7 +299,7 @@ class BatchRendererApp:
         config_frame.pack(fill="x", padx=10, pady=5)
         
         self.compile_cmd_var = tk.StringVar(value="scons --parallelize")
-        self.conda_env_var = tk.StringVar(value="py27")
+        self.conda_env_var = tk.StringVar(value="mitsuba-build")
         
         tk.Label(config_frame, text="编译命令:").grid(row=0, column=0, sticky="e", padx=5)
         tk.Entry(config_frame, textvariable=self.compile_cmd_var, width=40).grid(row=0, column=1, sticky="w", padx=5)
@@ -367,12 +367,23 @@ echo [1/5] Setting up VS environment...
 call "{vcvarsall}" x64
 
 echo [2/5] Activating Conda environment '{conda_env}'...
-call activate {conda_env} || echo Warning: Conda activate failed, trying direct python...
+@rem Try multiple ways to activate conda
+if exist "%CONDA_EXE%" (
+    for /f "delims=" %%i in ("%CONDA_EXE%") do set "CONDA_ROOT=%%~dpi.."
+)
+if exist "%CONDA_ROOT%\Scripts\activate.bat" (
+    call "%CONDA_ROOT%\Scripts\activate.bat" {conda_env}
+) else (
+    call activate {conda_env} 2>nul || conda activate {conda_env} 2>nul
+)
 
-echo [3/5] Setting dependency paths...
+echo [3/5] Python Version:
+python --version
+
+echo [4/5] Setting dependency paths...
 set PATH={dep_bin};{dep_lib};%PATH%
 
-echo [4/5] Running SCons...
+echo [5/5] Running SCons...
 echo Command: {compile_cmd}
 {compile_cmd}
 """
