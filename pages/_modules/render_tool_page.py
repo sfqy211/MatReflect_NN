@@ -22,6 +22,7 @@ def render_page():
             st.session_state.output_dir = str(output_dir_map.get("brdfs", ""))
         render_mode = st.radio("输入类型", ["brdfs", "fullbin", "npy"], horizontal=True, key="render_mode", on_change=actions.on_render_mode_change)
         integrator_type = st.selectbox("积分器类型 (Integrator)", ["bdpt", "path"], index=0, key="integrator_type", help="bdpt: 双向路径追踪 (适合 MERL/Fullbin); path: 标准路径追踪")
+        sample_count = st.number_input("采样数量 (Sample Count)", min_value=1, value=256, key="sample_count")
         auto_convert = st.checkbox("渲染后自动转换为 PNG", value=True, key="auto_convert")
         skip_existing = st.checkbox("跳过已存在文件", value=False, key="skip_existing")
         input_dir = st.text_input("输入目录", key="input_dir")
@@ -72,7 +73,7 @@ def render_page():
         with col_start:
             if st.button("开始批量渲染"):
                 actions.STOP_SIGNAL.clear()
-                actions.render_batch(render_selected, render_mode, input_dir, output_dir, auto_convert, skip_existing, render_progress, render_status, base_dir, render_log_placeholder, custom_cmd_str, integrator_type)
+                actions.render_batch(render_selected, render_mode, input_dir, output_dir, auto_convert, skip_existing, render_progress, render_status, base_dir, render_log_placeholder, custom_cmd_str, integrator_type, sample_count)
         with col_stop:
             if st.button("停止渲染"):
                 if not actions.STOP_SIGNAL:

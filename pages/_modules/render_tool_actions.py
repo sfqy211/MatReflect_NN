@@ -239,7 +239,7 @@ def configure_bsdf_smart(bsdf_node, filename):
         alpha_val = "0.05"
     ET.SubElement(guide, "float", {"name": "alpha", "value": alpha_val})
 
-def render_batch(render_selected, render_mode, input_dir, output_dir, auto_convert, skip_existing, progress, status, base_dir, log_placeholder=None, custom_cmd=None, integrator_type="bdpt"):
+def render_batch(render_selected, render_mode, input_dir, output_dir, auto_convert, skip_existing, progress, status, base_dir, log_placeholder=None, custom_cmd=None, integrator_type="bdpt", sample_count=256):
     if not render_selected:
         log("未选择渲染文件", log_placeholder)
         return
@@ -282,6 +282,20 @@ def render_batch(render_selected, render_mode, input_dir, output_dir, auto_conve
             integrator_node.set("type", integrator_type)
         else:
             log("⚠️ 警告: 场景中未找到 integrator 节点，无法修改积分器类型", log_placeholder)
+
+        # 更新采样数量
+        sampler_node = root.find(".//sampler")
+        if sampler_node is not None:
+            found = False
+            for int_node in sampler_node.findall("integer"):
+                if int_node.get("name") == "sampleCount":
+                    int_node.set("value", str(sample_count))
+                    found = True
+                    break
+            if not found:
+                log(f"⚠️ 警告: 在 sampler 节点中未找到 name='sampleCount' 的 integer 节点，无法修改采样数量", log_placeholder)
+        else:
+            log("⚠️ 警告: 场景中未找到 sampler 节点，无法修改采样数量", log_placeholder)
 
         tree = ET.ElementTree(root)
         scene_dir = os.path.dirname(os.path.abspath(scene_path))
