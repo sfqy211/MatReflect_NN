@@ -231,7 +231,7 @@ def configure_bsdf_smart(bsdf_node, filename):
         alpha_val = "0.05"
     ET.SubElement(guide, "float", {"name": "alpha", "value": alpha_val})
 
-def render_batch(render_selected, render_mode, input_dir, output_dir, auto_convert, skip_existing, progress, status, base_dir, log_placeholder=None, custom_cmd=None):
+def render_batch(render_selected, render_mode, input_dir, output_dir, auto_convert, skip_existing, progress, status, base_dir, log_placeholder=None, custom_cmd=None, integrator_type="bdpt"):
     if not render_selected:
         log("未选择渲染文件", log_placeholder)
         return
@@ -267,6 +267,14 @@ def render_batch(render_selected, render_mode, input_dir, output_dir, auto_conve
                 continue
         status.text(f"正在渲染 ({idx+1}/{total}): {filename}")
         root = ET.fromstring(scene_xml_text)
+        
+        # 更新积分器类型
+        integrator_node = root.find("integrator")
+        if integrator_node is not None:
+            integrator_node.set("type", integrator_type)
+        else:
+            log("⚠️ 警告: 场景中未找到 integrator 节点，无法修改积分器类型", log_placeholder)
+
         tree = ET.ElementTree(root)
         scene_dir = os.path.dirname(os.path.abspath(scene_path))
         for string_node in root.iter("string"):
