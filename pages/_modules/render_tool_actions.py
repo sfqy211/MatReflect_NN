@@ -142,9 +142,17 @@ def configure_bsdf_smart(bsdf_node, filename):
     if is_metal:
         guide = ET.SubElement(bsdf_node, "bsdf", {"type": "roughconductor"})
         ET.SubElement(guide, "string", {"name": "material", "value": metal_material})
-        alpha_val = "0.1"
-        if "matte" in name or "brushed" in name or "rough" in name:
-            alpha_val = "0.2"
+        alpha_val = "0.02"
+        if "mirror" in name or "polished" in name or "smooth" in name or "specular" in name:
+            alpha_val = "0.005"
+        elif "chrome" in name or "steel" in name or "silver" in name or "gold" in name:
+            alpha_val = "0.01"
+        elif "alum" in name or "aluminium" in name or "aluminum" in name:
+            alpha_val = "0.015"
+        elif "brushed" in name or "matte" in name or "satin" in name:
+            alpha_val = "0.05"
+        elif "rough" in name:
+            alpha_val = "0.1"
         ET.SubElement(guide, "float", {"name": "alpha", "value": alpha_val})
         return
     guide = ET.SubElement(bsdf_node, "bsdf", {"type": "roughplastic"})
