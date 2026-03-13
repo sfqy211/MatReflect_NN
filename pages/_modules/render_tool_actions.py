@@ -552,7 +552,7 @@ def update_bsdf_for_mode(bsdf_node, render_mode, file_path, filename, mitsuba_di
             bsdf_node.set("type", "fullmerl")
             ET.SubElement(bsdf_node, "string", {"name": "filename", "value": file_path})
         configure_bsdf_smart(bsdf_node, filename)
-        return detected_type or "fullmerl"
+        return detected_type or "fullmerl_unknown"
     base_path = normalize_npy_base_path(file_path)
     for child in list(bsdf_node):
         if child.tag == "bsdf":
@@ -658,7 +658,10 @@ def render_batch(render_selected, render_mode, input_dir, output_dir, auto_conve
             return
         selected_bsdf_type = update_bsdf_for_mode(target_bsdf, render_mode, file_path, filename, st.session_state.mitsuba_dir)
         if render_mode == "fullbin":
-            log(f"  -> FullBin 自动识别为 `{selected_bsdf_type}` 格式", log_placeholder)
+            if selected_bsdf_type == "fullmerl_unknown":
+                log("  -> FullBin 文件大小与标准格式不匹配，已按 fullmerl 处理", log_placeholder)
+            else:
+                log(f"  -> FullBin 自动识别为 `{selected_bsdf_type}` 格式", log_placeholder)
         temp_xml = os.path.join(temp_xml_dir, f"{basename}_{timestamp}.xml")
         tree.write(temp_xml)
         if custom_cmd:

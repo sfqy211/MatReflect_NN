@@ -8,6 +8,16 @@ from . import render_tool_actions as render_actions
 def render_hyper_brdf_tab():
     st.header("HyperBRDF 重建与预测")
     st.info("HyperBRDF (Gokbudak et al. 2024) 使用 HyperNetwork 从稀疏采样中重建材质。")
+    template_path = actions.HYPER_BRDF_DIR / "data" / "brdf.fullbin"
+    if not template_path.exists():
+        st.warning(f"未找到参考模板: {template_path}")
+    else:
+        try:
+            template_size = template_path.stat().st_size
+            if template_size != render_actions.MERL_FULL_FILE_SIZE:
+                st.warning(f"参考模板大小异常: {template_size} bytes (期望 {render_actions.MERL_FULL_FILE_SIZE} bytes)")
+        except OSError:
+            st.warning(f"无法读取参考模板: {template_path}")
 
     def list_trained_runs(results_dir):
         runs = []
