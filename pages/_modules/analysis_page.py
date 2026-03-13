@@ -17,6 +17,10 @@ def render_page():
         
         preview_dir_type = st.radio("预览类型", ["brdfs", "fullbin", "npy", "grids", "comparisons"], horizontal=True, key="preview_dir_type", on_change=actions.on_preview_dir_type_change)
         preview_dir = st.text_input("预览目录", key="preview_dir")
+        if st.session_state.get("preview_delete_done"):
+            st.session_state.preview_delete_done = False
+            if "preview_selected_img" in st.session_state:
+                del st.session_state.preview_selected_img
         
         if os.path.exists(preview_dir):
             image_files = sorted([f for f in os.listdir(preview_dir) if f.lower().endswith(('.png', '.jpg', '.jpeg'))])
@@ -29,6 +33,37 @@ def render_page():
                         img_path = os.path.join(preview_dir, selected_img)
                         st.image(img_path, caption=selected_img, use_container_width=True)
                         st.info(f"文件名: {selected_img} | 路径: {img_path}")
+                        if st.button("删除图片及对应 EXR", key="preview_delete_btn", use_container_width=True):
+                            deleted_files = []
+                            error_messages = []
+                            try:
+                                if os.path.exists(img_path):
+                                    os.remove(img_path)
+                                    deleted_files.append(img_path)
+                                else:
+                                    error_messages.append(f"图片不存在: {img_path}")
+                            except Exception as e:
+                                error_messages.append(f"删除图片失败: {e}")
+                            exr_path = None
+                            if preview_dir_type in ["brdfs", "fullbin", "npy"]:
+                                try:
+                                    preview_path = Path(preview_dir)
+                                    if preview_path.name.lower() == "png":
+                                        exr_dir = preview_path.parent / "exr"
+                                    else:
+                                        exr_dir = preview_path
+                                    exr_path = exr_dir / f"{Path(selected_img).stem}.exr"
+                                    if exr_path.exists():
+                                        os.remove(exr_path)
+                                        deleted_files.append(str(exr_path))
+                                except Exception as e:
+                                    error_messages.append(f"删除 EXR 失败: {e}")
+                            if deleted_files:
+                                st.success("已删除:\n" + "\n".join(deleted_files))
+                            if error_messages:
+                                st.error("删除过程中出现问题:\n" + "\n".join(error_messages))
+                            st.session_state.preview_delete_done = True
+                            st.rerun()
                     else:
                         st.write("请从左侧选择一张图片进行预览。")
             else:
