@@ -70,7 +70,33 @@ def init_state():
         st.session_state.mtsutil_exe = str(Path(st.session_state.mitsuba_dir) / "mtsutil.exe")
         
     if "scene_path" not in st.session_state or not st.session_state.scene_path:
-        st.session_state.scene_path = str(Path(st.session_state.root_dir) / "scene" / "scene_merl.xml")
+        st.session_state.scene_path = get_default_scene_path(st.session_state.root_dir)
+
+def get_scene_search_dirs(root_dir):
+    base_dir = Path(root_dir)
+    return [
+        base_dir / "scene" / "dj_xml",
+        base_dir / "scene" / "old_xml"
+    ]
+
+def list_scene_xmls(root_dir):
+    scene_dirs = get_scene_search_dirs(root_dir)
+    results = []
+    for scene_dir in scene_dirs:
+        if scene_dir.exists():
+            results.extend(sorted(scene_dir.glob("*.xml")))
+    return [str(p) for p in results]
+
+def get_default_scene_path(root_dir):
+    base_dir = Path(root_dir)
+    preferred = base_dir / "scene" / "old_xml" / "scene_merl.xml"
+    if preferred.exists():
+        return str(preferred)
+    fallback = base_dir / "scene" / "scene_merl.xml"
+    if fallback.exists():
+        return str(fallback)
+    candidates = list_scene_xmls(root_dir)
+    return candidates[0] if candidates else str(fallback)
 
 def log(msg, placeholder=None):
     clean_msg = msg.replace("\b", "").replace("\r", "")
@@ -239,6 +265,126 @@ def configure_bsdf_smart(bsdf_node, filename):
         alpha_val = "0.05"
     ET.SubElement(guide, "float", {"name": "alpha", "value": alpha_val})
 
+def is_placeholder_value(value):
+    return isinstance(value, str) and value.strip().startswith("$")
+
+def has_merl_accelerated(mitsuba_dir):
+    if not mitsuba_dir:
+        return False
+    plugin_path = os.path.join(mitsuba_dir, "plugins", "merl_accelerated.dll")
+    return os.path.exists(plugin_path)
+
+def resolve_scene_resource(scene_dir, root_dir, value):
+    if not value:
+        return None
+    cleaned = value.replace("\\", "/")
+    if cleaned.startswith("./"):
+        cleaned = cleaned[2:]
+    candidates = []
+    candidates.append(os.path.abspath(os.path.join(scene_dir, cleaned)))
+    if "dj_xml/" in cleaned:
+        candidates.append(os.path.abspath(os.path.join(scene_dir, cleaned.split("dj_xml/")[-1])))
+    if "old_xml/" in cleaned:
+        candidates.append(os.path.abspath(os.path.join(scene_dir, cleaned.split("old_xml/")[-1])))
+    if root_dir:
+        candidates.append(os.path.abspath(os.path.join(root_dir, cleaned)))
+        candidates.append(os.path.abspath(os.path.join(root_dir, "scene", cleaned)))
+    candidates.append(os.path.abspath(os.path.join(scene_dir, os.path.basename(cleaned))))
+    for cand in candidates:
+        if os.path.exists(cand):
+            return cand
+    return candidates[0] if candidates else None
+
+def normalize_output_dir(output_dir):
+    if not output_dir:
+        return output_dir
+    tail = os.path.basename(output_dir).lower()
+    if tail in ["exr", "png"]:
+        return os.path.dirname(output_dir)
+    return output_dir
+
+def ensure_hdr_film(root):
+    film_node = root.find(".//film")
+    if film_node is not None and film_node.get("type") == "ldrfilm":
+        film_node.set("type", "hdrfilm")
+
+def find_target_bsdf(root):
+    for bsdf in root.iter("bsdf"):
+        if bsdf.get("id") == "Material":
+            return bsdf
+    preferred_types = {
+        "merl",
+        "fullmerl",
+        "nbrdf_npy",
+        "merl_accelerated",
+        "SIREN_h21l5_nbrdf_npy",
+        "SIREN_gray_h21l5_nbrdf_npy"
+    }
+    for bsdf in root.iter("bsdf"):
+        if bsdf.get("type") in preferred_types:
+            return bsdf
+    name_keys = {"binary", "filename", "nn_basename", "nn_basename_r", "nn_basename_g", "nn_basename_b"}
+    for bsdf in root.iter("bsdf"):
+        for child in bsdf:
+            if child.tag == "string" and child.get("name") in name_keys:
+                return bsdf
+    return None
+
+def normalize_npy_base_path(file_path):
+    base_path = file_path
+    if base_path.endswith("fc1.npy"):
+        base_path = base_path[:-7]
+    elif base_path.endswith(".npy"):
+        base_path = base_path[:-4]
+    return base_path
+
+def split_rgb_base_paths(base_path):
+    trimmed = base_path[:-1] if base_path.endswith("_") else base_path
+    tail = os.path.basename(trimmed).lower()
+    if tail.endswith("_r") or tail.endswith("_g") or tail.endswith("_b"):
+        prefix = trimmed[:-2]
+        return f"{prefix}_r", f"{prefix}_g", f"{prefix}_b"
+    return trimmed, trimmed, trimmed
+
+def update_bsdf_for_mode(bsdf_node, render_mode, file_path, filename, mitsuba_dir=None):
+    existing_type = bsdf_node.get("type", "")
+    name_keys = {"filename", "binary", "nn_basename", "nn_basename_r", "nn_basename_g", "nn_basename_b"}
+    for child in list(bsdf_node):
+        if child.get("name") in name_keys:
+            bsdf_node.remove(child)
+    if render_mode == "brdfs":
+        if existing_type == "merl_accelerated" and has_merl_accelerated(mitsuba_dir):
+            bsdf_node.set("type", "merl_accelerated")
+            ET.SubElement(bsdf_node, "string", {"name": "filename", "value": file_path})
+        else:
+            bsdf_node.set("type", "merl")
+            ET.SubElement(bsdf_node, "string", {"name": "binary", "value": file_path})
+        configure_bsdf_smart(bsdf_node, filename)
+        return
+    if render_mode == "fullbin":
+        bsdf_node.set("type", "fullmerl")
+        ET.SubElement(bsdf_node, "string", {"name": "filename", "value": file_path})
+        configure_bsdf_smart(bsdf_node, filename)
+        return
+    base_path = normalize_npy_base_path(file_path)
+    for child in list(bsdf_node):
+        if child.tag == "bsdf":
+            bsdf_node.remove(child)
+    if existing_type == "SIREN_gray_h21l5_nbrdf_npy":
+        bsdf_node.set("type", existing_type)
+        r_path, g_path, b_path = split_rgb_base_paths(base_path)
+        ET.SubElement(bsdf_node, "string", {"name": "nn_basename_r", "value": r_path})
+        ET.SubElement(bsdf_node, "string", {"name": "nn_basename_g", "value": g_path})
+        ET.SubElement(bsdf_node, "string", {"name": "nn_basename_b", "value": b_path})
+    else:
+        if existing_type.startswith("SIREN_"):
+            bsdf_node.set("type", existing_type)
+        else:
+            bsdf_node.set("type", "nbrdf_npy")
+        ET.SubElement(bsdf_node, "string", {"name": "nn_basename", "value": base_path})
+    if not any(c.get("name") == "reflectance" for c in bsdf_node):
+        ET.SubElement(bsdf_node, "spectrum", {"name": "reflectance", "value": "0.5"})
+
 def render_batch(render_selected, render_mode, input_dir, output_dir, auto_convert, skip_existing, progress, status, base_dir, log_placeholder=None, custom_cmd=None, integrator_type="bdpt", sample_count=256):
     if not render_selected:
         log("未选择渲染文件", log_placeholder)
@@ -247,9 +393,12 @@ def render_batch(render_selected, render_mode, input_dir, output_dir, auto_conve
     if not os.path.exists(scene_path):
         log(f"场景文件不存在: {scene_path}", log_placeholder)
         return
-    os.makedirs(output_dir, exist_ok=True)
-    exr_dir = os.path.join(output_dir, "exr")
-    png_dir = os.path.join(output_dir, "png")
+    base_output_dir = normalize_output_dir(output_dir)
+    if base_output_dir != output_dir:
+        log(f"⚠️ 输出目录已自动校正为: {base_output_dir}", log_placeholder)
+    os.makedirs(base_output_dir, exist_ok=True)
+    exr_dir = os.path.join(base_output_dir, "exr")
+    png_dir = os.path.join(base_output_dir, "png")
     temp_xml_dir = os.path.join(str(base_dir), "data", "batch_temp_xmls")
     for d in [exr_dir, png_dir, temp_xml_dir]:
         os.makedirs(d, exist_ok=True)
@@ -297,50 +446,25 @@ def render_batch(render_selected, render_mode, input_dir, output_dir, auto_conve
         else:
             log("⚠️ 警告: 场景中未找到 sampler 节点，无法修改采样数量", log_placeholder)
 
+        ensure_hdr_film(root)
+
         tree = ET.ElementTree(root)
         scene_dir = os.path.dirname(os.path.abspath(scene_path))
+        root_dir = st.session_state.root_dir
         for string_node in root.iter("string"):
             if string_node.get("name") == "filename":
                 val = string_node.get("value")
-                if val and not os.path.isabs(val):
-                    abs_val = os.path.abspath(os.path.join(scene_dir, val))
-                    if os.path.exists(abs_val):
+                if val and not os.path.isabs(val) and not is_placeholder_value(val):
+                    abs_val = resolve_scene_resource(scene_dir, root_dir, val)
+                    if abs_val:
                         string_node.set("value", abs_val.replace("\\", "/"))
-                    else:
-                        string_node.set("value", abs_val.replace("\\", "/"))
-                        log(f"⚠️ 警告: 场景引用的资源不存在: {abs_val}", log_placeholder)
-        target_bsdf = None
-        for bsdf in root.iter("bsdf"):
-            if bsdf.get("type") in ["merl", "fullmerl", "nbrdf_npy"]:
-                target_bsdf = bsdf
-                break
+                        if not os.path.exists(abs_val):
+                            log(f"⚠️ 警告: 场景引用的资源不存在: {abs_val}", log_placeholder)
+        target_bsdf = find_target_bsdf(root)
         if target_bsdf is None:
             log("错误: 场景中未找到 bsdf 节点", log_placeholder)
             return
-        for child in list(target_bsdf):
-            if child.get("name") in ["filename", "binary", "nn_basename"]:
-                target_bsdf.remove(child)
-        if render_mode == "brdfs":
-            target_bsdf.set("type", "merl")
-            ET.SubElement(target_bsdf, "string", {"name": "binary", "value": file_path})
-            configure_bsdf_smart(target_bsdf, filename)
-        elif render_mode == "fullbin":
-            target_bsdf.set("type", "fullmerl")
-            ET.SubElement(target_bsdf, "string", {"name": "filename", "value": file_path})
-            configure_bsdf_smart(target_bsdf, filename)
-        else:
-            target_bsdf.set("type", "nbrdf_npy")
-            base_path = file_path
-            if base_path.endswith("fc1.npy"):
-                base_path = base_path[:-7]
-            elif base_path.endswith(".npy"):
-                base_path = base_path[:-4]
-            for child in list(target_bsdf):
-                if child.tag == "bsdf" or child.get("name") == "nn_basename":
-                    target_bsdf.remove(child)
-            ET.SubElement(target_bsdf, "string", {"name": "nn_basename", "value": base_path})
-            if not any(c.get("name") == "reflectance" for c in target_bsdf):
-                ET.SubElement(target_bsdf, "spectrum", {"name": "reflectance", "value": "0.5"})
+        update_bsdf_for_mode(target_bsdf, render_mode, file_path, filename, st.session_state.mitsuba_dir)
         temp_xml = os.path.join(temp_xml_dir, f"{basename}.xml")
         tree.write(temp_xml)
         if custom_cmd:
@@ -382,11 +506,20 @@ def render_batch(render_selected, render_mode, input_dir, output_dir, auto_conve
                             pass
             proc.wait()
             if proc.returncode == 0:
-                log("  -> EXR 完成", log_placeholder)
-                if auto_convert:
-                    cmd_conv = [st.session_state.mtsutil_exe, "tonemap", "-o", png_out, exr_out]
-                    subprocess.run(cmd_conv, env=env, check=False)
-                    log("  -> PNG 完成", log_placeholder)
+                if os.path.exists(exr_out):
+                    log("  -> EXR 完成", log_placeholder)
+                    if auto_convert:
+                        cmd_conv = [st.session_state.mtsutil_exe, "tonemap", "-o", png_out, exr_out]
+                        subprocess.run(cmd_conv, env=env, check=False)
+                        log("  -> PNG 完成", log_placeholder)
+                else:
+                    fallback_png = os.path.splitext(exr_out)[0] + ".png"
+                    if os.path.exists(fallback_png):
+                        os.makedirs(png_dir, exist_ok=True)
+                        os.replace(fallback_png, png_out)
+                        log("  -> PNG 完成 (场景输出为 PNG，已移动)", log_placeholder)
+                    else:
+                        log("  -> 警告: 未找到 EXR/PNG 输出", log_placeholder)
             else:
                 log(f"  -> 渲染失败，退出码: {proc.returncode}", log_placeholder)
         except Exception as e:

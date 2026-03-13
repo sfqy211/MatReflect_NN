@@ -10,7 +10,35 @@ def render_page():
     st.sidebar.text_input("Mitsuba 目录", key="mitsuba_dir")
     st.sidebar.text_input("Mitsuba 可执行文件", key="mitsuba_exe")
     st.sidebar.text_input("Mtsutil 可执行文件", key="mtsutil_exe")
-    st.sidebar.text_input("场景 XML", key="scene_path")
+    root_dir = st.session_state.root_dir
+    scene_paths = actions.list_scene_xmls(root_dir)
+    if st.session_state.scene_path and st.session_state.scene_path not in scene_paths:
+        scene_paths.insert(0, st.session_state.scene_path)
+    display_map = {}
+    for p in scene_paths:
+        try:
+            rel = str(Path(p).resolve().relative_to(Path(root_dir).resolve()))
+            display_map[rel.replace("\\", "/")] = p
+        except Exception:
+            display_map[p] = p
+    display_options = list(display_map.keys())
+    current_display = None
+    for label, path in display_map.items():
+        if path == st.session_state.scene_path:
+            current_display = label
+            break
+    if current_display is None and display_options:
+        current_display = display_options[0]
+    if display_options:
+        selected_display = st.sidebar.selectbox("场景 XML", display_options, index=display_options.index(current_display) if current_display in display_options else 0, key="scene_path_select")
+        st.session_state.scene_path = display_map.get(selected_display, st.session_state.scene_path)
+    else:
+        st.sidebar.text_input("场景 XML", key="scene_path")
+    if st.sidebar.button("选择场景 XML 文件", key="scene_open_dialog", use_container_width=True):
+        selected_paths = actions.open_file_dialog(root_dir, "请选择场景 XML", [("XML files", "*.xml"), ("All files", "*.*")])
+        if selected_paths:
+            st.session_state.scene_path = selected_paths[0]
+            st.rerun()
     st.title("Mitsuba Render Tool")
     tabs = st.tabs(["批量渲染", "EXR 转 PNG", "编译", "日志"])
     with tabs[0]:

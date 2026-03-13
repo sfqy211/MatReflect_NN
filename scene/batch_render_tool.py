@@ -991,7 +991,7 @@ echo Command: {compile_cmd}
             return
 
         input_dir = self.current_input_dir.get()
-        base_output_dir = self.current_output_dir.get()
+        base_output_dir = self.normalize_output_dir(self.current_output_dir.get())
         mode = self.render_mode.get()
         
         exr_dir = os.path.join(base_output_dir, "exr")
@@ -1017,29 +1017,22 @@ echo Command: {compile_cmd}
             scene_dir = os.path.dirname(os.path.abspath(scene_path))
 
             # 自动修复所有相对路径 (包括 envmap, texture 等)
+            root_dir = self.root_dir.get()
             for string_node in root.iter('string'):
                 if string_node.get('name') == 'filename':
                     val = string_node.get('value')
-                    if not os.path.isabs(val):
-                        # 尝试相对于场景文件的路径
-                        abs_val = os.path.abspath(os.path.join(scene_dir, val))
-                        if os.path.exists(abs_val):
-                             string_node.set('value', abs_val.replace("\\", "/"))
-                        else:
-                             # 备选：尝试相对于 BASE_DIR
-                             abs_val_2 = os.path.abspath(os.path.join(BASE_DIR, val))
-                             if os.path.exists(abs_val_2):
-                                 string_node.set('value', abs_val_2.replace("\\", "/"))
+                    if not os.path.isabs(val) and not self.is_placeholder_value(val):
+                        abs_val = self.resolve_scene_resource(scene_dir, root_dir, val)
+                        if abs_val:
+                            string_node.set('value', abs_val.replace("\\", "/"))
+
+            self.ensure_hdr_film(root)
 
             # --- 应用新参数 ---
             # 移除了参数覆盖逻辑，完全使用 XML 中的设置
 
 
-            target_bsdf = None
-            for bsdf in root.iter('bsdf'):
-                if bsdf.get('type') in ['merl', 'fullmerl', 'nbrdf_npy']:
-                    target_bsdf = bsdf
-                    break
+            target_bsdf = self.find_target_bsdf(root)
             
             if target_bsdf is None:
                 self.log("错误: 场景中未找到 bsdf 节点")
@@ -1071,30 +1064,7 @@ echo Command: {compile_cmd}
                 self.progress_var.set((idx / total) * 100)
                 
                 # 清理旧参数
-                for child in list(target_bsdf):
-                    if child.get('name') in ['filename', 'binary', 'nn_basename']: target_bsdf.remove(child)
-                
-                # 设置新参数
-                if mode == "brdfs":
-                    target_bsdf.set('type', 'merl')
-                    ET.SubElement(target_bsdf, 'string', {'name': 'binary', 'value': file_path})
-                    self.configure_bsdf_smart(target_bsdf, filename)
-                elif mode == "fullbin":
-                    target_bsdf.set('type', 'fullmerl')
-                    ET.SubElement(target_bsdf, 'string', {'name': 'filename', 'value': file_path})
-                    self.configure_bsdf_smart(target_bsdf, filename)
-                elif mode == "npy":
-                    target_bsdf.set('type', 'nbrdf_npy')
-                    base_path = os.path.splitext(file_path)[0]
-                    for suffix in ["fc1", "fc2", "fc3", "b1", "b2", "b3"]:
-                        if base_path.endswith(suffix):
-                            base_path = base_path[:-len(suffix)]
-                            break
-                    ET.SubElement(target_bsdf, 'string', {'name': 'nn_basename', 'value': base_path})
-                    for child in list(target_bsdf):
-                        if child.tag == 'bsdf': target_bsdf.remove(child)
-                    if not any(c.get('name') == 'reflectance' for c in target_bsdf):
-                        ET.SubElement(target_bsdf, 'spectrum', {'name': 'reflectance', 'value': '0.5'})
+                self.update_bsdf_for_mode(target_bsdf, mode, file_path, filename, self.get_mitsuba_dir())
 
                 temp_xml = os.path.join(temp_xml_dir, f"{basename}.xml")
                 tree.write(temp_xml)
@@ -1112,13 +1082,20 @@ echo Command: {compile_cmd}
                 self.current_process.wait()
                 
                 if self.current_process.returncode == 0:
-                    self.log(f"  -> EXR 完成")
-                    if self.auto_convert.get():
-                        # png_out 已经在上面定义了
-                        cmd_conv = [mtsutil_exe, "tonemap", "-o", png_out, exr_out]
-                        # 转换通常很快，暂不设为可中断，除非需要
-                        subprocess.run(cmd_conv, env=env, creationflags=subprocess.CREATE_NO_WINDOW)
-                        self.log(f"  -> PNG 完成")
+                    if os.path.exists(exr_out):
+                        self.log(f"  -> EXR 完成")
+                        if self.auto_convert.get():
+                            cmd_conv = [mtsutil_exe, "tonemap", "-o", png_out, exr_out]
+                            subprocess.run(cmd_conv, env=env, creationflags=subprocess.CREATE_NO_WINDOW)
+                            self.log(f"  -> PNG 完成")
+                    else:
+                        fallback_png = os.path.splitext(exr_out)[0] + ".png"
+                        if os.path.exists(fallback_png):
+                            os.makedirs(png_dir, exist_ok=True)
+                            os.replace(fallback_png, png_out)
+                            self.log(f"  -> PNG 完成 (场景输出为 PNG，已移动)")
+                        else:
+                            self.log(f"  -> 警告: 未找到 EXR/PNG 输出")
                 else:
                     if self.stop_requested:
                         self.log(f"  -> 已终止")
@@ -1245,6 +1222,132 @@ echo Command: {compile_cmd}
             alpha_val = "0.05"
         
         ET.SubElement(guide, 'float', {'name': 'alpha', 'value': alpha_val})
+
+    def is_placeholder_value(self, value):
+        return isinstance(value, str) and value.strip().startswith("$")
+
+    def has_merl_accelerated(self, mitsuba_dir):
+        if not mitsuba_dir:
+            return False
+        plugin_path = os.path.join(mitsuba_dir, "plugins", "merl_accelerated.dll")
+        return os.path.exists(plugin_path)
+
+    def get_mitsuba_dir(self):
+        mitsuba_exe = self.mitsuba_exe.get()
+        return os.path.dirname(mitsuba_exe) if mitsuba_exe else ""
+
+    def resolve_scene_resource(self, scene_dir, root_dir, value):
+        if not value:
+            return None
+        cleaned = value.replace("\\", "/")
+        if cleaned.startswith("./"):
+            cleaned = cleaned[2:]
+        candidates = []
+        candidates.append(os.path.abspath(os.path.join(scene_dir, cleaned)))
+        if "dj_xml/" in cleaned:
+            candidates.append(os.path.abspath(os.path.join(scene_dir, cleaned.split("dj_xml/")[-1])))
+        if "old_xml/" in cleaned:
+            candidates.append(os.path.abspath(os.path.join(scene_dir, cleaned.split("old_xml/")[-1])))
+        if root_dir:
+            candidates.append(os.path.abspath(os.path.join(root_dir, cleaned)))
+            candidates.append(os.path.abspath(os.path.join(root_dir, "scene", cleaned)))
+        candidates.append(os.path.abspath(os.path.join(scene_dir, os.path.basename(cleaned))))
+        for cand in candidates:
+            if os.path.exists(cand):
+                return cand
+        return candidates[0] if candidates else None
+
+    def normalize_output_dir(self, output_dir):
+        if not output_dir:
+            return output_dir
+        tail = os.path.basename(output_dir).lower()
+        if tail in ["exr", "png"]:
+            base_dir = os.path.dirname(output_dir)
+            self.log(f"⚠️ 输出目录已自动校正为: {base_dir}")
+            return base_dir
+        return output_dir
+
+    def ensure_hdr_film(self, root):
+        film_node = root.find(".//film")
+        if film_node is not None and film_node.get("type") == "ldrfilm":
+            film_node.set("type", "hdrfilm")
+
+    def find_target_bsdf(self, root):
+        for bsdf in root.iter("bsdf"):
+            if bsdf.get("id") == "Material":
+                return bsdf
+        preferred_types = {
+            "merl",
+            "fullmerl",
+            "nbrdf_npy",
+            "merl_accelerated",
+            "SIREN_h21l5_nbrdf_npy",
+            "SIREN_gray_h21l5_nbrdf_npy"
+        }
+        for bsdf in root.iter("bsdf"):
+            if bsdf.get("type") in preferred_types:
+                return bsdf
+        name_keys = {"binary", "filename", "nn_basename", "nn_basename_r", "nn_basename_g", "nn_basename_b"}
+        for bsdf in root.iter("bsdf"):
+            for child in bsdf:
+                if child.tag == "string" and child.get("name") in name_keys:
+                    return bsdf
+        return None
+
+    def normalize_npy_base_path(self, file_path):
+        base_path = file_path
+        if base_path.endswith("fc1.npy"):
+            base_path = base_path[:-7]
+        elif base_path.endswith(".npy"):
+            base_path = base_path[:-4]
+        return base_path
+
+    def split_rgb_base_paths(self, base_path):
+        trimmed = base_path[:-1] if base_path.endswith("_") else base_path
+        tail = os.path.basename(trimmed).lower()
+        if tail.endswith("_r") or tail.endswith("_g") or tail.endswith("_b"):
+            prefix = trimmed[:-2]
+            return f"{prefix}_r", f"{prefix}_g", f"{prefix}_b"
+        return trimmed, trimmed, trimmed
+
+    def update_bsdf_for_mode(self, bsdf_node, render_mode, file_path, filename, mitsuba_dir=None):
+        existing_type = bsdf_node.get("type", "")
+        name_keys = {"filename", "binary", "nn_basename", "nn_basename_r", "nn_basename_g", "nn_basename_b"}
+        for child in list(bsdf_node):
+            if child.get("name") in name_keys:
+                bsdf_node.remove(child)
+        if render_mode == "brdfs":
+            if existing_type == "merl_accelerated" and self.has_merl_accelerated(mitsuba_dir):
+                bsdf_node.set("type", "merl_accelerated")
+                ET.SubElement(bsdf_node, "string", {"name": "filename", "value": file_path})
+            else:
+                bsdf_node.set("type", "merl")
+                ET.SubElement(bsdf_node, "string", {"name": "binary", "value": file_path})
+            self.configure_bsdf_smart(bsdf_node, filename)
+            return
+        if render_mode == "fullbin":
+            bsdf_node.set("type", "fullmerl")
+            ET.SubElement(bsdf_node, "string", {"name": "filename", "value": file_path})
+            self.configure_bsdf_smart(bsdf_node, filename)
+            return
+        base_path = self.normalize_npy_base_path(file_path)
+        for child in list(bsdf_node):
+            if child.tag == "bsdf":
+                bsdf_node.remove(child)
+        if existing_type == "SIREN_gray_h21l5_nbrdf_npy":
+            bsdf_node.set("type", existing_type)
+            r_path, g_path, b_path = self.split_rgb_base_paths(base_path)
+            ET.SubElement(bsdf_node, "string", {"name": "nn_basename_r", "value": r_path})
+            ET.SubElement(bsdf_node, "string", {"name": "nn_basename_g", "value": g_path})
+            ET.SubElement(bsdf_node, "string", {"name": "nn_basename_b", "value": b_path})
+        else:
+            if existing_type.startswith("SIREN_"):
+                bsdf_node.set("type", existing_type)
+            else:
+                bsdf_node.set("type", "nbrdf_npy")
+            ET.SubElement(bsdf_node, "string", {"name": "nn_basename", "value": base_path})
+        if not any(c.get("name") == "reflectance" for c in bsdf_node):
+            ET.SubElement(bsdf_node, "spectrum", {"name": "reflectance", "value": "0.5"})
 
 if __name__ == "__main__":
     root = tk.Tk()
