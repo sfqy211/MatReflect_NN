@@ -144,11 +144,63 @@ def render_page():
             actions.convert_exr(conv_selected, conv_input_dir, conv_output_dir, conv_progress, conv_status, conv_log_placeholder)
     with tabs[2]:
         st.header("编译")
-        compile_cmd = st.text_input("编译命令", value="scons --parallelize", key="compile_cmd")
+        compile_presets = [
+            {
+                "label": "默认并行编译",
+                "cmd": "scons --parallelize",
+                "desc": "使用 SCons 并行构建 Mitsuba 目标。"
+            },
+            {
+                "label": "强制全量重编译",
+                "cmd": "scons --parallelize --force",
+                "desc": "忽略缓存时间戳，强制重新编译全部目标。"
+            },
+            {
+                "label": "清除编译缓存",
+                "cmd": "scons -c",
+                "desc": "清理已生成的构建产物与缓存。"
+            },
+            {
+                "label": "详细日志编译",
+                "cmd": "scons --parallelize --debug=explain",
+                "desc": "输出更详细的依赖与重建原因，便于排查问题。"
+            },
+            {
+                "label": "自定义命令",
+                "cmd": "",
+                "desc": "使用自定义 SCons 命令。"
+            }
+        ]
+        preset_labels = [p["label"] for p in compile_presets]
+        preset_map = {p["label"]: p for p in compile_presets}
+        if "compile_preset" not in st.session_state:
+            st.session_state.compile_preset = preset_labels[0]
+        def on_compile_preset_change():
+            preset = preset_map.get(st.session_state.compile_preset)
+            if preset and preset["label"] != "自定义命令":
+                st.session_state.compile_cmd_display = preset["cmd"]
+        selected_preset = st.selectbox(
+            "编译预设",
+            preset_labels,
+            index=preset_labels.index(st.session_state.compile_preset),
+            key="compile_preset",
+            on_change=on_compile_preset_change
+        )
+        preset = preset_map.get(selected_preset)
+        st.caption(preset["desc"])
+        if selected_preset == "自定义命令":
+            compile_cmd = st.text_input("编译命令", value=st.session_state.get("compile_cmd", "scons --parallelize"), key="compile_cmd")
+        else:
+            if st.session_state.get("compile_cmd_display") != preset["cmd"]:
+                st.session_state.compile_cmd_display = preset["cmd"]
+            st.text_input("编译命令", value=st.session_state.compile_cmd_display, key="compile_cmd_display", disabled=True)
+            compile_cmd = preset["cmd"]
         conda_env = st.text_input("Conda 环境名", value="mitsuba-build", key="conda_env")
+        vcvarsall_path = st.text_input("vcvarsall.bat 路径 (可选)", value=st.session_state.get("vcvarsall_path", actions.DEFAULT_VCVARSALL_PATH), key="vcvarsall_path")
+        st.caption("可填写 vcvarsall.bat 或 VS2017 工具快捷方式 .lnk，留空将自动检测")
         compile_log_placeholder = st.empty()
         if st.button("开始编译"):
-            actions.run_compile(compile_cmd, conda_env, compile_log_placeholder)
+            actions.run_compile(compile_cmd, conda_env, compile_log_placeholder, selected_preset, vcvarsall_path)
     with tabs[3]:
         st.header("日志")
         col1, col2 = st.columns(2)

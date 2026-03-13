@@ -14,8 +14,29 @@ import tkinter as tk
 from tkinter import filedialog
 import datetime
 from . import get_project_root, get_mitsuba_paths
+import locale
+import re
 
 STOP_SIGNAL = []
+DEFAULT_VCVARSALL_PATH = r"C:\Program Files (x86)\Microsoft Visual Studio\2017\Professional\VC\Auxiliary\Build\vcvarsall.bat"
+
+
+def decode_subprocess_output(raw):
+    if raw is None:
+        return ""
+    if isinstance(raw, str):
+        return raw
+    preferred = locale.getpreferredencoding(False) or "utf-8"
+    candidates = []
+    for encoding in ("utf-8", preferred, "gb18030", "cp936"):
+        if encoding and encoding.lower() not in {c.lower() for c in candidates}:
+            candidates.append(encoding)
+    for encoding in candidates:
+        try:
+            return raw.decode(encoding)
+        except UnicodeDecodeError:
+            continue
+    return raw.decode("utf-8", errors="replace")
 
 def open_file_dialog(initial_dir, title="选择文件", filetypes=None):
     """
@@ -64,6 +85,35 @@ def ensure_mitsuba_state(root_dir):
             st.session_state.mtsutil_exe = str(default_mtsutil)
         else:
             st.session_state.mtsutil_exe = str(Path(st.session_state.mitsuba_dir) / "mtsutil.exe")
+
+def resolve_vcvarsall_from_shortcut(lnk_path):
+    if not os.path.exists(lnk_path):
+        return ""
+    escaped = lnk_path.replace("'", "''")
+    ps_script = (
+        f"$s=(New-Object -ComObject WScript.Shell).CreateShortcut('{escaped}');"
+        "Write-Output $s.TargetPath; Write-Output $s.Arguments"
+    )
+    try:
+        output = subprocess.check_output(
+            ["powershell", "-NoProfile", "-Command", ps_script],
+            text=True,
+            encoding=locale.getpreferredencoding(False),
+            errors="replace"
+        ).splitlines()
+    except Exception:
+        return ""
+    target = output[0].strip() if output else ""
+    args = output[1].strip() if len(output) > 1 else ""
+    if target.lower().endswith("vcvarsall.bat") and os.path.exists(target):
+        return target
+    if target.lower().endswith("cmd.exe") and args:
+        match = re.search(r'([A-Za-z]:\\[^"]*vcvarsall\.bat)', args, flags=re.IGNORECASE)
+        if match:
+            cand = match.group(1)
+            if os.path.exists(cand):
+                return cand
+    return ""
 
 def init_state():
     if "logs" not in st.session_state:
@@ -118,7 +168,7 @@ def log(msg, placeholder=None):
     st.session_state.logs.append(clean_msg)
     if placeholder:
         recent_logs = "\n".join(st.session_state.logs[::-1][:20])
-        placeholder.text_area("实时日志 (最新在顶部)", value=recent_logs, height=200)
+        placeholder.code(recent_logs, language=None)
 
 def clear_logs():
     st.session_state.logs = []
@@ -576,22 +626,34 @@ def convert_exr(conv_selected, conv_input_dir, conv_output_dir, progress, status
     status.text("转换完成")
     progress.progress(100)
 
-def run_compile(compile_cmd, conda_env, log_placeholder=None):
-    vswhere = os.path.expandvars(r"${ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe")
-    if not os.path.exists(vswhere):
-        vswhere = os.path.expandvars(r"${ProgramFiles}\Microsoft Visual Studio\Installer\vswhere.exe")
-    if not os.path.exists(vswhere):
-        log("未找到 vswhere.exe", log_placeholder)
-        return
-    cmd_vswhere = [vswhere, "-latest", "-products", "*", "-requires", "Microsoft.VisualStudio.Component.VC.Tools.x86.x64", "-property", "installationPath"]
-    vs_path = subprocess.check_output(cmd_vswhere, text=True).strip()
-    if not vs_path:
-        log("未找到安装了 VC++ 工具集的 Visual Studio", log_placeholder)
-        return
-    vcvarsall = os.path.join(vs_path, r"VC\Auxiliary\Build\vcvarsall.bat")
-    if not os.path.exists(vcvarsall):
-        log(f"未找到 vcvarsall.bat: {vcvarsall}", log_placeholder)
-        return
+def run_compile(compile_cmd, conda_env, log_placeholder=None, compile_label=None, vcvarsall_path=None):
+    vcvarsall = vcvarsall_path.strip() if vcvarsall_path else DEFAULT_VCVARSALL_PATH
+    if vcvarsall:
+        if vcvarsall.lower().endswith(".lnk"):
+            vcvarsall = resolve_vcvarsall_from_shortcut(vcvarsall)
+            if not vcvarsall:
+                log("无法从快捷方式解析 vcvarsall.bat，请检查链接目标", log_placeholder)
+                return
+    if vcvarsall:
+        if not os.path.exists(vcvarsall):
+            log(f"默认 vcvarsall.bat 不存在，尝试自动检测: {vcvarsall}", log_placeholder)
+            vcvarsall = ""
+    if not vcvarsall:
+        vswhere = os.path.expandvars(r"${ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe")
+        if not os.path.exists(vswhere):
+            vswhere = os.path.expandvars(r"${ProgramFiles}\Microsoft Visual Studio\Installer\vswhere.exe")
+        if not os.path.exists(vswhere):
+            log("未找到 vswhere.exe", log_placeholder)
+            return
+        cmd_vswhere = [vswhere, "-latest", "-products", "*", "-requires", "Microsoft.VisualStudio.Component.VC.Tools.x86.x64", "-property", "installationPath"]
+        vs_path = subprocess.check_output(cmd_vswhere, text=True).strip()
+        if not vs_path:
+            log("未找到安装了 VC++ 工具集的 Visual Studio", log_placeholder)
+            return
+        vcvarsall = os.path.join(vs_path, r"VC\Auxiliary\Build\vcvarsall.bat")
+        if not os.path.exists(vcvarsall):
+            log(f"未找到 vcvarsall.bat: {vcvarsall}", log_placeholder)
+            return
     base_dir = Path(st.session_state.root_dir)
     mitsuba_src_dir = base_dir / "mitsuba"
     if not (mitsuba_src_dir / "SConstruct").exists():
@@ -599,39 +661,84 @@ def run_compile(compile_cmd, conda_env, log_placeholder=None):
     work_dir = str(mitsuba_src_dir)
     dep_bin = os.path.join(work_dir, "dependencies", "bin")
     dep_lib = os.path.join(work_dir, "dependencies", "lib")
+    if compile_label:
+        log(f"编译预设: {compile_label}", log_placeholder)
+    log(f"vcvarsall 路径: {vcvarsall}", log_placeholder)
+    log(f"编译工作目录: {work_dir}", log_placeholder)
+    log(f"编译命令: {compile_cmd}", log_placeholder)
+    conda_cmd = os.environ.get("CONDA_EXE") or "conda"
+    log(f"Conda 运行器: {conda_cmd}", log_placeholder)
+    exit_code_file = os.path.join(work_dir, "temp_build_exit_code.txt")
     bat_content = f"""
 @echo off
 cd /d "{work_dir}"
+setlocal EnableExtensions
+echo 99> "{exit_code_file}"
 echo [1/4] Setting up Visual Studio environment...
 call "{vcvarsall}" x64
+echo [1/4] Done (errorlevel %errorlevel%)
 
+set "CONDA_CMD={conda_cmd}"
+if not exist "%CONDA_CMD%" set "CONDA_CMD=conda"
+for %%i in ("%CONDA_CMD%") do set "CONDA_ROOT=%%~dpi.."
 echo [2/4] Activating Conda environment '{conda_env}'...
-@rem Try multiple ways to activate conda
-if exist "%CONDA_EXE%" (
-    for /f "delims=" %%i in ("%CONDA_EXE%") do set "CONDA_ROOT=%%~dpi.."
-)
-if exist "%CONDA_ROOT%\Scripts\activate.bat" (
+if exist "%CONDA_ROOT%\condabin\conda.bat" (
+    call "%CONDA_ROOT%\condabin\conda.bat" activate {conda_env}
+) else if exist "%CONDA_ROOT%\Scripts\activate.bat" (
     call "%CONDA_ROOT%\Scripts\activate.bat" {conda_env}
 ) else (
     call activate {conda_env} 2>nul || conda activate {conda_env} 2>nul
 )
+if "%CONDA_PREFIX%"=="" (
+    echo [2/4] Failed to activate conda env
+    echo 1> "{exit_code_file}"
+    exit /b 1
+)
+echo [2/4] Done (errorlevel %errorlevel%)
 
-echo [3/4] Python Version:
-python --version
+echo [3/4] Toolchain Info:
+where python || echo python not found
+python --version || echo python version failed
+where scons || echo scons not found
+call scons --version || echo scons version failed
+where cl || echo cl not found
+echo [3/4] Done (errorlevel %errorlevel%)
 
-echo [4/4] Setting dependency paths and running: {compile_cmd}
+echo [4/4] Running build command
+echo WorkDir: {work_dir}
+echo Command: {compile_cmd}
 set PATH={dep_bin};{dep_lib};%PATH%
-{compile_cmd}
+call {compile_cmd}
+set "BUILD_ERROR=%errorlevel%"
+echo [4/4] Done (errorlevel %BUILD_ERROR%)
+echo %BUILD_ERROR%> "{exit_code_file}"
+exit /b %BUILD_ERROR%
 """
     bat_file = os.path.join(work_dir, "temp_build.bat")
-    with open(bat_file, "w") as f:
+    with open(bat_file, "w", encoding="utf-8") as f:
         f.write(bat_content)
     log(f"生成构建脚本: {bat_file}", log_placeholder)
-    proc = subprocess.Popen(bat_file, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
-    for line in proc.stdout:
-        log(line.strip(), log_placeholder)
+    proc = subprocess.Popen(
+        bat_file,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=False
+    )
+    for raw_line in proc.stdout:
+        line = decode_subprocess_output(raw_line).strip()
+        log(line, log_placeholder)
     proc.wait()
-    if proc.returncode == 0:
+    final_exit_code = proc.returncode
+    if os.path.exists(exit_code_file):
+        try:
+            with open(exit_code_file, "r") as f:
+                final_exit_code = int(f.read().strip())
+        except Exception:
+            final_exit_code = proc.returncode
+        os.remove(exit_code_file)
+    log(f"构建脚本退出码: {proc.returncode}", log_placeholder)
+    log(f"最终退出码: {final_exit_code}", log_placeholder)
+    if final_exit_code == 0:
         log("编译成功", log_placeholder)
     else:
         log("编译失败", log_placeholder)

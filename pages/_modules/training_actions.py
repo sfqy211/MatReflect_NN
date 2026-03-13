@@ -32,7 +32,7 @@ def log_exp(msg, placeholder=None):
     clean_msg = msg.replace("\b", "").replace("\r", "")
     st.session_state.train_logs.append(clean_msg)
     if placeholder:
-        placeholder.text_area("训练实时日志", value="\n".join(st.session_state.train_logs[::-1]), height=300)
+        placeholder.code("\n".join(st.session_state.train_logs[::-1]), language=None)
 
 def list_merl_files(merl_dir):
     return [os.path.basename(f) for f in glob.glob(os.path.join(merl_dir, "*.binary"))]
