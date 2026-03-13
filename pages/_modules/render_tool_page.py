@@ -2,14 +2,20 @@ import streamlit as st
 import os
 from pathlib import Path
 from . import render_tool_actions as actions
+from . import get_project_root
 
 def render_page():
     actions.init_state()
+    if not st.session_state.root_dir:
+        st.session_state.root_dir = str(get_project_root())
+    actions.ensure_mitsuba_state(st.session_state.root_dir)
+    if not st.session_state.scene_path:
+        st.session_state.scene_path = actions.get_default_scene_path(st.session_state.root_dir)
     st.sidebar.title("全局配置")
-    st.sidebar.text_input("项目根目录", key="root_dir")
-    st.sidebar.text_input("Mitsuba 目录", key="mitsuba_dir")
-    st.sidebar.text_input("Mitsuba 可执行文件", key="mitsuba_exe")
-    st.sidebar.text_input("Mtsutil 可执行文件", key="mtsutil_exe")
+    st.sidebar.text_input("项目根目录", value=st.session_state.root_dir, key="root_dir")
+    st.sidebar.text_input("Mitsuba 目录", value=st.session_state.mitsuba_dir, key="mitsuba_dir")
+    st.sidebar.text_input("Mitsuba 可执行文件", value=st.session_state.mitsuba_exe, key="mitsuba_exe")
+    st.sidebar.text_input("Mtsutil 可执行文件", value=st.session_state.mtsutil_exe, key="mtsutil_exe")
     root_dir = st.session_state.root_dir
     scene_paths = actions.list_scene_xmls(root_dir)
     if st.session_state.scene_path and st.session_state.scene_path not in scene_paths:
@@ -74,18 +80,14 @@ def render_page():
                     ftypes = [("Fullbin files", "*.fullbin"), ("All files", "*.*")]
                 elif render_mode == "npy":
                     ftypes = [("NPY files", "*.npy"), ("All files", "*.*")]
-                
-                selected_paths = actions.open_file_dialog(input_dir, "请选择待渲染文件", ftypes)
-                if selected_paths:
-                    # Filter files to ensure they are in the input directory list to avoid path issues
-                    selected_names = [os.path.basename(p) for p in selected_paths]
-                    valid_names = [n for n in selected_names if n in render_files]
-                    
-                    if len(valid_names) < len(selected_names):
-                        st.warning("部分选择的文件不在当前输入目录中，已被自动忽略。请确保选择的文件位于配置的输入目录内。")
-                    
-                    st.session_state.render_selected = valid_names
-                    st.rerun()
+                actions.update_selection_from_dialog(
+                    input_dir,
+                    "请选择待渲染文件",
+                    ftypes,
+                    render_files,
+                    "render_selected",
+                    "部分选择的文件不在当前输入目录中，已被自动忽略。请确保选择的文件位于配置的输入目录内。"
+                )
                     
         with col_ref:
             if st.button("刷新文件列表", key="render_refresh", use_container_width=True):
@@ -120,17 +122,13 @@ def render_page():
         with c_dialog:
             if st.button("📂 打开文件选择器 (Windows 原生)", key="conv_open_dialog", use_container_width=True):
                 ftypes = [("EXR files", "*.exr"), ("All files", "*.*")]
-                
-                selected_paths = actions.open_file_dialog(conv_input_dir, "请选择 EXR 文件", ftypes)
-                if selected_paths:
-                    selected_names = [os.path.basename(p) for p in selected_paths]
-                    valid_names = [n for n in selected_names if n in conv_files]
-                    
-                    if len(valid_names) < len(selected_names):
-                        st.warning("部分选择的文件不在当前输入目录中，已被自动忽略。")
-                    
-                    st.session_state.conv_selected = valid_names
-                    st.rerun()
+                actions.update_selection_from_dialog(
+                    conv_input_dir,
+                    "请选择 EXR 文件",
+                    ftypes,
+                    conv_files,
+                    "conv_selected"
+                )
                     
         with c_ref:
             if st.button("刷新文件列表", key="conv_refresh", use_container_width=True):

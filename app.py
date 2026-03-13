@@ -1,6 +1,5 @@
 import streamlit as st
-import os
-from pathlib import Path
+from pages._modules import get_project_root, get_mitsuba_paths
 
 st.set_page_config(
     page_title="MatReflect_NN - 项目主页",
@@ -10,11 +9,8 @@ st.set_page_config(
 
 st.title("基于神经网络的材质反射属性表达方法研究与实现")
 
-root_dir = Path(__file__).parent
-local_mitsuba = root_dir / "mitsuba" / "dist" / "mitsuba.exe"
-default_mitsuba = Path(r"d:\mitsuba\dist\mitsuba.exe")
-
-mitsuba_path = local_mitsuba if local_mitsuba.exists() else default_mitsuba
+root_dir = get_project_root()
+_, mitsuba_path, _ = get_mitsuba_paths(root_dir)
 mitsuba_status = f"✅ 已检测到: `{mitsuba_path}`" if mitsuba_path.exists() else f"⚠️ 未检测到，请检查路径: `{mitsuba_path}`"
 
 st.markdown(f"""

@@ -10,10 +10,10 @@ import cv2
 from skimage import metrics, color
 import concurrent.futures
 from PIL import Image, ImageDraw, ImageFont
-import fnmatch
 import tkinter as tk
 from tkinter import filedialog
 import datetime
+from . import get_project_root, get_mitsuba_paths
 
 STOP_SIGNAL = []
 
@@ -38,6 +38,33 @@ def open_file_dialog(initial_dir, title="选择文件", filetypes=None):
         st.error(f"无法打开文件选择器: {e}")
         return []
 
+def update_selection_from_dialog(input_dir, title, filetypes, available_files, session_key, warning_text=None):
+    selected_paths = open_file_dialog(input_dir, title, filetypes)
+    if not selected_paths:
+        return
+    selected_names = [os.path.basename(p) for p in selected_paths]
+    valid_names = [n for n in selected_names if n in available_files]
+    if len(valid_names) < len(selected_names):
+        st.warning(warning_text or "部分选择的文件不在当前目录中，已自动忽略。")
+    st.session_state[session_key] = valid_names
+    st.rerun()
+
+def ensure_mitsuba_state(root_dir):
+    base_root = Path(root_dir) if root_dir else get_project_root()
+    default_dir, default_exe, default_mtsutil = get_mitsuba_paths(base_root)
+    if "mitsuba_dir" not in st.session_state or not st.session_state.mitsuba_dir:
+        st.session_state.mitsuba_dir = str(default_dir)
+    if "mitsuba_exe" not in st.session_state or not st.session_state.mitsuba_exe:
+        if Path(st.session_state.mitsuba_dir) == default_dir:
+            st.session_state.mitsuba_exe = str(default_exe)
+        else:
+            st.session_state.mitsuba_exe = str(Path(st.session_state.mitsuba_dir) / "mitsuba.exe")
+    if "mtsutil_exe" not in st.session_state or not st.session_state.mtsutil_exe:
+        if Path(st.session_state.mitsuba_dir) == default_dir:
+            st.session_state.mtsutil_exe = str(default_mtsutil)
+        else:
+            st.session_state.mtsutil_exe = str(Path(st.session_state.mitsuba_dir) / "mtsutil.exe")
+
 def init_state():
     if "logs" not in st.session_state:
         st.session_state.logs = []
@@ -54,21 +81,8 @@ def init_state():
     if "preview_selected_img" not in st.session_state:
         st.session_state.preview_selected_img = None
     if "root_dir" not in st.session_state or not st.session_state.root_dir:
-        # Use CWD as default if explicit path resolution fails or is empty
-        st.session_state.root_dir = os.getcwd()
-        
-    if "mitsuba_dir" not in st.session_state or not st.session_state.mitsuba_dir:
-        local_mitsuba = Path(st.session_state.root_dir) / "mitsuba" / "dist"
-        if local_mitsuba.exists():
-            st.session_state.mitsuba_dir = str(local_mitsuba)
-        else:
-            st.session_state.mitsuba_dir = r"d:\mitsuba\dist"
-            
-    if "mitsuba_exe" not in st.session_state or not st.session_state.mitsuba_exe:
-        st.session_state.mitsuba_exe = str(Path(st.session_state.mitsuba_dir) / "mitsuba.exe")
-        
-    if "mtsutil_exe" not in st.session_state or not st.session_state.mtsutil_exe:
-        st.session_state.mtsutil_exe = str(Path(st.session_state.mitsuba_dir) / "mtsutil.exe")
+        st.session_state.root_dir = str(get_project_root())
+    ensure_mitsuba_state(st.session_state.root_dir)
         
     if "scene_path" not in st.session_state or not st.session_state.scene_path:
         st.session_state.scene_path = get_default_scene_path(st.session_state.root_dir)
@@ -386,6 +400,25 @@ def update_bsdf_for_mode(bsdf_node, render_mode, file_path, filename, mitsuba_di
     if not any(c.get("name") == "reflectance" for c in bsdf_node):
         ET.SubElement(bsdf_node, "spectrum", {"name": "reflectance", "value": "0.5"})
 
+def update_integrator_and_sampler(root, integrator_type, sample_count, log_placeholder):
+    integrator_node = root.find("integrator")
+    if integrator_node is not None:
+        integrator_node.set("type", integrator_type)
+    else:
+        log("⚠️ 警告: 场景中未找到 integrator 节点，无法修改积分器类型", log_placeholder)
+    sampler_node = root.find(".//sampler")
+    if sampler_node is not None:
+        found = False
+        for int_node in sampler_node.findall("integer"):
+            if int_node.get("name") == "sampleCount":
+                int_node.set("value", str(sample_count))
+                found = True
+                break
+        if not found:
+            log("⚠️ 警告: 在 sampler 节点中未找到 name='sampleCount' 的 integer 节点，无法修改采样数量", log_placeholder)
+    else:
+        log("⚠️ 警告: 场景中未找到 sampler 节点，无法修改采样数量", log_placeholder)
+
 def render_batch(render_selected, render_mode, input_dir, output_dir, auto_convert, skip_existing, progress, status, base_dir, log_placeholder=None, custom_cmd=None, integrator_type="bdpt", sample_count=256):
     if not render_selected:
         log("未选择渲染文件", log_placeholder)
@@ -430,27 +463,7 @@ def render_batch(render_selected, render_mode, input_dir, output_dir, auto_conve
                 continue
         status.text(f"正在渲染 ({idx+1}/{total}): {filename}")
         root = ET.fromstring(scene_xml_text)
-        
-        # 更新积分器类型
-        integrator_node = root.find("integrator")
-        if integrator_node is not None:
-            integrator_node.set("type", integrator_type)
-        else:
-            log("⚠️ 警告: 场景中未找到 integrator 节点，无法修改积分器类型", log_placeholder)
-
-        # 更新采样数量
-        sampler_node = root.find(".//sampler")
-        if sampler_node is not None:
-            found = False
-            for int_node in sampler_node.findall("integer"):
-                if int_node.get("name") == "sampleCount":
-                    int_node.set("value", str(sample_count))
-                    found = True
-                    break
-            if not found:
-                log(f"⚠️ 警告: 在 sampler 节点中未找到 name='sampleCount' 的 integer 节点，无法修改采样数量", log_placeholder)
-        else:
-            log("⚠️ 警告: 场景中未找到 sampler 节点，无法修改采样数量", log_placeholder)
+        update_integrator_and_sampler(root, integrator_type, sample_count, log_placeholder)
 
         ensure_hdr_film(root)
 
@@ -637,8 +650,7 @@ def calc_single_pair(img1, img2):
     de = np.mean(de_map)
     return np.array([psnr, ssim, de])
 
-def process_single_file(f_gt, dir_m1, dir_m2):
-    basename = os.path.basename(f_gt)
+def resolve_comparison_files(basename, dir_m1, dir_m2):
     name_root = os.path.splitext(basename)[0]
     f_m1 = None
     for cand in [basename, f"{name_root}.fullbin.png"]:
@@ -652,6 +664,11 @@ def process_single_file(f_gt, dir_m1, dir_m2):
         if os.path.exists(path):
             f_m2 = path
             break
+    return name_root, f_m1, f_m2
+
+def process_single_file(f_gt, dir_m1, dir_m2):
+    basename = os.path.basename(f_gt)
+    _, f_m1, f_m2 = resolve_comparison_files(basename, dir_m1, dir_m2)
     if not f_m1 or not f_m2:
         return None, f"跳过 {basename}: 未找到对应文件"
     img_gt = cv2.imread(f_gt)
@@ -787,19 +804,7 @@ def run_comp_generation(eval_gt_dir, eval_method1_dir, eval_method2_dir, comp_ou
         font = ImageFont.load_default()
     for f_gt in files:
         basename = os.path.basename(f_gt)
-        name_root = os.path.splitext(basename)[0]
-        f_m1 = None
-        for cand in [basename, f"{name_root}.fullbin.png"]:
-            path = os.path.join(eval_method1_dir, cand)
-            if os.path.exists(path):
-                f_m1 = path
-                break
-        f_m2 = None
-        for cand in [basename, f"{name_root}_fc1.png", f"{name_root}.binary.png"]:
-            path = os.path.join(eval_method2_dir, cand)
-            if os.path.exists(path):
-                f_m2 = path
-                break
+        name_root, f_m1, f_m2 = resolve_comparison_files(basename, eval_method1_dir, eval_method2_dir)
         if not f_m1 or not f_m2:
             log(f"跳过 {basename}: 缺失对应文件")
             continue

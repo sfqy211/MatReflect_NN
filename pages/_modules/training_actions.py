@@ -6,7 +6,9 @@ from pathlib import Path
 
 import shutil
 
-ROOT_DIR = Path(__file__).resolve().parents[2]
+from . import get_project_root
+
+ROOT_DIR = get_project_root()
 NEURAL_BRDF_DIR = ROOT_DIR / "Neural-BRDF"
 HYPER_BRDF_DIR = ROOT_DIR / "HyperBRDF"
 DATA_INPUTS_BRDFS = ROOT_DIR / "data" / "inputs" / "brdfs"

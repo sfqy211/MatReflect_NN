@@ -35,14 +35,7 @@ def render_hyper_brdf_tab():
         # Native File Dialog for Encoding
         if st.button("📂 打开文件选择器 (Encoding)", key="hb_merl_open_dialog", use_container_width=True):
             ftypes = [("Binary files", "*.binary"), ("All files", "*.*")]
-            selected_paths = render_actions.open_file_dialog(merl_dir, "请选择材质文件", ftypes)
-            if selected_paths:
-                selected_names = [os.path.basename(p) for p in selected_paths]
-                valid_names = [n for n in selected_names if n in merl_files]
-                if len(valid_names) < len(selected_names):
-                    st.warning("部分选择的文件不在当前目录中，已自动忽略。")
-                st.session_state.hb_selected_merls = valid_names
-                st.rerun()
+            render_actions.update_selection_from_dialog(merl_dir, "请选择材质文件", ftypes, merl_files, "hb_selected_merls")
                 
         selected_merls = st.multiselect("选择材质", options=merl_files, default=st.session_state.get("hb_selected_merls", []), key="hb_selected_merls")
         
@@ -64,14 +57,7 @@ def render_hyper_brdf_tab():
             # Native File Dialog for Decoding
             if st.button("📂 打开文件选择器 (Decoding)", key="hb_pt_open_dialog", use_container_width=True):
                 ftypes = [("PT files", "*.pt"), ("All files", "*.*")]
-                selected_paths = render_actions.open_file_dialog(pt_dir, "请选择 PT 参数文件", ftypes)
-                if selected_paths:
-                    selected_names = [os.path.basename(p) for p in selected_paths]
-                    valid_names = [n for n in selected_names if n in pt_files]
-                    if len(valid_names) < len(selected_names):
-                        st.warning("部分选择的文件不在当前目录中，已自动忽略。")
-                    st.session_state.hb_selected_pts = valid_names
-                    st.rerun()
+                render_actions.update_selection_from_dialog(pt_dir, "请选择 PT 参数文件", ftypes, pt_files, "hb_selected_pts")
             
             selected_pts = st.multiselect("选择参数文件", options=pt_files, default=st.session_state.get("hb_selected_pts", []), key="hb_selected_pts")
             

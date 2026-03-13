@@ -18,14 +18,7 @@ def render_neural_brdf_tab():
         # Native File Dialog Button for PyTorch
         if st.button("📂 打开文件选择器 (PyTorch)", key="nb_pt_open_dialog", use_container_width=True):
             ftypes = [("Binary files", "*.binary"), ("All files", "*.*")]
-            selected_paths = render_actions.open_file_dialog(merl_dir, "请选择材质文件", ftypes)
-            if selected_paths:
-                selected_names = [os.path.basename(p) for p in selected_paths]
-                valid_names = [n for n in selected_names if n in merl_files]
-                if len(valid_names) < len(selected_names):
-                    st.warning("部分选择的文件不在当前目录中，已自动忽略。")
-                st.session_state.nb_pt_selected = valid_names
-                st.rerun()
+            render_actions.update_selection_from_dialog(merl_dir, "请选择材质文件", ftypes, merl_files, "nb_pt_selected")
                 
         pt_selected = st.multiselect("选择材质 (可多选)", options=merl_files, default=st.session_state.get("nb_pt_selected", []), key="nb_pt_selected")
         pt_epochs = st.number_input("迭代次数 (Epochs)", value=100, min_value=1, key="nb_pt_epochs")
@@ -40,14 +33,7 @@ def render_neural_brdf_tab():
         # Native File Dialog Button for Keras
         if st.button("📂 打开文件选择器 (Keras)", key="nb_keras_open_dialog", use_container_width=True):
             ftypes = [("Binary files", "*.binary"), ("All files", "*.*")]
-            selected_paths = render_actions.open_file_dialog(merl_dir, "请选择材质文件", ftypes)
-            if selected_paths:
-                selected_names = [os.path.basename(p) for p in selected_paths]
-                valid_names = [n for n in selected_names if n in merl_files]
-                if len(valid_names) < len(selected_names):
-                    st.warning("部分选择的文件不在当前目录中，已自动忽略。")
-                st.session_state.nb_keras_selected = valid_names
-                st.rerun()
+            render_actions.update_selection_from_dialog(merl_dir, "请选择材质文件", ftypes, merl_files, "nb_keras_selected")
                 
         keras_selected = st.multiselect("选择材质 (可多选)", options=merl_files, default=st.session_state.get("nb_keras_selected", []), key="nb_keras_selected")
         cuda_device = st.text_input("CUDA 设备 ID", value="0", help="设置 GPU ID (如 0, 1)。输入 -1 使用 CPU 训练。", key="nb_keras_cuda_device")
@@ -69,14 +55,7 @@ def render_neural_brdf_tab():
         with col_h5_dlg:
             if st.button("📂 打开 H5 选择器", key="nb_h5_open_dialog", use_container_width=True):
                 ftypes = [("H5 files", "*.h5"), ("All files", "*.*")]
-                selected_paths = render_actions.open_file_dialog(h5_dir, "请选择 H5 模型文件", ftypes)
-                if selected_paths:
-                    selected_names = [os.path.basename(p) for p in selected_paths]
-                    valid_names = [n for n in selected_names if n in h5_files]
-                    if len(valid_names) < len(selected_names):
-                        st.warning("部分选择的文件不在当前目录中，已自动忽略。")
-                    st.session_state.nb_selected_h5s = valid_names
-                    st.rerun()
+                render_actions.update_selection_from_dialog(h5_dir, "请选择 H5 模型文件", ftypes, h5_files, "nb_selected_h5s")
         
         selected_h5s = st.multiselect("选择 H5 文件", options=h5_files, default=st.session_state.get("nb_selected_h5s", []), key="nb_selected_h5s")
         h5_conv_log = st.empty()
