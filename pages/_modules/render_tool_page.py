@@ -198,6 +198,7 @@ def render_page():
         conda_env = st.text_input("Conda 环境名", value="mitsuba-build", key="conda_env")
         vcvarsall_path = st.text_input("vcvarsall.bat 路径 (可选)", value=st.session_state.get("vcvarsall_path", actions.DEFAULT_VCVARSALL_PATH), key="vcvarsall_path")
         st.caption("可填写 vcvarsall.bat 或 VS2017 工具快捷方式 .lnk，留空将自动检测")
+        st.caption("并行编译若命中 mt.exe manifest 写入冲突，将自动回退为串行增量补编译")
         compile_log_placeholder = st.empty()
         if st.button("开始编译"):
             actions.run_compile(compile_cmd, conda_env, compile_log_placeholder, selected_preset, vcvarsall_path)

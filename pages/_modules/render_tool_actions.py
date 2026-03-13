@@ -16,9 +16,46 @@ import datetime
 from . import get_project_root, get_mitsuba_paths
 import locale
 import re
+import time
 
 STOP_SIGNAL = []
 DEFAULT_VCVARSALL_PATH = r"C:\Program Files (x86)\Microsoft Visual Studio\2017\Professional\VC\Auxiliary\Build\vcvarsall.bat"
+MERL_STANDARD_FILE_SIZE = 12 + 90 * 90 * 180 * 3 * 8
+MERL_FULL_FILE_SIZE = 12 + 90 * 90 * 360 * 3 * 8
+
+
+def build_serial_compile_command(compile_cmd):
+    if not compile_cmd or "scons" not in compile_cmd.lower():
+        return None
+    serial_cmd = re.sub(r"(?i)(^|\s)-j\s*\d+", r"\1-j1", compile_cmd)
+    serial_cmd = re.sub(r"(?i)(^|\s)--jobs(?:=|\s*)\d+", r"\1--jobs=1", serial_cmd)
+    if serial_cmd == compile_cmd:
+        serial_cmd = f"{compile_cmd} -j1"
+    return serial_cmd
+
+
+def has_manifest_access_denied(log_lines):
+    joined = "\n".join(log_lines).lower()
+    patterns = [
+        "mt.exe : general error c101008d",
+        "failed to write the updated manifest",
+        "error 31",
+        "拒绝访问",
+        "access is denied",
+    ]
+    return any(pattern in joined for pattern in patterns)
+
+
+def detect_merl_variant(file_path):
+    try:
+        file_size = os.path.getsize(file_path)
+    except OSError:
+        return None
+    if file_size == MERL_STANDARD_FILE_SIZE:
+        return "merl"
+    if file_size == MERL_FULL_FILE_SIZE:
+        return "fullmerl"
+    return None
 
 
 def decode_subprocess_output(raw):
@@ -37,6 +74,84 @@ def decode_subprocess_output(raw):
         except UnicodeDecodeError:
             continue
     return raw.decode("utf-8", errors="replace")
+
+
+def execute_compile_attempt(work_dir, vcvarsall, conda_cmd, conda_env, dep_bin, dep_lib, compile_cmd, log_placeholder=None):
+    exit_code_file = os.path.join(work_dir, "temp_build_exit_code.txt")
+    bat_file = os.path.join(work_dir, "temp_build.bat")
+    bat_content = f"""
+@echo off
+cd /d "{work_dir}"
+setlocal EnableExtensions
+echo 99> "{exit_code_file}"
+echo [1/4] Setting up Visual Studio environment...
+call "{vcvarsall}" x64
+echo [1/4] Done (errorlevel %errorlevel%)
+
+set "CONDA_CMD={conda_cmd}"
+if not exist "%CONDA_CMD%" set "CONDA_CMD=conda"
+for %%i in ("%CONDA_CMD%") do set "CONDA_ROOT=%%~dpi.."
+echo [2/4] Activating Conda environment '{conda_env}'...
+if exist "%CONDA_ROOT%\\condabin\\conda.bat" (
+    call "%CONDA_ROOT%\\condabin\\conda.bat" activate {conda_env}
+) else if exist "%CONDA_ROOT%\\Scripts\\activate.bat" (
+    call "%CONDA_ROOT%\\Scripts\\activate.bat" {conda_env}
+) else (
+    call activate {conda_env} 2>nul || conda activate {conda_env} 2>nul
+)
+if "%CONDA_PREFIX%"=="" (
+    echo [2/4] Failed to activate conda env
+    echo 1> "{exit_code_file}"
+    exit /b 1
+)
+echo [2/4] Done (errorlevel %errorlevel%)
+
+echo [3/4] Toolchain Info:
+where python || echo python not found
+python --version || echo python version failed
+where scons || echo scons not found
+call scons --version || echo scons version failed
+where cl || echo cl not found
+echo [3/4] Done (errorlevel %errorlevel%)
+
+echo [4/4] Running build command
+echo WorkDir: {work_dir}
+echo Command: {compile_cmd}
+set PATH={dep_bin};{dep_lib};%PATH%
+call {compile_cmd}
+set "BUILD_ERROR=%errorlevel%"
+echo [4/4] Done (errorlevel %BUILD_ERROR%)
+echo %BUILD_ERROR%> "{exit_code_file}"
+exit /b %BUILD_ERROR%
+"""
+    with open(bat_file, "w", encoding="utf-8") as f:
+        f.write(bat_content)
+    log(f"生成构建脚本: {bat_file}", log_placeholder)
+    output_lines = []
+    proc = subprocess.Popen(
+        bat_file,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=False
+    )
+    for raw_line in proc.stdout:
+        line = decode_subprocess_output(raw_line).strip()
+        output_lines.append(line)
+        log(line, log_placeholder)
+    proc.wait()
+    final_exit_code = proc.returncode
+    if os.path.exists(exit_code_file):
+        try:
+            with open(exit_code_file, "r") as f:
+                final_exit_code = int(f.read().strip())
+        except Exception:
+            final_exit_code = proc.returncode
+        os.remove(exit_code_file)
+    log(f"构建脚本退出码: {proc.returncode}", log_placeholder)
+    log(f"最终退出码: {final_exit_code}", log_placeholder)
+    if os.path.exists(bat_file):
+        os.remove(bat_file)
+    return final_exit_code, output_lines
 
 def open_file_dialog(initial_dir, title="选择文件", filetypes=None):
     """
@@ -421,16 +536,23 @@ def update_bsdf_for_mode(bsdf_node, render_mode, file_path, filename, mitsuba_di
         if existing_type == "merl_accelerated" and has_merl_accelerated(mitsuba_dir):
             bsdf_node.set("type", "merl_accelerated")
             ET.SubElement(bsdf_node, "string", {"name": "filename", "value": file_path})
+            selected_type = "merl_accelerated"
         else:
             bsdf_node.set("type", "merl")
             ET.SubElement(bsdf_node, "string", {"name": "binary", "value": file_path})
+            selected_type = "merl"
         configure_bsdf_smart(bsdf_node, filename)
-        return
+        return selected_type
     if render_mode == "fullbin":
-        bsdf_node.set("type", "fullmerl")
-        ET.SubElement(bsdf_node, "string", {"name": "filename", "value": file_path})
+        detected_type = detect_merl_variant(file_path)
+        if detected_type == "merl":
+            bsdf_node.set("type", "merl")
+            ET.SubElement(bsdf_node, "string", {"name": "binary", "value": file_path})
+        else:
+            bsdf_node.set("type", "fullmerl")
+            ET.SubElement(bsdf_node, "string", {"name": "filename", "value": file_path})
         configure_bsdf_smart(bsdf_node, filename)
-        return
+        return detected_type or "fullmerl"
     base_path = normalize_npy_base_path(file_path)
     for child in list(bsdf_node):
         if child.tag == "bsdf":
@@ -449,6 +571,7 @@ def update_bsdf_for_mode(bsdf_node, render_mode, file_path, filename, mitsuba_di
         ET.SubElement(bsdf_node, "string", {"name": "nn_basename", "value": base_path})
     if not any(c.get("name") == "reflectance" for c in bsdf_node):
         ET.SubElement(bsdf_node, "spectrum", {"name": "reflectance", "value": "0.5"})
+    return bsdf_node.get("type", "nbrdf_npy")
 
 def update_integrator_and_sampler(root, integrator_type, sample_count, log_placeholder):
     integrator_node = root.find("integrator")
@@ -533,7 +656,9 @@ def render_batch(render_selected, render_mode, input_dir, output_dir, auto_conve
         if target_bsdf is None:
             log("错误: 场景中未找到 bsdf 节点", log_placeholder)
             return
-        update_bsdf_for_mode(target_bsdf, render_mode, file_path, filename, st.session_state.mitsuba_dir)
+        selected_bsdf_type = update_bsdf_for_mode(target_bsdf, render_mode, file_path, filename, st.session_state.mitsuba_dir)
+        if render_mode == "fullbin":
+            log(f"  -> FullBin 自动识别为 `{selected_bsdf_type}` 格式", log_placeholder)
         temp_xml = os.path.join(temp_xml_dir, f"{basename}_{timestamp}.xml")
         tree.write(temp_xml)
         if custom_cmd:
@@ -668,82 +793,37 @@ def run_compile(compile_cmd, conda_env, log_placeholder=None, compile_label=None
     log(f"编译命令: {compile_cmd}", log_placeholder)
     conda_cmd = os.environ.get("CONDA_EXE") or "conda"
     log(f"Conda 运行器: {conda_cmd}", log_placeholder)
-    exit_code_file = os.path.join(work_dir, "temp_build_exit_code.txt")
-    bat_content = f"""
-@echo off
-cd /d "{work_dir}"
-setlocal EnableExtensions
-echo 99> "{exit_code_file}"
-echo [1/4] Setting up Visual Studio environment...
-call "{vcvarsall}" x64
-echo [1/4] Done (errorlevel %errorlevel%)
-
-set "CONDA_CMD={conda_cmd}"
-if not exist "%CONDA_CMD%" set "CONDA_CMD=conda"
-for %%i in ("%CONDA_CMD%") do set "CONDA_ROOT=%%~dpi.."
-echo [2/4] Activating Conda environment '{conda_env}'...
-if exist "%CONDA_ROOT%\condabin\conda.bat" (
-    call "%CONDA_ROOT%\condabin\conda.bat" activate {conda_env}
-) else if exist "%CONDA_ROOT%\Scripts\activate.bat" (
-    call "%CONDA_ROOT%\Scripts\activate.bat" {conda_env}
-) else (
-    call activate {conda_env} 2>nul || conda activate {conda_env} 2>nul
-)
-if "%CONDA_PREFIX%"=="" (
-    echo [2/4] Failed to activate conda env
-    echo 1> "{exit_code_file}"
-    exit /b 1
-)
-echo [2/4] Done (errorlevel %errorlevel%)
-
-echo [3/4] Toolchain Info:
-where python || echo python not found
-python --version || echo python version failed
-where scons || echo scons not found
-call scons --version || echo scons version failed
-where cl || echo cl not found
-echo [3/4] Done (errorlevel %errorlevel%)
-
-echo [4/4] Running build command
-echo WorkDir: {work_dir}
-echo Command: {compile_cmd}
-set PATH={dep_bin};{dep_lib};%PATH%
-call {compile_cmd}
-set "BUILD_ERROR=%errorlevel%"
-echo [4/4] Done (errorlevel %BUILD_ERROR%)
-echo %BUILD_ERROR%> "{exit_code_file}"
-exit /b %BUILD_ERROR%
-"""
-    bat_file = os.path.join(work_dir, "temp_build.bat")
-    with open(bat_file, "w", encoding="utf-8") as f:
-        f.write(bat_content)
-    log(f"生成构建脚本: {bat_file}", log_placeholder)
-    proc = subprocess.Popen(
-        bat_file,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=False
+    log("开始执行编译", log_placeholder)
+    final_exit_code, output_lines = execute_compile_attempt(
+        work_dir,
+        vcvarsall,
+        conda_cmd,
+        conda_env,
+        dep_bin,
+        dep_lib,
+        compile_cmd,
+        log_placeholder
     )
-    for raw_line in proc.stdout:
-        line = decode_subprocess_output(raw_line).strip()
-        log(line, log_placeholder)
-    proc.wait()
-    final_exit_code = proc.returncode
-    if os.path.exists(exit_code_file):
-        try:
-            with open(exit_code_file, "r") as f:
-                final_exit_code = int(f.read().strip())
-        except Exception:
-            final_exit_code = proc.returncode
-        os.remove(exit_code_file)
-    log(f"构建脚本退出码: {proc.returncode}", log_placeholder)
-    log(f"最终退出码: {final_exit_code}", log_placeholder)
+    if final_exit_code != 0 and has_manifest_access_denied(output_lines):
+        serial_cmd = build_serial_compile_command(compile_cmd)
+        if serial_cmd and serial_cmd != compile_cmd:
+            log("检测到 mt.exe manifest 写入冲突，2 秒后使用串行增量补编译", log_placeholder)
+            time.sleep(2)
+            log(f"串行补编译命令: {serial_cmd}", log_placeholder)
+            final_exit_code, _ = execute_compile_attempt(
+                work_dir,
+                vcvarsall,
+                conda_cmd,
+                conda_env,
+                dep_bin,
+                dep_lib,
+                serial_cmd,
+                log_placeholder
+            )
     if final_exit_code == 0:
         log("编译成功", log_placeholder)
     else:
         log("编译失败", log_placeholder)
-    if os.path.exists(bat_file):
-        os.remove(bat_file)
 
 def calc_single_pair(img1, img2):
     psnr = metrics.peak_signal_noise_ratio(img1, img2, data_range=255)
