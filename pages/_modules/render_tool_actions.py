@@ -13,6 +13,7 @@ from PIL import Image, ImageDraw, ImageFont
 import fnmatch
 import tkinter as tk
 from tkinter import filedialog
+import datetime
 
 STOP_SIGNAL = []
 
@@ -406,6 +407,10 @@ def render_batch(render_selected, render_mode, input_dir, output_dir, auto_conve
     env["PATH"] = os.path.dirname(st.session_state.mitsuba_exe) + os.pathsep + env.get("PATH", "")
     with open(scene_path, "r", encoding="utf-8") as f:
         scene_xml_text = f.read()
+    
+    # 获取当前时间后缀 (仅保留日_时分秒，移除年份和月份)
+    timestamp = datetime.datetime.now().strftime("%d_%H%M%S")
+    
     total = len(render_selected)
     for idx, filename in enumerate(render_selected):
         if STOP_SIGNAL:
@@ -413,8 +418,9 @@ def render_batch(render_selected, render_mode, input_dir, output_dir, auto_conve
             break
         file_path = os.path.join(input_dir, filename).replace("\\", "/")
         basename = os.path.splitext(filename)[0]
-        exr_out = os.path.join(exr_dir, f"{basename}.exr")
-        png_out = os.path.join(png_dir, f"{basename}.png")
+        # 添加时间戳后缀
+        exr_out = os.path.join(exr_dir, f"{basename}_{timestamp}.exr")
+        png_out = os.path.join(png_dir, f"{basename}_{timestamp}.png")
         if skip_existing:
             target_file = png_out if auto_convert else exr_out
             if os.path.exists(target_file):
@@ -465,7 +471,7 @@ def render_batch(render_selected, render_mode, input_dir, output_dir, auto_conve
             log("错误: 场景中未找到 bsdf 节点", log_placeholder)
             return
         update_bsdf_for_mode(target_bsdf, render_mode, file_path, filename, st.session_state.mitsuba_dir)
-        temp_xml = os.path.join(temp_xml_dir, f"{basename}.xml")
+        temp_xml = os.path.join(temp_xml_dir, f"{basename}_{timestamp}.xml")
         tree.write(temp_xml)
         if custom_cmd:
             mitsuba_path = st.session_state.mitsuba_exe.replace("\\", "/")
