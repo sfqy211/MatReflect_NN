@@ -54,7 +54,19 @@ def render_page():
             st.session_state.input_dir = str(input_dir_map.get("brdfs", ""))
         if "output_dir" not in st.session_state:
             st.session_state.output_dir = str(output_dir_map.get("brdfs", ""))
-        render_mode = st.radio("输入类型", ["brdfs", "fullbin", "npy"], horizontal=True, key="render_mode", on_change=actions.on_render_mode_change)
+        render_mode_labels = {
+            "brdfs": "GT / BRDF (.binary)",
+            "fullbin": "HyperBRDF (.fullbin)",
+            "npy": "Neural-BRDF (.npy)"
+        }
+        render_mode = st.radio(
+            "输入类型",
+            ["brdfs", "fullbin", "npy"],
+            horizontal=True,
+            key="render_mode",
+            on_change=actions.on_render_mode_change,
+            format_func=lambda v: render_mode_labels.get(v, v)
+        )
         integrator_type = st.selectbox("积分器类型 (Integrator)", ["bdpt", "path"], index=0, key="integrator_type", help="bdpt: 双向路径追踪 (适合 MERL/Fullbin); path: 标准路径追踪")
         sample_count = st.number_input("采样数量 (Sample Count)", min_value=1, value=256, key="sample_count")
         auto_convert = st.checkbox("渲染后自动转换为 PNG", value=True, key="auto_convert")
@@ -93,6 +105,9 @@ def render_page():
             if st.button("刷新文件列表", key="render_refresh", use_container_width=True):
                 pass
 
+        if st.button("🎯 选择预设测试集 (20个材质)", key="render_select_preset", use_container_width=True):
+            actions.select_preset_test_set(render_files)
+
         render_selected = st.multiselect("待渲染文件列表", options=render_files, default=st.session_state.render_selected, key="render_selected")
         st.caption(f"已选择 {len(render_selected)} / {len(render_files)} 个文件")
         
@@ -112,7 +127,7 @@ def render_page():
     with tabs[1]:
         st.header("EXR 转 PNG")
         base_dir, _, output_dir_map = actions.get_paths()
-        output_dir = output_dir_map.get("brdfs", base_dir / "data" / "outputs" / "brdfs")
+        output_dir = output_dir_map.get("brdfs", base_dir / "data" / "outputs" / "binary")
         conv_input_dir = st.text_input("EXR 输入目录", value=str(Path(output_dir) / "exr"), key="conv_input_dir")
         conv_output_dir = st.text_input("PNG 输出目录", value=str(Path(output_dir) / "png"), key="conv_output_dir")
         conv_files = actions.list_exr_files(conv_input_dir)

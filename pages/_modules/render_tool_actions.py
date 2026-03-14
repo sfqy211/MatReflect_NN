@@ -23,6 +23,14 @@ DEFAULT_VCVARSALL_PATH = r"C:\Program Files (x86)\Microsoft Visual Studio\2017\P
 MERL_STANDARD_FILE_SIZE = 12 + 90 * 90 * 180 * 3 * 8
 MERL_FULL_FILE_SIZE = 12 + 90 * 90 * 360 * 3 * 8
 
+TEST_SET_20 = [
+    "alum-bronze", "beige-fabric", "black-obsidian", "blue-acrylic", "chrome",
+    "chrome-steel", "dark-red-paint", "dark-specular-fabric", "delrin",
+    "green-metallic-paint", "natural-209", "nylon", "polyethylene", "pure-rubber",
+    "silicon-nitrade", "teflon", "violet-rubber", "white-diffuse-bball",
+    "white-fabric", "yellow-paint"
+]
+
 
 def build_serial_compile_command(compile_cmd):
     if not compile_cmd or "scons" not in compile_cmd.lower():
@@ -291,12 +299,12 @@ def clear_logs():
 def get_paths():
     base_dir = Path(st.session_state.root_dir)
     input_dir_map = {
-        "brdfs": base_dir / "data" / "inputs" / "brdfs",
+        "brdfs": base_dir / "data" / "inputs" / "binary",
         "fullbin": base_dir / "data" / "inputs" / "fullbin",
         "npy": base_dir / "data" / "inputs" / "npy"
     }
     output_dir_map = {
-        "brdfs": base_dir / "data" / "outputs" / "brdfs",
+        "brdfs": base_dir / "data" / "outputs" / "binary",
         "fullbin": base_dir / "data" / "outputs" / "fullbin",
         "npy": base_dir / "data" / "outputs" / "npy"
     }
@@ -628,9 +636,20 @@ def render_batch(render_selected, render_mode, input_dir, output_dir, auto_conve
         exr_out = os.path.join(exr_dir, f"{basename}_{timestamp}.exr")
         png_out = os.path.join(png_dir, f"{basename}_{timestamp}.png")
         if skip_existing:
-            target_file = png_out if auto_convert else exr_out
-            if os.path.exists(target_file):
-                log(f"[{idx+1}/{total}] 跳过 (已存在): {basename}", log_placeholder)
+            # 检查输出目录中是否存在任何以该材质名为开头的文件
+            search_dir = png_dir if auto_convert else exr_dir
+            ext = ".png" if auto_convert else ".exr"
+            found_existing = False
+            if os.path.exists(search_dir):
+                for f in os.listdir(search_dir):
+                    # 匹配完整名或以材质名开头且后缀正确的文件 (避免 chrome 匹配到 chrome-steel)
+                    name_part = os.path.splitext(f)[0]
+                    if (name_part == basename or name_part.startswith(f"{basename}_")) and f.endswith(ext):
+                        found_existing = True
+                        break
+            
+            if found_existing:
+                log(f"[{idx+1}/{total}] 跳过 (检测到已存在渲染结果): {basename}", log_placeholder)
                 overall_percent = (idx + 1) / total
                 progress.progress(min(100, int(overall_percent * 100)))
                 continue
@@ -976,64 +995,207 @@ def run_grid_generation(grid_input_dir, grid_output_file, grid_show_names, grid_
     st.image(grid_img, caption="网格拼图结果", use_container_width=True)
     log(f"网格拼图已保存: {grid_output_file}")
 
-def run_comp_generation(eval_gt_dir, eval_method1_dir, eval_method2_dir, comp_output_dir, comp_labels, comp_show_label, comp_show_filename):
-    if not all(os.path.exists(d) for d in [eval_gt_dir, eval_method1_dir, eval_method2_dir]):
-        log("输入目录不存在，请检查量化评估配置")
+def run_comp_generation(comp_config, comp_output_dir, comp_show_label, comp_show_filename, selected_files=None):
+    """
+    comp_config: list of dicts with {"dir": str, "label": str}
+    selected_files: optional list of filenames (basenames) to process
+    """
+    valid_configs = [c for c in comp_config if os.path.exists(c["dir"])]
+    if not valid_configs:
+        log("没有有效的输入目录，请检查配置")
         return
+    
     os.makedirs(comp_output_dir, exist_ok=True)
-    labels = [t.strip() for t in comp_labels.split(",")]
-    if len(labels) < 3:
-        labels = ["GT", "Method1", "Method2"]
-    files = sorted(glob.glob(os.path.join(eval_gt_dir, "*.png")))
-    if not files:
-        log("GT 目录中没有图片")
+    
+    # Use first valid directory as the source of filenames if none provided
+    if not selected_files:
+        files = sorted(glob.glob(os.path.join(valid_configs[0]["dir"], "*.png")))
+        basenames = [os.path.basename(f) for f in files]
+    else:
+        basenames = selected_files
+
+    if not basenames:
+        log("未找到可处理的图片")
         return
+
     try:
         font = ImageFont.truetype("arial.ttf", 20)
+        title_font = ImageFont.truetype("arial.ttf", 24)
     except IOError:
         font = ImageFont.load_default()
-    for f_gt in files:
-        basename = os.path.basename(f_gt)
-        name_root, f_m1, f_m2 = resolve_comparison_files(basename, eval_method1_dir, eval_method2_dir)
-        if not f_m1 or not f_m2:
-            log(f"跳过 {basename}: 缺失对应文件")
+        title_font = font
+
+    processed_rows = [] # List of Image objects (each is one row)
+    
+    count = 0
+    padding = 10
+    label_height = 30 if comp_show_label else 0
+    filename_height = 40 if comp_show_filename else 0
+
+    for basename in basenames:
+        # Ensure it has .png extension
+        if not basename.lower().endswith(".png"):
+            basename += ".png"
+            
+        # Extract pure name from the basename (assuming format name_dd_HHMMSS or just name)
+        # If the basename already has a timestamp, we need to extract the material name part
+        name_root = os.path.splitext(basename)[0]
+        # Heuristic: if it ends with _dd_HHMMSS (e.g. _14_030834), strip it
+        # Pattern: _\d{1,2}_\d{6}$
+        import re
+        match = re.search(r'^(.*)_\d{1,2}_\d{6}$', name_root)
+        if match:
+            pure_name = match.group(1)
+        else:
+            pure_name = name_root
+
+        # Try to resolve files for each config
+        all_found = True
+        current_images = []
+        current_labels = []
+        for config in valid_configs:
+            # Try exact match first
+            target_path = os.path.join(config["dir"], basename)
+            if not os.path.exists(target_path):
+                # Try fuzzy matching in this directory using pure_name
+                found_f = None
+                for f in os.listdir(config["dir"]):
+                    if not f.lower().endswith(".png"):
+                        continue
+                    f_base = os.path.splitext(f)[0]
+                    
+                    # Check if file matches pure_name exactly or pure_name_timestamp
+                    # 1. Exact match with pure_name (e.g. "alum-bronze.png")
+                    if f_base == pure_name:
+                        found_f = os.path.join(config["dir"], f)
+                        break
+                    
+                    # 2. Match pure_name + timestamp suffix (e.g. "alum-bronze_15_120000.png")
+                    if f_base.startswith(pure_name + "_"):
+                        # Ensure the prefix is indeed the full material name
+                        # (e.g. "chrome" shouldn't match "chrome-steel_...")
+                        # Since we check startswith(pure_name + "_"), this is safe.
+                        found_f = os.path.join(config["dir"], f)
+                        break
+                        
+                if found_f:
+                    target_path = found_f
+                else:
+                    all_found = False
+                    break
+            
+            current_images.append(Image.open(target_path))
+            current_labels.append(config["label"])
+
+        if not all_found or not current_images:
+            log(f"跳过 {basename}: 缺失部分对比文件")
             continue
-        images = [Image.open(f_gt), Image.open(f_m1), Image.open(f_m2)]
-        w, h = images[0].size
-        images[1] = images[1].resize((w, h), Image.LANCZOS)
-        images[2] = images[2].resize((w, h), Image.LANCZOS)
-        padding = 10
-        label_height = 30 if comp_show_label else 0
-        filename_height = 40 if comp_show_filename else 0
-        comp_w = w * 3 + padding * 4
-        comp_h = h + padding * 2 + label_height + filename_height
-        comp_img = Image.new("RGB", (comp_w, comp_h), (255, 255, 255))
-        draw = ImageDraw.Draw(comp_img)
+
+        # Resize all to match first image
+        w, h = current_images[0].size
+        for i in range(1, len(current_images)):
+            current_images[i] = current_images[i].resize((w, h), Image.LANCZOS)
+
+        num_cols = len(current_images)
+        
+        # Calculate width needed for filename on the left
+        name_width = 0
         if comp_show_filename:
-            name_text = name_root
-            try:
-                title_font = ImageFont.truetype("arial.ttf", 24)
-            except IOError:
-                title_font = font
-            bbox = draw.textbbox((0, 0), name_text, font=title_font)
+            # Set a narrower fixed width for vertical text
+            name_width = 60 
+        
+        row_w = name_width + w * num_cols + padding * (num_cols + 1)
+        row_h = h + padding * 2 
+        
+        row_img = Image.new("RGB", (row_w, row_h), (255, 255, 255))
+        draw_row = ImageDraw.Draw(row_img)
+
+        if comp_show_filename:
+            # Draw name on the left, vertically rotated -90 degrees
+            # Create a temporary image for the text
+            # Measure text size first
+            temp_img = Image.new("RGB", (1, 1))
+            temp_draw = ImageDraw.Draw(temp_img)
+            bbox = temp_draw.textbbox((0, 0), pure_name, font=title_font)
             text_w = bbox[2] - bbox[0]
-            text_x = (comp_w - text_w) / 2
-            text_y = padding
-            draw.text((text_x, text_y), name_text, fill=(0, 0, 0), font=title_font)
-        for i, img in enumerate(images):
-            x = padding + i * (w + padding)
-            y = padding + label_height + filename_height
-            comp_img.paste(img, (x, y))
-            if comp_show_label:
-                label_text = labels[i] if i < len(labels) else ""
-                bbox = draw.textbbox((0, 0), label_text, font=font)
-                text_w = bbox[2] - bbox[0]
-                text_x = x + (w - text_w) / 2
-                text_y = padding + filename_height
-                draw.text((text_x, text_y), label_text, fill=(0, 0, 0), font=font)
-        out_path = os.path.join(comp_output_dir, f"comp_{basename}")
-        comp_img.save(out_path)
-    log(f"对比拼图已生成: {comp_output_dir}")
+            text_h = bbox[3] - bbox[1]
+            
+            # Create image for text, slightly larger than bounding box
+            txt_img = Image.new("RGBA", (text_w + 10, text_h + 10), (255, 255, 255, 0))
+            txt_draw = ImageDraw.Draw(txt_img)
+            txt_draw.text((0, 0), pure_name, font=title_font, fill=(0, 0, 0))
+            
+            # Rotate text image by 90 degrees
+            txt_rotated = txt_img.rotate(90, expand=True)
+            
+            # Calculate position to center vertically in the name column
+            rot_w, rot_h = txt_rotated.size
+            # Center horizontally in name_width
+            dest_x = (name_width - rot_w) // 2
+            # Center vertically in row_h
+            dest_y = (row_h - rot_h) // 2
+            
+            row_img.paste(txt_rotated, (dest_x, dest_y), txt_rotated)
+
+        for i, img in enumerate(current_images):
+            x = name_width + padding + i * (w + padding)
+            y = padding 
+            row_img.paste(img, (x, y))
+        
+        processed_rows.append(row_img)
+        count += 1
+
+    if not processed_rows:
+        log("未能生成任何对比拼图")
+        return
+
+    # Merge all rows into one big image
+    total_w = processed_rows[0].width
+    
+    # Calculate header height if labels are shown
+    header_height = 0
+    header_img = None
+    if comp_show_label and current_labels:
+        header_height = 40
+        header_img = Image.new("RGB", (total_w, header_height), (255, 255, 255))
+        draw_header = ImageDraw.Draw(header_img)
+        
+        # Draw labels aligned with image columns
+        # First column is empty (for names)
+        # Images start at: name_width + padding + i * (w + padding)
+        
+        # We need 'name_width' again. It was 300 if comp_show_filename else 0.
+        name_col_w = 300 if comp_show_filename else 0
+        
+        for i, label in enumerate(current_labels):
+            x = name_col_w + padding + i * (w + padding)
+            # Center text in this column
+            bbox = draw_header.textbbox((0, 0), label, font=title_font)
+            text_w = bbox[2] - bbox[0]
+            text_x = x + (w - text_w) / 2
+            text_y = (header_height - (bbox[3] - bbox[1])) / 2
+            draw_header.text((text_x, text_y), label, fill=(0, 0, 0), font=title_font)
+
+    total_h = sum(img.height for img in processed_rows) + header_height
+    
+    merged_img = Image.new("RGB", (total_w, total_h), (255, 255, 255))
+    current_y = 0
+    
+    if header_img:
+        merged_img.paste(header_img, (0, 0))
+        current_y += header_height
+
+    for row_img in processed_rows:
+        merged_img.paste(row_img, (0, current_y))
+        current_y += row_img.height
+    
+    # Save merged image
+    merged_filename = "merged_comparison.png"
+    out_path = os.path.join(comp_output_dir, merged_filename)
+    merged_img.save(out_path)
+    
+    st.image(merged_img, caption="合并对比拼图", use_container_width=True)
+    log(f"合并对比拼图已生成: {out_path}")
 
 def on_render_mode_change():
     base_dir, input_dir_map, output_dir_map = get_paths()
@@ -1052,3 +1214,31 @@ def on_preview_dir_type_change():
     else:
         st.session_state.preview_dir = str(output_dir_map.get(p_type, base_dir / "data" / "outputs" / p_type) / "png")
     st.session_state.preview_selected_img = None
+
+def select_preset_test_set(available_files):
+    """
+    Selects the 20 materials from the test set if they are available.
+    """
+    selected = []
+    for preset in TEST_SET_20:
+        # Check if any available file matches the preset name (ignoring extension)
+        found = False
+        for f in available_files:
+            if os.path.splitext(f)[0] == preset:
+                selected.append(f)
+                found = True
+                break
+        if not found:
+            # Try fuzzy match if exact match fails
+            for f in available_files:
+                if preset in f:
+                    selected.append(f)
+                    found = True
+                    break
+    
+    if selected:
+        st.session_state.render_selected = list(set(selected)) # Remove duplicates
+        st.success(f"已选中 {len(st.session_state.render_selected)} 个预设测试材质")
+    else:
+        st.warning("当前目录未找到预设测试集中的材质文件")
+    st.rerun()

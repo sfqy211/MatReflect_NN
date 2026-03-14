@@ -48,7 +48,7 @@ st.markdown(f"""
 
 ### 🚀 快速上手指南
 1. **环境检查**: 确保您已安装 Conda，并根据 `README.md` 配置好了所有 4 个虚拟环境。
-2. **数据准备**: 将您的 MERL (.binary) 材质文件放入 `data/inputs/brdfs` 目录。
+2. **数据准备**: 将您的 MERL (.binary) 材质文件放入 `data/inputs/binary` 目录。
 3. **开始渲染**: 前往 **Mitsuba Render Tool** 页面，批量生成参考图像。
 4. **训练模型**: 前往 **Model Training** 页面，选择一种方案进行训练。
 5. **评估结果**: 前往 **Data Analysis** 页面，对比真实渲染图与神经网络预测图。

@@ -43,16 +43,16 @@ class BatchRendererApp:
         self.current_output_dir = tk.StringVar()
 
         # --- 转换 Tab 变量 ---
-        self.conv_input_dir = tk.StringVar(value=os.path.join(BASE_DIR, "outputs", "brdfs", "exr"))
-        self.conv_output_dir = tk.StringVar(value=os.path.join(BASE_DIR, "outputs", "brdfs", "png"))
+        self.conv_input_dir = tk.StringVar(value=os.path.join(BASE_DIR, "outputs", "binary", "exr"))
+        self.conv_output_dir = tk.StringVar(value=os.path.join(BASE_DIR, "outputs", "binary", "png"))
 
         # --- 评估 Tab 变量 ---
-        self.eval_gt_dir = tk.StringVar(value=os.path.join(BASE_DIR, "outputs", "brdfs", "png"))
+        self.eval_gt_dir = tk.StringVar(value=os.path.join(BASE_DIR, "outputs", "binary", "png"))
         self.eval_method1_dir = tk.StringVar(value=os.path.join(BASE_DIR, "outputs", "fullbin", "png"))
         self.eval_method2_dir = tk.StringVar(value=os.path.join(BASE_DIR, "outputs", "npy", "png"))
 
         # --- 图像工具 Tab 变量 ---
-        self.grid_input_dir = tk.StringVar(value=os.path.join(BASE_DIR, "outputs", "brdfs", "png"))
+        self.grid_input_dir = tk.StringVar(value=os.path.join(BASE_DIR, "outputs", "binary", "png"))
         self.grid_output_file = tk.StringVar(value=os.path.join(BASE_DIR, "outputs", "merged_grid.png"))
         self.grid_show_names = tk.BooleanVar(value=True)
         self.grid_cell_width = tk.IntVar(value=256)
@@ -60,7 +60,7 @@ class BatchRendererApp:
 
         # --- 对比拼图 Tab 变量 ---
         self.comp_output_dir = tk.StringVar(value=os.path.join(BASE_DIR, "outputs", "comparisons"))
-        self.comp_labels = tk.StringVar(value="Ground Truth,FullBin,Neural BRDF")
+        self.comp_labels = tk.StringVar(value="BRDF,HyperBRDF,Neural-BRDF")
         self.comp_show_label = tk.BooleanVar(value=True)
         self.comp_show_filename = tk.BooleanVar(value=True)
 
@@ -168,7 +168,7 @@ class BatchRendererApp:
         mode_frame = tk.LabelFrame(parent, text="输入类型 (自动切换路径)", padx=10, pady=5)
         mode_frame.pack(fill="x", padx=10, pady=5)
 
-        modes = [("标准 MERL (.binary)", "brdfs"), ("Full MERL (.fullbin)", "fullbin"), ("Neural BRDF (.npy)", "npy")]
+        modes = [("GT / BRDF (.binary)", "brdfs"), ("HyperBRDF (.fullbin)", "fullbin"), ("Neural-BRDF (.npy)", "npy")]
         rb_frame = tk.Frame(mode_frame)
         rb_frame.pack(fill="x")
         for text, mode in modes:
@@ -213,8 +213,9 @@ class BatchRendererApp:
 
     def on_mode_change(self):
         mode = self.render_mode.get()
-        self.current_input_dir.set(os.path.join(BASE_DIR, "inputs", mode))
-        self.current_output_dir.set(os.path.join(BASE_DIR, "outputs", mode))
+        dir_mode = "binary" if mode == "brdfs" else mode
+        self.current_input_dir.set(os.path.join(BASE_DIR, "inputs", dir_mode))
+        self.current_output_dir.set(os.path.join(BASE_DIR, "outputs", dir_mode))
         self.refresh_render_list()
 
     def refresh_render_list(self):

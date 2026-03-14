@@ -11,7 +11,7 @@ from . import get_project_root
 ROOT_DIR = get_project_root()
 NEURAL_BRDF_DIR = ROOT_DIR / "Neural-BRDF"
 HYPER_BRDF_DIR = ROOT_DIR / "HyperBRDF"
-DATA_INPUTS_BRDFS = ROOT_DIR / "data" / "inputs" / "brdfs"
+DATA_INPUTS_BRDFS = ROOT_DIR / "data" / "inputs" / "binary"
 DATA_INPUTS_NPY = ROOT_DIR / "data" / "inputs" / "npy"
 DATA_INTERMEDIATE_H5 = NEURAL_BRDF_DIR / "data" / "merl_nbrdf"
 BINARY_TO_NBRDF_DIR = NEURAL_BRDF_DIR / "binary_to_nbrdf"
