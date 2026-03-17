@@ -193,6 +193,34 @@ def update_selection_from_dialog(input_dir, title, filetypes, available_files, s
     st.session_state[session_key] = valid_names
     st.rerun()
 
+def get_preset_test_set_selection(available_files):
+    """
+    Return files matched by the shared 20-material preset list.
+    """
+    selected = []
+    for preset in TEST_SET_20:
+        found = False
+        for f in available_files:
+            if os.path.splitext(f)[0] == preset:
+                selected.append(f)
+                found = True
+                break
+        if not found:
+            for f in available_files:
+                if preset in f:
+                    selected.append(f)
+                    break
+    return list(dict.fromkeys(selected))
+
+def apply_preset_test_set_selection(available_files, session_key, success_label="预设测试材质"):
+    selected = get_preset_test_set_selection(available_files)
+    if selected:
+        st.session_state[session_key] = selected
+        st.success(f"已选中 {len(selected)} 个{success_label}")
+    else:
+        st.warning("当前目录未找到预设测试集中的材质文件")
+    st.rerun()
+
 def ensure_mitsuba_state(root_dir):
     base_root = Path(root_dir) if root_dir else get_project_root()
     default_dir, default_exe, default_mtsutil = get_mitsuba_paths(base_root)
@@ -1219,6 +1247,9 @@ def select_preset_test_set(available_files):
     """
     Selects the 20 materials from the test set if they are available.
     """
+    apply_preset_test_set_selection(available_files, "render_selected", "预设测试材质")
+    return
+
     selected = []
     for preset in TEST_SET_20:
         # Check if any available file matches the preset name (ignoring extension)

@@ -1,19 +1,20 @@
 import streamlit as st
 from pages._modules import get_project_root, get_mitsuba_paths
 
-st.set_page_config(
-    page_title="MatReflect_NN - 项目主页",
-    page_icon="🏠",
-    layout="wide"
-)
+st.set_page_config(page_title="MatReflect_NN - 项目主页", page_icon="🏠", layout="wide")
 
 st.title("基于神经网络的材质反射属性表达方法研究与实现")
 
 root_dir = get_project_root()
 _, mitsuba_path, _ = get_mitsuba_paths(root_dir)
-mitsuba_status = f"✅ 已检测到: `{mitsuba_path}`" if mitsuba_path.exists() else f"⚠️ 未检测到，请检查路径: `{mitsuba_path}`"
+mitsuba_status = (
+    f"✅ 已检测到: `{mitsuba_path}`"
+    if mitsuba_path.exists()
+    else f"⚠️ 未检测到，请检查路径: `{mitsuba_path}`"
+)
 
-st.markdown(f"""
+st.markdown(
+    f"""
 ### 🌟 项目简介
 本项目是一个集成了传统物理渲染与现代深度学习技术的综合性研究平台，旨在探索高效的材质反射属性（BRDF）表达方法。项目不仅提供了完整的 Mitsuba 渲染流程，还集成了 Neural-BRDF 与 HyperBRDF 两种前沿的神经网络材质压缩方案，并配套了完善的数据分析与可视化工具。
 
@@ -56,7 +57,8 @@ st.markdown(f"""
 ### ⚙️ 系统状态概览
 - **项目根目录**: `{root_dir}`
 - **渲染器状态**: {mitsuba_status}
-""")
+"""
+)
 
 if mitsuba_path.exists():
     st.sidebar.success("🚀 渲染器就绪")
