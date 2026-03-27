@@ -7,3 +7,4 @@ Neural-BRDF/
 .vscode/
 .claude
 results/
+mitsuba_merl_npy_fullbin/
