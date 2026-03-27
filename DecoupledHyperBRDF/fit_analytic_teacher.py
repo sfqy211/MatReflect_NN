@@ -18,6 +18,19 @@ from utils import fastmerl
 from utils.common import create_directory, get_device
 
 
+def detach_to_cpu(value):
+    if torch.is_tensor(value):
+        tensor = value.detach().cpu()
+        if tensor.dim() > 0 and tensor.shape[0] == 1:
+            tensor = tensor.squeeze(0)
+        return tensor
+    if isinstance(value, dict):
+        return {key: detach_to_cpu(val) for key, val in value.items()}
+    if isinstance(value, list):
+        return [detach_to_cpu(item) for item in value]
+    return value
+
+
 def get_file_list(binary_path, dataset):
     if os.path.isfile(binary_path):
         return [binary_path]
@@ -73,7 +86,7 @@ def fit_teacher_for_material(coords, amps, median_vals, steps, lr, spec_percenti
     analytic_params = analytic_param_tensor_to_dict(raw_params.detach(), analytic_lobes=analytic_lobes)
     final_pred = eval_analytic_brdf(coords, analytic_params, median_vals=median_vals)
     final_loss = ((final_pred - amps) ** 2).mean().item()
-    return {key: value.squeeze(0).cpu() for key, value in analytic_params.items()}, final_loss
+    return detach_to_cpu(analytic_params), final_loss
 
 
 def main():

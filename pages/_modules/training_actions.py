@@ -11,6 +11,7 @@ from . import get_project_root
 ROOT_DIR = get_project_root()
 NEURAL_BRDF_DIR = ROOT_DIR / "Neural-BRDF"
 HYPER_BRDF_DIR = ROOT_DIR / "HyperBRDF"
+DECOUPLED_HB_DIR = ROOT_DIR / "DecoupledHyperBRDF"
 DATA_INPUTS_BRDFS = ROOT_DIR / "data" / "inputs" / "binary"
 DATA_INPUTS_NPY = ROOT_DIR / "data" / "inputs" / "npy"
 DATA_INTERMEDIATE_H5 = NEURAL_BRDF_DIR / "data" / "merl_nbrdf"
@@ -25,6 +26,63 @@ HB_TEST_SCRIPT = HYPER_BRDF_DIR / "test.py"
 HB_PT_TO_FULLBIN_SCRIPT = HYPER_BRDF_DIR / "pt_to_fullmerl.py"
 HB_MEDIAN_SCRIPT = HYPER_BRDF_DIR / "compute_median.py"
 HB_DEFAULT_MODEL = HYPER_BRDF_DIR / "results" / "test" / "MERL" / "checkpoint.pt"
+
+HB_PROJECTS = {
+    "hyperbrdf": {
+        "label": "HyperBRDF",
+        "dir": HYPER_BRDF_DIR,
+        "main_script": HYPER_BRDF_DIR / "main.py",
+        "test_script": HYPER_BRDF_DIR / "test.py",
+        "pt_to_fullbin_script": HYPER_BRDF_DIR / "pt_to_fullmerl.py",
+        "median_script": HYPER_BRDF_DIR / "compute_median.py",
+        "fit_teacher_script": None,
+        "default_model": HYPER_BRDF_DIR / "results" / "test" / "MERL" / "checkpoint.pt",
+        "default_results_dir": HYPER_BRDF_DIR / "results",
+        "default_extract_dir": HYPER_BRDF_DIR / "results" / "extracted_pts",
+        "supports_teacher": False,
+    },
+    "decoupled": {
+        "label": "DecoupledHyperBRDF",
+        "dir": DECOUPLED_HB_DIR,
+        "main_script": DECOUPLED_HB_DIR / "main.py",
+        "test_script": DECOUPLED_HB_DIR / "test.py",
+        "pt_to_fullbin_script": DECOUPLED_HB_DIR / "pt_to_fullmerl.py",
+        "median_script": DECOUPLED_HB_DIR / "compute_median.py",
+        "fit_teacher_script": DECOUPLED_HB_DIR / "fit_analytic_teacher.py",
+        "default_model": DECOUPLED_HB_DIR / "results" / "test" / "MERL" / "checkpoint.pt",
+        "default_results_dir": DECOUPLED_HB_DIR / "results",
+        "default_extract_dir": DECOUPLED_HB_DIR / "results" / "extracted_pts",
+        "supports_teacher": True,
+    },
+}
+
+
+def get_hb_project_config(project_variant="hyperbrdf"):
+    return HB_PROJECTS.get(project_variant, HB_PROJECTS["hyperbrdf"])
+
+
+def _run_streamlit_command(cmd, env, cwd, log_placeholder, start_message, success_message, error_message):
+    log_exp(start_message, log_placeholder)
+    proc = subprocess.Popen(
+        cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        env=env,
+        cwd=str(cwd),
+        shell=True,
+    )
+    while True:
+        line = proc.stdout.readline()
+        if not line and proc.poll() is not None:
+            break
+        if line:
+            log_exp(line.strip(), log_placeholder)
+    proc.wait()
+    if proc.returncode == 0:
+        st.success(success_message)
+    else:
+        st.error(f"{error_message} (退出码: {proc.returncode})")
 
 def log_exp(msg, placeholder=None):
     if "train_logs" not in st.session_state:
@@ -156,6 +214,35 @@ def run_keras_training(merl_dir, selected_merls, cuda_device, h5_output_dir, npy
     else:
         st.warning("训练完成但未找到对应 .h5 文件，请检查输出目录")
 
+def _build_hb_env(project_variant="hyperbrdf"):
+    config = get_hb_project_config(project_variant)
+    env = os.environ.copy()
+    env["PYTHONUNBUFFERED"] = "1"
+    env["PYTHONPATH"] = str(config["dir"]) + os.pathsep + env.get("PYTHONPATH", "")
+    return config, env
+
+
+def _run_logged_process(cmd, env, cwd, log_placeholder, start_message):
+    log_exp(start_message, log_placeholder)
+    proc = subprocess.Popen(
+        cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        env=env,
+        cwd=str(cwd),
+        shell=True,
+    )
+    while True:
+        line = proc.stdout.readline()
+        if not line and proc.poll() is not None:
+            break
+        if line:
+            log_exp(line.strip(), log_placeholder)
+    proc.wait()
+    return proc.returncode
+
+
 def run_hb_training(
     merl_dir,
     output_dir,
@@ -170,18 +257,31 @@ def run_hb_training(
     lr=5e-5,
     keepon=False,
     train_subset=0,
-    train_seed=42
+    train_seed=42,
+    project_variant="hyperbrdf",
+    model_type=None,
+    sampling_mode="hybrid",
+    teacher_dir="",
+    analytic_lobes=1,
+    baseline_checkpoint="",
+    analytic_loss_weight=0.1,
+    residual_loss_weight=0.1,
+    spec_loss_weight=0.2,
+    gate_reg_weight=0.05,
+    spec_percentile=0.9,
+    gate_bias_init=-2.0,
+    stage_a_epochs=10,
+    stage_b_ramp_epochs=20,
 ):
     if not os.path.exists(merl_dir):
         st.warning(f"目录不存在: {merl_dir}")
         return
     st.session_state.train_logs = []
     os.makedirs(output_dir, exist_ok=True)
-    env = os.environ.copy()
-    env["PYTHONUNBUFFERED"] = "1"
-    env["PYTHONPATH"] = str(HYPER_BRDF_DIR) + os.pathsep + env.get("PYTHONPATH", "")
+    config, env = _build_hb_env(project_variant)
+    resolved_model_type = model_type or ("decoupled" if project_variant == "decoupled" else "baseline")
     cmd = [
-        "conda", "run", "--no-capture-output", "-n", conda_env, "python", str(HB_MAIN_SCRIPT),
+        "conda", "run", "--no-capture-output", "-n", conda_env, "python", str(config["main_script"]),
         "--destdir", str(output_dir),
         "--binary", str(merl_dir),
         "--dataset", dataset,
@@ -191,128 +291,208 @@ def run_hb_training(
         "--fw_weight", str(fw_weight),
         "--lr", str(lr),
         "--train_subset", str(train_subset),
-        "--train_seed", str(train_seed)
+        "--train_seed", str(train_seed),
     ]
+    if project_variant == "decoupled":
+        cmd.extend(
+            [
+                "--model_type", resolved_model_type,
+                "--sampling_mode", sampling_mode,
+                "--analytic_lobes", str(analytic_lobes),
+                "--analytic_loss_weight", str(analytic_loss_weight),
+                "--residual_loss_weight", str(residual_loss_weight),
+                "--spec_loss_weight", str(spec_loss_weight),
+                "--gate_reg_weight", str(gate_reg_weight),
+                "--spec_percentile", str(spec_percentile),
+                "--gate_bias_init", str(gate_bias_init),
+                "--stage_a_epochs", str(stage_a_epochs),
+                "--stage_b_ramp_epochs", str(stage_b_ramp_epochs),
+            ]
+        )
+        if teacher_dir:
+            cmd.extend(["--teacher_dir", str(teacher_dir)])
+        if baseline_checkpoint:
+            cmd.extend(["--baseline_checkpoint", str(baseline_checkpoint)])
     if keepon:
         cmd.append("--keepon")
-    log_exp(f"启动 HyperBRDF 基础超网络训练: {' '.join(cmd)}", log_placeholder)
-    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=env, cwd=str(HYPER_BRDF_DIR), shell=True)
-    while True:
-        line = proc.stdout.readline()
-        if not line and proc.poll() is not None:
-            break
-        if line:
-            log_exp(line.strip(), log_placeholder)
-    proc.wait()
-    if proc.returncode == 0:
+    returncode = _run_logged_process(
+        cmd,
+        env,
+        config["dir"],
+        log_placeholder,
+        f"启动 {config['label']} 训练: {' '.join(cmd)}",
+    )
+    if returncode == 0:
         st.success(f"训练完成，模型已保存至: {output_dir}")
     else:
-        st.error(f"训练失败 (退出码: {proc.returncode})")
+        st.error(f"训练失败 (退出码: {returncode})")
 
-def run_hb_compute_median(output_dir, log_placeholder, conda_env="hyperbrdf"):
+def run_hb_compute_median(output_dir, log_placeholder, conda_env="hyperbrdf", project_variant="hyperbrdf"):
     st.session_state.train_logs = []
     os.makedirs(output_dir, exist_ok=True)
-    env = os.environ.copy()
-    env["PYTHONUNBUFFERED"] = "1"
-    env["PYTHONPATH"] = str(HYPER_BRDF_DIR) + os.pathsep + env.get("PYTHONPATH", "")
+    config, env = _build_hb_env(project_variant)
     env["HB_MEDIAN_OUTPUT_DIR"] = str(output_dir)
-    cmd = ["conda", "run", "--no-capture-output", "-n", conda_env, "python", str(HB_MEDIAN_SCRIPT)]
-    log_exp(f"启动中位数计算: {' '.join(cmd)}", log_placeholder)
-    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=env, cwd=str(HYPER_BRDF_DIR), shell=True)
-    while True:
-        line = proc.stdout.readline()
-        if not line and proc.poll() is not None:
-            break
-        if line:
-            log_exp(line.strip(), log_placeholder)
-    proc.wait()
-    if proc.returncode == 0:
+    cmd = ["conda", "run", "--no-capture-output", "-n", conda_env, "python", str(config["median_script"])]
+    returncode = _run_logged_process(
+        cmd,
+        env,
+        config["dir"],
+        log_placeholder,
+        f"启动 {config['label']} 中位数计算: {' '.join(cmd)}",
+    )
+    if returncode == 0:
         st.success(f"中位数计算完成，输出目录: {output_dir}")
     else:
-        st.error(f"中位数计算失败 (退出码: {proc.returncode})")
+        st.error(f"中位数计算失败 (退出码: {returncode})")
 
-def run_hb_extraction(merl_dir, selected_merls, model_path, output_dir, log_placeholder, conda_env="hyperbrdf", dataset="MERL"):
+def run_hb_fit_teacher(
+    merl_dir,
+    output_dir,
+    log_placeholder,
+    conda_env="hyperbrdf",
+    dataset="MERL",
+    fit_samples=32768,
+    steps=400,
+    lr=5e-2,
+    spec_percentile=0.9,
+    analytic_lobes=1,
+    max_materials=0,
+    seed=42,
+    project_variant="decoupled",
+):
+    if not os.path.exists(merl_dir):
+        st.warning(f"目录不存在: {merl_dir}")
+        return
+    st.session_state.train_logs = []
+    os.makedirs(output_dir, exist_ok=True)
+    config, env = _build_hb_env(project_variant)
+    if not config["supports_teacher"] or not config["fit_teacher_script"]:
+        st.warning(f"{config['label']} 当前未提供教师拟合脚本")
+        return
+
+    cmd = [
+        "conda", "run", "--no-capture-output", "-n", conda_env, "python", str(config["fit_teacher_script"]),
+        "--binary", str(merl_dir),
+        "--dataset", dataset,
+        "--destdir", str(output_dir),
+        "--fit_samples", str(fit_samples),
+        "--steps", str(steps),
+        "--lr", str(lr),
+        "--spec_percentile", str(spec_percentile),
+        "--analytic_lobes", str(analytic_lobes),
+        "--max_materials", str(max_materials),
+        "--seed", str(seed),
+    ]
+    returncode = _run_logged_process(
+        cmd,
+        env,
+        config["dir"],
+        log_placeholder,
+        f"启动 {config['label']} 教师拟合: {' '.join(cmd)}",
+    )
+    if returncode == 0:
+        st.success(f"教师缓存生成完成，输出目录: {output_dir}")
+    else:
+        st.error(f"教师缓存生成失败 (退出码: {returncode})")
+
+
+def run_hb_extraction(
+    merl_dir,
+    selected_merls,
+    model_path,
+    output_dir,
+    log_placeholder,
+    conda_env="hyperbrdf",
+    dataset="MERL",
+    project_variant="hyperbrdf",
+    sparse_samples=4000,
+):
     if dataset == "MERL" and not selected_merls:
         st.warning("未选择材质文件")
         return
     st.session_state.train_logs = []
     os.makedirs(output_dir, exist_ok=True)
-    
-    env = os.environ.copy()
-    env["PYTHONUNBUFFERED"] = "1"
-    # 添加 HyperBRDF 目录到 PYTHONPATH
-    env["PYTHONPATH"] = str(HYPER_BRDF_DIR) + os.pathsep + env.get("PYTHONPATH", "")
-    
+    config, env = _build_hb_env(project_variant)
+
     if dataset == "EPFL":
-        cmd = ["conda", "run", "--no-capture-output", "-n", conda_env, "python", str(HB_TEST_SCRIPT), 
-               "--model", str(model_path), "--binary", str(merl_dir), "--destdir", str(output_dir), "--dataset", "EPFL"]
-        log_exp("启动 HyperBRDF 参数提取: EPFL 目录", log_placeholder)
-        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=env, cwd=str(HYPER_BRDF_DIR), shell=True)
-        while True:
-            line = proc.stdout.readline()
-            if not line and proc.poll() is not None:
-                break
-            if line:
-                log_exp(line.strip(), log_placeholder)
-        proc.wait()
-        if proc.returncode == 0:
+        cmd = [
+            "conda", "run", "--no-capture-output", "-n", conda_env, "python", str(config["test_script"]),
+            "--model", str(model_path),
+            "--binary", str(merl_dir),
+            "--destdir", str(output_dir),
+            "--dataset", "EPFL",
+        ]
+        if project_variant == "decoupled":
+            cmd.extend(["--sparse_samples", str(sparse_samples)])
+        returncode = _run_logged_process(
+            cmd,
+            env,
+            config["dir"],
+            log_placeholder,
+            f"启动 {config['label']} 参数提取: EPFL 目录",
+        )
+        if returncode == 0:
             st.success("参数提取完成: EPFL")
         else:
-            st.error(f"参数提取失败: EPFL (退出码: {proc.returncode})")
+            st.error(f"参数提取失败: EPFL (退出码: {returncode})")
     else:
         for merl in selected_merls:
             binary_path = os.path.join(merl_dir, merl)
-            cmd = ["conda", "run", "--no-capture-output", "-n", conda_env, "python", str(HB_TEST_SCRIPT), 
-                   "--model", str(model_path), "--binary", str(binary_path), "--destdir", str(output_dir), "--dataset", "MERL"]
-            
-            log_exp(f"启动 HyperBRDF 参数提取: {merl}", log_placeholder)
-            proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=env, cwd=str(HYPER_BRDF_DIR), shell=True)
-            
-            while True:
-                line = proc.stdout.readline()
-                if not line and proc.poll() is not None:
-                    break
-                if line:
-                    log_exp(line.strip(), log_placeholder)
-            proc.wait()
-            
-            if proc.returncode == 0:
+            cmd = [
+                "conda", "run", "--no-capture-output", "-n", conda_env, "python", str(config["test_script"]),
+                "--model", str(model_path),
+                "--binary", str(binary_path),
+                "--destdir", str(output_dir),
+                "--dataset", "MERL",
+            ]
+            if project_variant == "decoupled":
+                cmd.extend(["--sparse_samples", str(sparse_samples)])
+
+            returncode = _run_logged_process(
+                cmd,
+                env,
+                config["dir"],
+                log_placeholder,
+                f"启动 {config['label']} 参数提取: {merl}",
+            )
+            if returncode == 0:
                 st.success(f"参数提取完成: {merl}")
             else:
-                st.error(f"参数提取失败: {merl} (退出码: {proc.returncode})")
+                st.error(f"参数提取失败: {merl} (退出码: {returncode})")
 
-def run_hb_to_fullbin(pt_dir, selected_pts, output_dir, log_placeholder, conda_env="hyperbrdf", dataset="MERL"):
+def run_hb_to_fullbin(
+    pt_dir,
+    selected_pts,
+    output_dir,
+    log_placeholder,
+    conda_env="hyperbrdf",
+    dataset="MERL",
+    project_variant="hyperbrdf",
+):
     if not selected_pts:
         st.warning("未选择 .pt 文件")
         return
     st.session_state.train_logs = []
     os.makedirs(output_dir, exist_ok=True)
-    
-    env = os.environ.copy()
-    env["PYTHONUNBUFFERED"] = "1"
-    env["PYTHONPATH"] = str(HYPER_BRDF_DIR) + os.pathsep + env.get("PYTHONPATH", "")
-    
+    config, env = _build_hb_env(project_variant)
+
     for pt_name in selected_pts:
         pt_path = os.path.join(pt_dir, pt_name)
-        # cmd: python pt_to_fullmerl.py {pt} {dest} --dataset MERL
-        cmd = ["conda", "run", "--no-capture-output", "-n", conda_env, "python", str(HB_PT_TO_FULLBIN_SCRIPT), 
-               str(pt_path), str(output_dir), "--dataset", dataset]
-        
-        log_exp(f"启动 pt -> fullbin 转换: {pt_name}", log_placeholder)
-        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=env, cwd=str(HYPER_BRDF_DIR), shell=True)
-        
-        while True:
-            line = proc.stdout.readline()
-            if not line and proc.poll() is not None:
-                break
-            if line:
-                log_exp(line.strip(), log_placeholder)
-        proc.wait()
-        
-        if proc.returncode == 0:
+        cmd = [
+            "conda", "run", "--no-capture-output", "-n", conda_env, "python", str(config["pt_to_fullbin_script"]),
+            str(pt_path), str(output_dir), "--dataset", dataset,
+        ]
+        returncode = _run_logged_process(
+            cmd,
+            env,
+            config["dir"],
+            log_placeholder,
+            f"启动 {config['label']} pt -> fullbin 转换: {pt_name}",
+        )
+        if returncode == 0:
             st.success(f"转换完成: {pt_name}")
         else:
-            st.error(f"转换失败: {pt_name} (退出码: {proc.returncode})")
+            st.error(f"转换失败: {pt_name} (退出码: {returncode})")
 
 def list_pt_files(pt_dir):
     return [os.path.basename(f) for f in glob.glob(os.path.join(pt_dir, "*.pt"))]
