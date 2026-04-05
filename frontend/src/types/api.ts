@@ -1,4 +1,4 @@
-export type ModuleKey = 'render' | 'analysis' | 'models'
+export type ModuleKey = 'render' | 'analysis' | 'models' | 'settings'
 
 export type SystemSummary = {
   project_root: string
