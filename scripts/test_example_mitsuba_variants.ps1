@@ -1,5 +1,5 @@
 param(
-    [string[]]$Materials = @("alumina-oxide", "delrin", "gray-plastic", "white-acrylic", "white-paint"),
+    [string[]]$Materials,
     [switch]$SkipMerl,
     [switch]$SkipNbrdf
 )
@@ -32,8 +32,40 @@ $variants = @(
     }
 )
 
+function Get-AllTestableMaterials {
+    $binaryDir = Join-Path $projectRoot "data\inputs\binary"
+    $npyDir = Join-Path $projectRoot "data\inputs\npy"
+
+    $binaryNames = @{}
+    Get-ChildItem $binaryDir -Filter *.binary -File | ForEach-Object {
+        $binaryNames[$_.BaseName] = $true
+    }
+
+    $npyNames = @{}
+    Get-ChildItem $npyDir -Filter *_fc1.npy -File | ForEach-Object {
+        $name = $_.BaseName
+        if ($name.EndsWith("_fc1")) {
+            $name = $name.Substring(0, $name.Length - 4)
+        }
+        $npyNames[$name] = $true
+    }
+
+    $all = @()
+    foreach ($name in $binaryNames.Keys) {
+        if ($npyNames.ContainsKey($name)) {
+            $all += $name
+        }
+    }
+
+    return $all | Sort-Object
+}
+
 if (-not $Materials -or $Materials.Count -eq 0) {
-    throw "Please provide at least one material name."
+    $Materials = Get-AllTestableMaterials
+}
+
+if (-not $Materials -or $Materials.Count -eq 0) {
+    throw "No testable materials found. Expected matching files in data\\inputs\\binary and data\\inputs\\npy."
 }
 
 New-Item -ItemType Directory -Force -Path $outputRoot | Out-Null
