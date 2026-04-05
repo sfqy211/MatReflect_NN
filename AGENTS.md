@@ -1,0 +1,202 @@
+# AGENTS.md
+
+## 1. 项目定位
+
+`MatReflect_NN` 是一个运行在 Windows 本机上的 Streamlit 研究工作台，用来把以下链路串起来：
+
+1. 使用 Mitsuba 0.6 渲染 MERL / FullBin / NBRDF 材质。
+2. 使用 Neural-BRDF 训练 `.binary -> .npy` 权重。
+3. 使用 HyperBRDF 或 DecoupledHyperBRDF 训练 `.binary -> checkpoint.pt -> 材质参数 .pt -> .fullbin`。
+4. 对渲染结果做预览、量化评估、网格拼图和对比拼图。
+
+这不是一个纯 Python 库，而是“多页面 UI + 多环境脚本编排 + 本地数据/结果目录”的集成项目。
+
+## 2. 运行前提
+
+- 默认平台：Windows + PowerShell。
+- 主入口：`app.py`，通过 `streamlit run app.py` 启动。
+- 项目大量依赖 Conda 多环境隔离。
+- README 中约定了 4 个环境：
+  - `matreflect`：Streamlit UI、渲染、分析。
+  - `mitsuba-build`：Mitsuba 编译，Python 2.7 + SCons。
+  - `nbrdf-train`：Neural-BRDF 训练。
+  - `hyperbrdf`：HyperBRDF / DecoupledHyperBRDF 训练与推理。
+
+不要假设所有功能都能在当前 Python 环境直接运行。训练页大量通过 `conda run -n ...` 调外部环境。
+
+## 3. 目录事实
+
+### 3.1 主工作区
+
+- `app.py`：主页与系统状态展示。
+- `pages/`：Streamlit 多页面入口。
+- `pages/_modules/`：真正的页面逻辑与后端 action，核心维护点在这里。
+- `scripts/`：启动脚本与本地批处理脚本。
+- `scene/`：Mitsuba 场景 XML、环境贴图、OBJ 资源。
+
+### 3.2 模型相关目录
+
+- `Neural-BRDF/`：Neural-BRDF 上游代码与集成说明。
+- `HyperBRDF/`：原版 HyperBRDF。
+- `DecoupledHyperBRDF/`：当前增强版研究实现，包含 teacher fitting、解耦模型、改造后的数据处理。
+
+### 3.3 本地数据与结果目录
+
+- `data/inputs/binary/`：MERL `.binary` 原始材质。
+- `data/inputs/npy/`：Neural-BRDF 权重，文件名成组出现，如 `mat_fc1.npy` 到 `mat_b3.npy`。
+- `data/inputs/fullbin/`：HyperBRDF/DecoupledHyperBRDF 重建出的 `.fullbin`。
+- `data/outputs/binary|npy|fullbin/{exr,png}/`：渲染输出。
+- `data/outputs/grids/`、`data/outputs/comparisons/`：分析页生成的拼图。
+- `data/batch_temp_xmls/`：渲染时动态生成的临时 XML，不应手动维护。
+- `HyperBRDF/results/`、`DecoupledHyperBRDF/results/`：训练结果、checkpoint、提取参数等。
+
+## 4. `.gitignore` 的实际含义
+
+根 `.gitignore` 忽略了这些路径：
+
+- `data/`
+- `__pycache__/`
+- `*.log`
+- `mitsuba/`
+- `HyperBRDF/`
+- `Neural-BRDF/`
+- `.vscode/`
+- `.claude`
+- `results/`
+- `mitsuba_merl_npy_fullbin/`
+
+但这个仓库里有一部分上述目录已经存在并且当前副本中可见，有些内容还是已跟踪的。处理原则：
+
+- 把这些目录视为“本地运行依赖 + 实验资产 + 上游代码混合区”。
+- 不要因为它们在 `.gitignore` 里就假设可以随意清空或重建。
+- 尤其不要删除：
+  - `data/inputs/*`
+  - `data/outputs/*`
+  - `HyperBRDF/results/*`
+  - `DecoupledHyperBRDF/results/*`
+  - `mitsuba/dist/*`
+
+## 5. 优先修改位置
+
+大多数集成任务优先改这里：
+
+- `pages/_modules/render_tool_actions.py`
+- `pages/_modules/render_tool_page.py`
+- `pages/_modules/training_actions.py`
+- `pages/_modules/training_neural_tab.py`
+- `pages/_modules/training_hyper_tab.py`
+- `pages/_modules/analysis_page.py`
+- `pages/_modules/__init__.py`
+- `scripts/*.ps1`
+- `scene/dj_xml/*.xml`
+
+除非任务明确要求，否则不要优先大改：
+
+- `mitsuba/src/`、`mitsuba/dist/` 下的第三方渲染器源码与编译产物。
+- `Neural-BRDF/` 原始上游训练逻辑。
+- `HyperBRDF/` 原版基线逻辑。
+
+研究性增强优先落在 `DecoupledHyperBRDF/` 与 Streamlit 集成层。
+
+## 6. 当前代码中的关键耦合
+
+### 6.1 渲染链路
+
+- 渲染页默认从 `scene/dj_xml/` 选 XML。
+- `render_tool_actions.py` 会在运行时改写 XML：
+  - 自动把相对资源路径改成绝对路径。
+  - 自动把 `ldrfilm` 改成 `hdrfilm`。
+  - 自动改 `integrator` 和 `sampleCount`。
+  - 自动定位 `id="Material"` 的 `bsdf` 节点并替换材质类型。
+- 输出文件默认带时间戳后缀：`%d_%H%M%S`。
+- `skip_existing` 的判定不是精确文件名匹配，而是按材质名+后缀前缀匹配。
+
+如果改动渲染文件命名规则、目录规则或材质替换规则，必须同时检查分析页的匹配逻辑。
+
+### 6.2 Neural-BRDF 链路
+
+- UI 直接把 `.binary` 送给 `Neural-BRDF/binary_to_nbrdf/pytorch_code/train_NBRDF_pytorch.py`。
+- PyTorch 版本直接输出 6 个 `.npy` 文件。
+- Keras 版本先产出 `.h5/.json`，再调用 `h5_to_npy.py` 转换。
+- NBRDF 渲染依赖 Mitsuba 插件 `nbrdf_npy.dll`，并要求 XML 中 `nn_basename` 指向权重前缀。
+
+### 6.3 HyperBRDF / DecoupledHyperBRDF 链路
+
+- 训练页通过 `training_actions.py` 统一调：
+  - `main.py` 训练
+  - `test.py` 提取材质参数 `.pt`
+  - `pt_to_fullmerl.py` 转 `.fullbin`
+  - `fit_analytic_teacher.py` 生成解析 teacher
+- Decoupled 版本已经扩展了：
+  - `model_type`
+  - `sampling_mode`
+  - `teacher_dir`
+  - analytic / residual / gate 相关超参数
+- `training_hyper_tab.py` 会读取 `results/**/args.txt` 和 `train_loss.csv` 反推训练信息。
+
+如果改 `.pt` 参数格式或训练产物布局，必须同时改：
+
+- `training_actions.py`
+- `training_hyper_tab.py`
+- `DecoupledHyperBRDF/test.py`
+- `DecoupledHyperBRDF/pt_to_fullmerl.py`
+
+## 7. 编辑约束
+
+- 优先保持 Windows 兼容。
+- 路径处理优先使用 `pathlib.Path` 或显式 `os.path`，不要混入只适合 Unix 的假设。
+- UI 文案当前以中文为主，可以保留必要英文括注。
+- 不要把本地绝对路径硬编码得更死，除非该文件本来就是本地脚本。
+- `scripts/test_example_mitsuba_variants.ps1` 明显是本地实验脚本，含仓库外 Mitsuba 路径；除非用户明确要求，不要把它“标准化”为通用方案。
+
+## 8. 验证建议
+
+优先做最小闭环验证，不要默认跑重训练。
+
+### 8.1 UI / 集成改动
+
+- 在 `matreflect` 环境下运行：
+  - `streamlit run app.py`
+
+### 8.2 渲染改动
+
+- 先验证：
+  - Mitsuba 路径能否被 `pages/_modules/__init__.py` 检测到。
+  - `scene/dj_xml/*.xml` 是否仍有 `id="Material"`。
+  - 生成的临时 XML 是否落在 `data/batch_temp_xmls/`。
+
+### 8.3 训练改动
+
+- Neural-BRDF：优先单材质、小 epoch。
+- HyperBRDF / Decoupled：优先单材质提取或小规模训练子集，不要直接跑全量 100 epoch。
+
+### 8.4 分析改动
+
+- 检查：
+  - 图片预览是否还能找到 `png` 目录。
+  - 量化评估是否还能匹配 GT / FullBin / NPY 文件名。
+  - 对比拼图是否还能处理带时间戳文件名。
+
+## 9. 给后续代理的工作方式建议
+
+1. 先看 `git status`，不要覆盖用户本地实验修改。
+2. 先分清任务落在哪一层：
+   - UI 集成层
+   - 训练编排层
+   - 模型实现层
+   - Mitsuba 场景/插件层
+3. 涉及输出命名、目录结构或参数格式时，沿链路检查上下游。
+4. 不要把 `data/`、`results/`、`mitsuba/dist/` 当作可随意重建的缓存。
+5. 只有在任务明确要求时，才深入修改 `mitsuba/`、`HyperBRDF/`、`Neural-BRDF/` 的上游基础代码。
+
+## 10. 常用入口
+
+- 主应用：`app.py`
+- 渲染逻辑：`pages/_modules/render_tool_actions.py`
+- 训练编排：`pages/_modules/training_actions.py`
+- 分析页：`pages/_modules/analysis_page.py`
+- HyperBRDF 基线训练：`HyperBRDF/main.py`
+- Decoupled 训练：`DecoupledHyperBRDF/main.py`
+- Teacher 拟合：`DecoupledHyperBRDF/fit_analytic_teacher.py`
+- 启动脚本：`scripts/start_matreflect.ps1`
+
