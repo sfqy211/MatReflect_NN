@@ -146,6 +146,13 @@ button {
   transition: all 0.2s ease;
 }
 
+.theme-toggle:disabled,
+.settings-action:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
+}
+
 .theme-toggle:hover {
   background: color-mix(in oklab, var(--surface-strong) 100%, transparent);
   color: var(--text-strong);
@@ -161,9 +168,13 @@ button {
 
 .workspace-grid {
   display: grid;
-  grid-template-columns: 290px minmax(0, 1fr) 320px;
+  grid-template-columns: 290px minmax(0, 1fr);
   gap: 22px;
   align-items: start;
+}
+
+.workspace-grid--collapsed {
+  grid-template-columns: 92px minmax(0, 1fr);
 }
 
 .module-rail,
@@ -193,6 +204,30 @@ button {
   display: flex;
   flex-direction: column;
   gap: 18px;
+}
+
+.module-rail--collapsed {
+  align-items: stretch;
+}
+
+.module-rail__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.rail-toggle {
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: color-mix(in oklab, var(--surface-soft) 20%, transparent);
+  color: var(--text-muted);
+  padding: 0.55rem 0.8rem;
+}
+
+.rail-toggle:hover {
+  background: color-mix(in oklab, var(--surface-soft) 60%, transparent);
+  color: var(--text-strong);
 }
 
 .module-rail__summary,
@@ -277,6 +312,23 @@ button {
   font-size: 1rem;
   font-weight: 700;
   margin: 0.32rem 0 0.45rem;
+}
+
+.module-rail--collapsed .module-card {
+  min-height: 64px;
+  display: grid;
+  place-items: center;
+  padding: 12px 8px;
+}
+
+.module-rail--collapsed .module-card__label {
+  margin: 0;
+  font-size: 0.92rem;
+  text-align: center;
+}
+
+.module-rail--collapsed .rail-toggle {
+  width: 100%;
 }
 
 .module-card__detail,
@@ -365,6 +417,151 @@ button {
 
 .detail-note {
   margin-top: 14px;
+}
+
+.render-layout {
+  display: grid;
+  grid-template-columns: 340px minmax(0, 1fr) 320px;
+  gap: 12px;
+}
+
+.render-section {
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: color-mix(in oklab, var(--surface-soft) 20%, transparent);
+  padding: 16px;
+}
+
+.render-section--wide {
+  min-width: 0;
+}
+
+.render-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.field span {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+.field input,
+.field select,
+.search-input {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: color-mix(in oklab, var(--surface-soft) 30%, transparent);
+  color: var(--text-strong);
+  padding: 0.8rem 0.9rem;
+  outline: none;
+}
+
+.field input:focus,
+.field select:focus,
+.search-input:focus {
+  border-color: var(--accent);
+}
+
+.render-toggle-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+
+.toggle-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-base);
+}
+
+.file-toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.file-toolbar__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.file-list {
+  max-height: 420px;
+  overflow: auto;
+  display: grid;
+  gap: 8px;
+  padding-right: 4px;
+  margin-bottom: 12px;
+}
+
+.file-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0.7rem 0.8rem;
+  border-radius: 6px;
+  background: color-mix(in oklab, var(--surface-soft) 12%, transparent);
+  color: var(--text-base);
+}
+
+.file-item input {
+  margin: 0;
+}
+
+.render-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.task-summary {
+  display: grid;
+  margin-bottom: 12px;
+}
+
+.progress-bar {
+  height: 8px;
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--surface-strong) 40%, transparent);
+  overflow: hidden;
+  margin-bottom: 12px;
+}
+
+.progress-bar__fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: inherit;
+  transition: width 160ms ease;
+}
+
+.log-panel {
+  max-height: 420px;
+  overflow: auto;
+  display: grid;
+  gap: 6px;
+  padding: 12px;
+  border-radius: 6px;
+  background: color-mix(in oklab, var(--surface-soft) 16%, transparent);
+}
+
+.log-line {
+  color: var(--text-base);
+  font-size: 0.9rem;
+  word-break: break-word;
+  white-space: pre-wrap;
 }
 
 .settings-grid {
@@ -466,6 +663,13 @@ button {
   color: var(--text-base);
   font-family: var(--font-display);
   font-size: 1.1rem;
+  overflow: hidden;
+}
+
+.gallery-item__image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 .panel-head {
@@ -566,7 +770,9 @@ button {
   .pipeline-grid,
   .surface-grid,
   .mini-output-list,
-  .settings-grid {
+  .settings-grid,
+  .render-layout,
+  .render-form-grid {
     grid-template-columns: 1fr;
   }
 

@@ -1,4 +1,5 @@
 import type { FileListItem } from '../types/api'
+import { toBackendUrl } from '../lib/api'
 
 type GalleryPreviewProps = {
   items: FileListItem[]
@@ -25,7 +26,11 @@ export function GalleryPreview({ items, isLoading }: GalleryPreviewProps) {
           {items.map((item, index) => (
             <article key={item.path} className="gallery-item">
               <div className="gallery-item__thumb">
-                <span>{String(index + 1).padStart(2, '0')}</span>
+                {item.preview_url ? (
+                  <img src={toBackendUrl(item.preview_url)} alt={item.name} className="gallery-item__image" />
+                ) : (
+                  <span>{String(index + 1).padStart(2, '0')}</span>
+                )}
               </div>
               <div className="gallery-item__meta">
                 <strong>{item.name}</strong>

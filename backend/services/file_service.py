@@ -1,7 +1,16 @@
 from datetime import datetime
 
+from backend.core.config import MEDIA_OUTPUTS_PREFIX, OUTPUTS_ROOT
 from backend.core.paths import resolve_safe_path
 from backend.models.common import FileListItem, FileListRequest, FileListResponse
+
+
+def build_preview_url(path) -> str | None:
+    try:
+        relative = path.resolve().relative_to(OUTPUTS_ROOT.resolve())
+    except ValueError:
+        return None
+    return f"{MEDIA_OUTPUTS_PREFIX}/{relative.as_posix()}"
 
 
 def list_files(request: FileListRequest) -> FileListResponse:
@@ -31,6 +40,7 @@ def list_files(request: FileListRequest) -> FileListResponse:
             size=0 if entry.is_dir() else entry.stat().st_size,
             modified_at=datetime.fromtimestamp(entry.stat().st_mtime),
             is_dir=entry.is_dir(),
+            preview_url=None if entry.is_dir() else build_preview_url(entry),
         )
         for entry in paged
     ]

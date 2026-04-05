@@ -1,8 +1,6 @@
 import { useEffect, useState } from "react";
 
-import { GalleryPreview } from "./components/GalleryPreview";
 import { ModuleRail } from "./components/ModuleRail";
-import { StatusPanel } from "./components/StatusPanel";
 import { WorkspaceCanvas } from "./components/WorkspaceCanvas";
 import {
   useRenderGallery,
@@ -14,6 +12,7 @@ type ThemeMode = "dark" | "light";
 
 export function App() {
   const [activeModule, setActiveModule] = useState<ModuleKey>("render");
+  const [railCollapsed, setRailCollapsed] = useState(false);
   const [theme, setTheme] = useState<ThemeMode>(() => {
     if (typeof window === "undefined") {
       return "dark";
@@ -47,8 +46,13 @@ export function App() {
 
   return (
     <div className="app-shell">
-      <div className="workspace-grid">
-        <ModuleRail activeModule={activeModule} onChange={setActiveModule} />
+      <div className={railCollapsed ? "workspace-grid workspace-grid--collapsed" : "workspace-grid"}>
+        <ModuleRail
+          activeModule={activeModule}
+          onChange={setActiveModule}
+          collapsed={railCollapsed}
+          onToggleCollapse={() => setRailCollapsed((current) => !current)}
+        />
         <main className="center-stack">
           <WorkspaceCanvas
             activeModule={activeModule}
@@ -60,20 +64,7 @@ export function App() {
             systemError={statusError}
             systemLoading={systemQuery.isLoading}
           />
-          {activeModule === "render" ? (
-            <GalleryPreview
-              items={galleryItems}
-              isLoading={galleryQuery.isLoading}
-            />
-          ) : null}
         </main>
-        <StatusPanel
-          activeModule={activeModule}
-          galleryCount={galleryCount}
-          system={systemQuery.data}
-          isLoading={systemQuery.isLoading}
-          error={statusError}
-        />
       </div>
     </div>
   );

@@ -30,7 +30,7 @@ class TaskManager:
     def get(self, task_id: str) -> TaskRecord | None:
         return self._tasks.get(task_id)
 
-    def create(self, task_type: str, message: str = "") -> TaskRecord:
+    def create(self, task_type: str, message: str = "", log_path: str | None = None) -> TaskRecord:
         task_id = f"{task_type}_{uuid4().hex[:8]}"
         record = TaskRecord(
             task_id=task_id,
@@ -39,6 +39,7 @@ class TaskManager:
             status="pending",
             progress=0,
             message=message,
+            log_path=log_path,
         )
         self._tasks[task_id] = record
         self._save(record)
@@ -73,6 +74,7 @@ class TaskManager:
         status: str | None = None,
         progress: int | None = None,
         message: str | None = None,
+        log_path: str | None = None,
         result_payload: dict | None = None,
         event: str = "log",
     ) -> TaskRecord | None:
@@ -89,6 +91,8 @@ class TaskManager:
             record.progress = progress
         if message is not None:
             record.message = message
+        if log_path is not None:
+            record.log_path = log_path
         if result_payload is not None:
             record.result_payload = result_payload
         self._save(record)

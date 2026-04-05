@@ -37,6 +37,7 @@ class FileListItem(BaseModel):
     size: int
     modified_at: datetime
     is_dir: bool
+    preview_url: str | None = None
 
 
 class FileListResponse(BaseModel):
@@ -59,6 +60,11 @@ class TaskRecord(BaseModel):
     message: str = ""
     log_path: str | None = None
     result_payload: dict[str, Any] = Field(default_factory=dict)
+
+
+class TaskDetailResponse(BaseModel):
+    record: TaskRecord
+    logs: list[str] = Field(default_factory=list)
 
 
 class TaskEvent(BaseModel):

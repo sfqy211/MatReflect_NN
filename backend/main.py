@@ -1,8 +1,9 @@
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from backend.api.v1 import analysis, fs, render, system, train
-from backend.core.config import API_PREFIX
+from backend.core.config import API_PREFIX, MEDIA_OUTPUTS_PREFIX, OUTPUTS_ROOT
 from backend.core.websocket import websocket_hub
 from backend.services.task_manager import task_manager
 
@@ -22,6 +23,7 @@ app.include_router(fs.router, prefix=API_PREFIX)
 app.include_router(render.router, prefix=API_PREFIX)
 app.include_router(train.router, prefix=API_PREFIX)
 app.include_router(analysis.router, prefix=API_PREFIX)
+app.mount(MEDIA_OUTPUTS_PREFIX, StaticFiles(directory=OUTPUTS_ROOT), name="media-outputs")
 
 
 @app.websocket("/ws/tasks/{task_id}")

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 
 import type { FileListItem, ModuleKey, SystemSummary } from '../types/api'
+import { RenderWorkbench } from './RenderWorkbench'
 
 type ThemeMode = 'dark' | 'light'
 
@@ -209,6 +210,10 @@ export function WorkspaceCanvas({
   systemError,
   systemLoading,
 }: WorkspaceCanvasProps) {
+  if (activeModule === 'render') {
+    return <RenderWorkbench />
+  }
+
   if (activeModule === 'settings') {
     return (
       <SettingsCanvas
