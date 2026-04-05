@@ -17,6 +17,8 @@ SAFE_PATHS = {
     "render_outputs_binary_png": PROJECT_ROOT / "data" / "outputs" / "binary" / "png",
     "render_outputs_fullbin_png": PROJECT_ROOT / "data" / "outputs" / "fullbin" / "png",
     "render_outputs_npy_png": PROJECT_ROOT / "data" / "outputs" / "npy" / "png",
+    "analysis_grids": PROJECT_ROOT / "data" / "outputs" / "grids",
+    "analysis_comparisons": PROJECT_ROOT / "data" / "outputs" / "comparisons",
     "render_outputs_binary_exr": PROJECT_ROOT / "data" / "outputs" / "binary" / "exr",
     "render_outputs_fullbin_exr": PROJECT_ROOT / "data" / "outputs" / "fullbin" / "exr",
     "render_outputs_npy_exr": PROJECT_ROOT / "data" / "outputs" / "npy" / "exr",

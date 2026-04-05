@@ -30,6 +30,7 @@ export type FileListResponse = {
 }
 
 export type RenderMode = 'brdfs' | 'fullbin' | 'npy'
+export type AnalysisImageSet = 'brdfs' | 'fullbin' | 'npy' | 'grids' | 'comparisons'
 
 export type RenderSceneItem = {
   label: string
@@ -98,4 +99,63 @@ export type TaskEvent = {
   progress: number
   message: string
   result_payload: Record<string, unknown>
+}
+
+export type AnalysisImagesResponse = {
+  image_set: AnalysisImageSet
+  resolved_path: string
+  total: number
+  items: FileListItem[]
+}
+
+export type MetricSummary = {
+  psnr: number
+  ssim: number
+  delta_e: number
+}
+
+export type EvaluationPairResult = {
+  label: string
+  metrics: MetricSummary
+}
+
+export type EvaluationResponse = {
+  processed_count: number
+  skipped: string[]
+  comparisons: EvaluationPairResult[]
+}
+
+export type EvaluationRequest = {
+  gt_set: AnalysisImageSet
+  method1_set: AnalysisImageSet
+  method2_set: AnalysisImageSet
+  selected_materials: string[]
+}
+
+export type GridRequest = {
+  image_set: AnalysisImageSet
+  output_name: string
+  show_names: boolean
+  cell_width: number
+  padding: number
+  selected_materials: string[]
+}
+
+export type ComparisonColumn = {
+  image_set: AnalysisImageSet
+  label: string
+}
+
+export type ComparisonRequest = {
+  columns: ComparisonColumn[]
+  selected_materials: string[]
+  show_label: boolean
+  show_filename: boolean
+  output_name: string
+}
+
+export type GeneratedImageResponse = {
+  item: FileListItem
+  processed_count: number
+  skipped: string[]
 }

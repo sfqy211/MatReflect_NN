@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 
 import type { FileListItem, ModuleKey, SystemSummary } from '../types/api'
+import { AnalysisWorkbench } from './AnalysisWorkbench'
 import { RenderWorkbench } from './RenderWorkbench'
 
 type ThemeMode = 'dark' | 'light'
@@ -214,6 +215,10 @@ export function WorkspaceCanvas({
     return <RenderWorkbench />
   }
 
+  if (activeModule === 'analysis') {
+    return <AnalysisWorkbench />
+  }
+
   if (activeModule === 'settings') {
     return (
       <SettingsCanvas
@@ -227,6 +232,16 @@ export function WorkspaceCanvas({
     )
   }
 
+  return <ModulePlaceholder activeModule={activeModule} galleryItems={galleryItems} />
+}
+
+function ModulePlaceholder({
+  activeModule,
+  galleryItems,
+}: {
+  activeModule: Exclude<ModuleKey, 'render' | 'analysis' | 'settings'>
+  galleryItems: FileListItem[]
+}) {
   const meta = moduleMeta[activeModule]
   const [selectedAction, setSelectedAction] = useState<string>(meta.actions[0].key)
 
