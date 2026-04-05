@@ -32,6 +32,17 @@ If backend is not running on the default address, create `frontend/.env.local`:
 VITE_API_BASE=http://127.0.0.1:8000/api/v1
 ```
 
+## Training envs
+
+- `HyperBRDF` uses conda env `hyperbrdf`
+- `DecoupledHyperBRDF` uses conda env `decoupledhyperbrdf`
+- `Neural-BRDF` training can continue to use the existing Python environment or its dedicated env
+
+Notes:
+
+- `HyperBRDF` and `DecoupledHyperBRDF` checkpoints are managed separately.
+- Do not assume a `HyperBRDF` `.pt` checkpoint can be used directly by `DecoupledHyperBRDF`.
+
 ## Current scope
 
 - New V2 shell supports light / dark theme switching.

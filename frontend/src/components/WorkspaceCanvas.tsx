@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 
 import type { FileListItem, ModuleKey, SystemSummary } from '../types/api'
 import { AnalysisWorkbench } from './AnalysisWorkbench'
+import { ModelsWorkbench } from './ModelsWorkbench'
 import { RenderWorkbench } from './RenderWorkbench'
 
 type ThemeMode = 'dark' | 'light'
@@ -217,6 +218,10 @@ export function WorkspaceCanvas({
 
   if (activeModule === 'analysis') {
     return <AnalysisWorkbench />
+  }
+
+  if (activeModule === 'models') {
+    return <ModelsWorkbench />
   }
 
   if (activeModule === 'settings') {

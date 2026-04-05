@@ -213,7 +213,7 @@ def eval_model(model, dataloader, path_=None, name=""):
 
 
 def load_baseline_into_decoupled(model, baseline_checkpoint):
-    baseline = torch.load(baseline_checkpoint, map_location=device)
+    baseline = torch.load(baseline_checkpoint, map_location=device, weights_only=False)
     if not hasattr(baseline, "state_dict"):
         return
 
@@ -397,7 +397,7 @@ else:
 
 start_time = time.time()
 if args.keepon:
-    model = torch.load(op.join(path_, "checkpoint.pt"), map_location=device)
+    model = torch.load(op.join(path_, "checkpoint.pt"), map_location=device, weights_only=False)
     model.to(device)
 else:
     model = build_model(args)

@@ -423,6 +423,10 @@ MatReflect_NN/
    - `POST /api/v1/train/hyper/decode`
    - `GET /api/v1/train/runs`
    - `GET /api/v1/train/models`
+4. 环境与资产约束：
+   - `HyperBRDF` 使用 conda 环境 `hyperbrdf`
+   - `DecoupledHyperBRDF` 使用 conda 环境 `decoupledhyperbrdf`
+   - 两者 checkpoint 分开管理，不能默认混用
 
 ### React 页面交付
 

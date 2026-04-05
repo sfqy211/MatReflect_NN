@@ -159,3 +159,106 @@ export type GeneratedImageResponse = {
   processed_count: number
   skipped: string[]
 }
+
+export type TrainProjectVariant = 'hyperbrdf' | 'decoupled'
+export type TrainDataset = 'MERL' | 'EPFL'
+export type NeuralTrainEngine = 'pytorch' | 'keras'
+
+export type TrainModelItem = {
+  key: string
+  label: string
+  category: string
+  supports_training: boolean
+  supports_extract: boolean
+  supports_decode: boolean
+  supports_runs: boolean
+  default_paths: Record<string, string>
+}
+
+export type TrainModelsResponse = {
+  items: TrainModelItem[]
+}
+
+export type TrainRunSummary = {
+  project_variant: TrainProjectVariant
+  label: string
+  run_name: string
+  run_dir: string
+  checkpoint_path: string
+  dataset: string
+  completed_epochs: number
+  updated_at: string
+  has_checkpoint: boolean
+  args: Record<string, unknown>
+}
+
+export type TrainRunsResponse = {
+  total: number
+  items: TrainRunSummary[]
+}
+
+export type NeuralPytorchTrainRequest = {
+  merl_dir: string
+  selected_materials: string[]
+  epochs: number
+  output_dir: string
+  device: 'cpu' | 'cuda'
+}
+
+export type NeuralKerasTrainRequest = {
+  merl_dir: string
+  selected_materials: string[]
+  cuda_device: string
+  h5_output_dir: string
+  npy_output_dir: string
+}
+
+export type HyperTrainRunRequest = {
+  project_variant: TrainProjectVariant
+  merl_dir: string
+  output_dir: string
+  conda_env: string
+  dataset: TrainDataset
+  epochs: number
+  sparse_samples: number
+  kl_weight: number
+  fw_weight: number
+  lr: number
+  keepon: boolean
+  train_subset: number
+  train_seed: number
+  model_type: 'baseline' | 'decoupled'
+  sampling_mode: 'random' | 'hybrid'
+  teacher_dir: string
+  analytic_lobes: 1 | 2
+  baseline_checkpoint: string
+  analytic_loss_weight: number
+  residual_loss_weight: number
+  spec_loss_weight: number
+  gate_reg_weight: number
+  spec_percentile: number
+  gate_bias_init: number
+  stage_a_epochs: number
+  stage_b_ramp_epochs: number
+}
+
+export type HyperExtractRequest = {
+  project_variant: TrainProjectVariant
+  merl_dir: string
+  selected_materials: string[]
+  model_path: string
+  output_dir: string
+  conda_env: string
+  dataset: TrainDataset
+  sparse_samples: number
+}
+
+export type HyperDecodeRequest = {
+  project_variant: TrainProjectVariant
+  pt_dir: string
+  selected_pts: string[]
+  output_dir: string
+  conda_env: string
+  dataset: TrainDataset
+  cuda_device: string
+}

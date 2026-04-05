@@ -514,6 +514,50 @@ button {
   background: color-mix(in oklab, var(--surface-strong) 24%, transparent);
 }
 
+.models-layout {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.models-section {
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: color-mix(in oklab, var(--surface-soft) 20%, transparent);
+  padding: 16px;
+  min-width: 0;
+}
+
+.models-section--wide {
+  grid-column: 1 / -1;
+}
+
+.runs-list {
+  display: grid;
+  gap: 10px;
+  max-height: 420px;
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.run-card {
+  display: grid;
+  gap: 6px;
+  padding: 14px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: color-mix(in oklab, var(--surface-soft) 12%, transparent);
+}
+
+.run-card strong {
+  color: var(--text-strong);
+}
+
+.run-card span {
+  color: var(--text-base);
+  word-break: break-word;
+}
+
 .render-section {
   border: 1px solid transparent;
   border-radius: 8px;
@@ -861,6 +905,7 @@ button {
   .mini-output-list,
   .settings-grid,
   .analysis-layout,
+  .models-layout,
   .metric-grid,
   .render-layout,
   .render-form-grid {

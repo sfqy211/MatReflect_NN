@@ -84,6 +84,6 @@ else:
     dataloader = DataLoader(dataset, shuffle=True, batch_size=1)
 
 
-model = torch.load(args.model, map_location=device)
+model = torch.load(args.model, map_location=device, weights_only=False)
 model.to(device)
 eval_model(model, dataloader)

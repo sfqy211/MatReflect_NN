@@ -11,7 +11,28 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 from torch import nn
-from torchmeta.modules import MetaModule, MetaSequential
+try:
+    from torchmeta.modules import MetaModule, MetaSequential
+except Exception:
+    class MetaModule(nn.Module):
+        def meta_named_parameters(self, prefix="", recurse=True):
+            return self.named_parameters(prefix=prefix, recurse=recurse)
+
+    class MetaSequential(nn.Sequential, MetaModule):
+        def forward(self, input, params=None):
+            output = input
+            for name, module in self._modules.items():
+                subdict = None
+                if params is not None:
+                    prefix = f"{name}."
+                    subdict = OrderedDict(
+                        (key[len(prefix):], value) for key, value in params.items() if key.startswith(prefix)
+                    )
+                if isinstance(module, MetaModule):
+                    output = module(output, params=subdict)
+                else:
+                    output = module(output)
+            return output
 
 
 def get_subdict(params, key):
