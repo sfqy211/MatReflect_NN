@@ -4,6 +4,7 @@ import { useQueryClient } from '@tanstack/react-query'
 
 import { toBackendUrl } from '../lib/api'
 import type { AnalysisImageSet, FileListItem } from '../types/api'
+import { FeedbackPanel } from './FeedbackPanel'
 import { GalleryPreview } from './GalleryPreview'
 import {
   useAnalysisImages,
@@ -186,6 +187,9 @@ export function AnalysisWorkbench() {
           <div className="detail-board__lead">
             <h3>量化评估</h3>
           </div>
+          {baseMaterials.length === 0 ? (
+            <FeedbackPanel title="没有可评估的基准材质" message="请先在渲染模块生成 GT / BRDF 图片。" tone="empty" compact />
+          ) : null}
           <div className="render-actions">
             <button type="button" className="theme-toggle" onClick={evaluate} disabled={evaluateMutation.isPending}>
               开始评估
@@ -207,7 +211,7 @@ export function AnalysisWorkbench() {
               {evaluateMutation.data.skipped.length > 0 ? `，跳过 ${evaluateMutation.data.skipped.length} 个` : ''}
             </p>
           ) : null}
-          {evaluateMutation.error instanceof Error ? <p className="error-text">{evaluateMutation.error.message}</p> : null}
+          {evaluateMutation.error instanceof Error ? <FeedbackPanel title="量化评估失败" message={evaluateMutation.error.message} tone="error" compact /> : null}
         </section>
 
         <section className="analysis-section">
@@ -258,7 +262,7 @@ export function AnalysisWorkbench() {
               <p className="muted">当前材质: {sliderMaterial}</p>
             </>
           ) : (
-            <p className="muted">当前没有可用于滑块对比的成对图片。</p>
+            <FeedbackPanel title="当前没有可用于滑块对比的成对图片" message="请确认左右图片集存在相同材质名称的输出。" tone="empty" compact />
           )}
         </section>
 
@@ -281,6 +285,7 @@ export function AnalysisWorkbench() {
                 <span>{material}</span>
               </label>
             ))}
+            {baseMaterials.length === 0 ? <FeedbackPanel title="暂无可选材质" message="请先生成 GT / BRDF 图片后再做分析。" tone="empty" compact /> : null}
           </div>
         </section>
 
@@ -322,7 +327,7 @@ export function AnalysisWorkbench() {
           {gridMutation.data?.item.preview_url ? (
             <img src={toBackendUrl(gridMutation.data.item.preview_url)} alt={gridMutation.data.item.name} className="analysis-output-image" />
           ) : null}
-          {gridMutation.error instanceof Error ? <p className="error-text">{gridMutation.error.message}</p> : null}
+          {gridMutation.error instanceof Error ? <FeedbackPanel title="网格拼图生成失败" message={gridMutation.error.message} tone="error" compact /> : null}
         </section>
 
         <section className="analysis-section">
@@ -361,7 +366,7 @@ export function AnalysisWorkbench() {
               className="analysis-output-image"
             />
           ) : null}
-          {comparisonMutation.error instanceof Error ? <p className="error-text">{comparisonMutation.error.message}</p> : null}
+          {comparisonMutation.error instanceof Error ? <FeedbackPanel title="对比拼图生成失败" message={comparisonMutation.error.message} tone="error" compact /> : null}
         </section>
       </div>
     </section>

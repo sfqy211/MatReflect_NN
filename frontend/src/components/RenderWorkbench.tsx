@@ -4,6 +4,7 @@ import { useQueryClient } from '@tanstack/react-query'
 
 import { BACKEND_ORIGIN } from '../lib/api'
 import type { RenderMode, TaskEvent } from '../types/api'
+import { FeedbackPanel } from './FeedbackPanel'
 import { GalleryPreview } from './GalleryPreview'
 import {
   useConvertOutputs,
@@ -132,6 +133,12 @@ export function RenderWorkbench() {
   const currentStatus = taskRecord?.status ?? (startRenderMutation.isPending || convertMutation.isPending ? 'pending' : 'idle')
   const progressValue = taskRecord?.progress ?? 0
   const mutationError = startRenderMutation.error ?? stopRenderMutation.error ?? convertMutation.error
+  const taskStateMessage =
+    taskRecord?.status === 'failed'
+      ? taskRecord.message || '渲染任务执行失败，请检查日志和 Mitsuba 路径配置。'
+      : taskRecord?.status === 'cancelled'
+        ? taskRecord.message || '渲染任务已取消。'
+        : null
 
   const startRender = async () => {
     if (!scenePath || selectedFiles.length === 0) {
@@ -293,13 +300,27 @@ export function RenderWorkbench() {
           </div>
 
           <div className="file-list">
+            {inputsQuery.error instanceof Error ? (
+              <FeedbackPanel
+                title="输入列表读取失败"
+                message={inputsQuery.error.message}
+                tone="error"
+                actionLabel="重新加载"
+                onAction={() => {
+                  void inputsQuery.refetch()
+                }}
+                compact
+              />
+            ) : null}
             {availableFiles.map((item) => (
               <label key={item.path} className="file-item">
                 <input type="checkbox" checked={selectedFiles.includes(item.name)} onChange={() => toggleFile(item.name)} />
                 <span>{item.name}</span>
               </label>
             ))}
-            {availableFiles.length === 0 ? <p className="muted">当前模式下没有可用输入文件。</p> : null}
+            {!inputsQuery.error && availableFiles.length === 0 ? (
+              <FeedbackPanel title="当前模式下没有可用输入文件" message="请检查输入目录是否已有对应格式的材质文件。" tone="empty" compact />
+            ) : null}
           </div>
 
           <div className="render-actions">
@@ -348,6 +369,15 @@ export function RenderWorkbench() {
             <div className="progress-bar__fill" style={{ width: `${progressValue}%` }} />
           </div>
 
+          {taskStateMessage ? (
+            <FeedbackPanel
+              title={taskRecord?.status === 'failed' ? '渲染任务失败' : '渲染任务已取消'}
+              message={taskStateMessage}
+              tone={taskRecord?.status === 'failed' ? 'error' : 'info'}
+              compact
+            />
+          ) : null}
+
           <div className="log-panel">
             {logs.length > 0 ? (
               logs.map((line, index) => (
@@ -356,11 +386,11 @@ export function RenderWorkbench() {
                 </div>
               ))
             ) : (
-              <p className="muted">等待任务日志...</p>
+              <FeedbackPanel title="等待任务日志" message="启动任务后会在这里持续推送执行日志。" tone="empty" compact />
             )}
           </div>
 
-          {mutationError instanceof Error ? <p className="error-text">{mutationError.message}</p> : null}
+          {mutationError instanceof Error ? <FeedbackPanel title="操作提交失败" message={mutationError.message} tone="error" compact /> : null}
         </aside>
       </div>
     </section>

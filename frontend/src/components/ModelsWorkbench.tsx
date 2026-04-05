@@ -9,6 +9,7 @@ import type {
   TrainProjectVariant,
   TrainRunSummary,
 } from '../types/api'
+import { FeedbackPanel } from './FeedbackPanel'
 import {
   useExtractedPtFiles,
   useMaterialsDirectory,
@@ -225,6 +226,12 @@ export function ModelsWorkbench() {
     startHyperExtract.error ??
     startHyperDecode.error ??
     stopTrainTask.error
+  const taskStateMessage =
+    taskRecord?.status === 'failed'
+      ? taskRecord.message || '训练任务执行失败，请检查环境、路径和日志输出。'
+      : taskRecord?.status === 'cancelled'
+        ? taskRecord.message || '训练任务已取消。'
+        : null
 
   const toggleMaterial = (name: string) => {
     setSelectedMaterials((current) => (current.includes(name) ? current.filter((item) => item !== name) : [...current, name]))
@@ -592,12 +599,27 @@ export function ModelsWorkbench() {
             </div>
           </div>
           <div className="file-list">
+            {materialsQuery.error instanceof Error ? (
+              <FeedbackPanel
+                title="材质目录读取失败"
+                message={materialsQuery.error.message}
+                tone="error"
+                actionLabel="重新加载"
+                onAction={() => {
+                  void materialsQuery.refetch()
+                }}
+                compact
+              />
+            ) : null}
             {materialItems.map((item) => (
               <label key={item.path} className="file-item">
                 <input type="checkbox" checked={selectedMaterials.includes(item.name)} onChange={() => toggleMaterial(item.name)} />
                 <span>{item.name}</span>
               </label>
             ))}
+            {!materialsQuery.error && materialItems.length === 0 ? (
+              <FeedbackPanel title="当前没有可训练材质" message="请检查 `data/inputs/binary` 下是否已有 `.binary` 文件。" tone="empty" compact />
+            ) : null}
           </div>
         </section>
 
@@ -606,6 +628,18 @@ export function ModelsWorkbench() {
             <h3>运行记录</h3>
           </div>
           <div className="runs-list">
+            {runsQuery.error instanceof Error ? (
+              <FeedbackPanel
+                title="运行记录读取失败"
+                message={runsQuery.error.message}
+                tone="error"
+                actionLabel="重新加载"
+                onAction={() => {
+                  void runsQuery.refetch()
+                }}
+                compact
+              />
+            ) : null}
             {(runsQuery.data?.items ?? []).map((run) => (
               <article key={`${run.project_variant}-${run.run_dir}`} className="run-card">
                 <strong>{run.label}</strong>
@@ -616,7 +650,9 @@ export function ModelsWorkbench() {
                 </button>
               </article>
             ))}
-            {(runsQuery.data?.items ?? []).length === 0 ? <p className="muted">当前没有运行记录。</p> : null}
+            {!runsQuery.error && (runsQuery.data?.items ?? []).length === 0 ? (
+              <FeedbackPanel title="当前没有运行记录" message="启动一次训练后，这里会显示 checkpoint 和 run 信息。" tone="empty" compact />
+            ) : null}
           </div>
         </section>
 
@@ -694,12 +730,27 @@ export function ModelsWorkbench() {
                 </div>
               </div>
               <div className="file-list">
+                {ptFilesQuery.error instanceof Error ? (
+                  <FeedbackPanel
+                    title="PT 列表读取失败"
+                    message={ptFilesQuery.error.message}
+                    tone="error"
+                    actionLabel="重新加载"
+                    onAction={() => {
+                      void ptFilesQuery.refetch()
+                    }}
+                    compact
+                  />
+                ) : null}
                 {ptItems.map((item) => (
                   <label key={item.path} className="file-item">
                     <input type="checkbox" checked={selectedPts.includes(item.name)} onChange={() => togglePt(item.name)} />
                     <span>{item.name}</span>
                   </label>
                 ))}
+                {!ptFilesQuery.error && ptItems.length === 0 ? (
+                  <FeedbackPanel title="当前没有可解码的 PT 文件" message="请先完成参数提取，或确认输出目录中已有 `.pt` 文件。" tone="empty" compact />
+                ) : null}
               </div>
               <div className="render-actions">
                 <button type="button" className="theme-toggle" onClick={startDecode} disabled={selectedPts.length === 0}>
@@ -731,6 +782,14 @@ export function ModelsWorkbench() {
           <div className="progress-bar">
             <div className="progress-bar__fill" style={{ width: `${progressValue}%` }} />
           </div>
+          {taskStateMessage ? (
+            <FeedbackPanel
+              title={taskRecord?.status === 'failed' ? '训练任务失败' : '训练任务已取消'}
+              message={taskStateMessage}
+              tone={taskRecord?.status === 'failed' ? 'error' : 'info'}
+              compact
+            />
+          ) : null}
           <div className="render-actions">
             <button type="button" className="theme-toggle" onClick={stopTask} disabled={!activeTaskId}>
               停止任务
@@ -744,10 +803,10 @@ export function ModelsWorkbench() {
                 </div>
               ))
             ) : (
-              <p className="muted">等待训练日志...</p>
+              <FeedbackPanel title="等待训练日志" message="启动训练、提取或解码后，这里会持续显示运行输出。" tone="empty" compact />
             )}
           </div>
-          {taskError instanceof Error ? <p className="error-text">{taskError.message}</p> : null}
+          {taskError instanceof Error ? <FeedbackPanel title="操作提交失败" message={taskError.message} tone="error" compact /> : null}
         </section>
       </div>
     </section>

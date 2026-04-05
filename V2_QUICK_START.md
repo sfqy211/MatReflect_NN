@@ -24,6 +24,20 @@ Frontend default:
 
 - App: `http://127.0.0.1:5173`
 
+## Unified Launchers
+
+Recommended entrypoints:
+
+```powershell
+scripts\start_v2_dev.ps1
+scripts\start_v2_prod.ps1
+```
+
+Notes:
+
+- `start_v2_dev.ps1` starts backend and Vite dev server in separate PowerShell windows
+- `start_v2_prod.ps1` builds `frontend/dist` and serves V2 from the FastAPI root URL
+
 ## Optional env
 
 If backend is not running on the default address, create `frontend/.env.local`:
@@ -45,10 +59,11 @@ Notes:
 
 ## Current scope
 
-- New V2 shell supports light / dark theme switching.
-- Three module entries are in place:
+- New V2 workspace supports light / dark theme switching.
+- Core module entries are in place:
   - Render
   - Analysis
   - Models
+- Settings page is also available for theme and system information.
 - Backend summary and file-list APIs are already wired.
-- Next step is extracting real render services from the old Streamlit flow.
+- V2 is now the primary entry; V1 Streamlit remains only as a fallback for legacy panels.

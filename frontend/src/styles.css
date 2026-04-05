@@ -238,6 +238,7 @@ button {
 .surface-card,
 .gallery-item,
 .empty-card,
+.feedback-panel,
 .status-metric,
 .mini-output {
   border: 1px solid transparent;
@@ -407,6 +408,56 @@ button {
   flex-direction: column;
   gap: 8px;
   margin-bottom: 14px;
+}
+
+.feedback-panel {
+  display: grid;
+  gap: 8px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  background: color-mix(in oklab, var(--surface-soft) 22%, transparent);
+}
+
+.feedback-panel strong {
+  color: var(--text-strong);
+}
+
+.feedback-panel p {
+  margin: 0;
+  color: var(--text-muted);
+}
+
+.feedback-panel--compact {
+  padding: 12px 14px;
+}
+
+.feedback-panel--hero {
+  max-width: 720px;
+}
+
+.feedback-panel--error {
+  border-color: color-mix(in oklab, var(--danger) 42%, var(--border));
+  background: color-mix(in oklab, var(--danger) 8%, var(--surface-soft));
+}
+
+.feedback-panel--error strong,
+.feedback-panel--error p {
+  color: color-mix(in oklab, var(--danger) 78%, var(--text-strong));
+}
+
+.feedback-panel--empty {
+  border-color: color-mix(in oklab, var(--border) 78%, transparent);
+}
+
+.feedback-panel--success {
+  border-color: color-mix(in oklab, var(--accent) 36%, var(--border));
+}
+
+.feedback-panel__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 2px;
 }
 
 .detail-pill-grid {

@@ -2,25 +2,34 @@
 
 ## 1. 项目定位
 
-`MatReflect_NN` 是一个运行在 Windows 本机上的 Streamlit 研究工作台，用来把以下链路串起来：
+`MatReflect_NN` 是一个运行在 Windows 本机上的材质研究工作台。当前采用双入口结构：
+
+- V2：`React + FastAPI` 工作台，默认入口
+- V1：`Streamlit` 旧版工作流，兼容兜底
+
+它把以下链路串起来：
 
 1. 使用 Mitsuba 0.6 渲染 MERL / FullBin / NBRDF 材质。
 2. 使用 Neural-BRDF 训练 `.binary -> .npy` 权重。
 3. 使用 HyperBRDF 或 DecoupledHyperBRDF 训练 `.binary -> checkpoint.pt -> 材质参数 .pt -> .fullbin`。
 4. 对渲染结果做预览、量化评估、网格拼图和对比拼图。
 
-这不是一个纯 Python 库，而是“多页面 UI + 多环境脚本编排 + 本地数据/结果目录”的集成项目。
+这不是一个纯 Python 库，而是“前端工作台 + 后端任务编排 + 多环境脚本 + 本地数据/结果目录”的集成项目。
 
 ## 2. 运行前提
 
 - 默认平台：Windows + PowerShell。
-- 主入口：`app.py`，通过 `streamlit run app.py` 启动。
+- 默认入口：
+  - 开发模式：`scripts/start_v2_dev.ps1`
+  - 生产模式：`scripts/start_v2_prod.ps1`
+- V1 兜底入口：`app.py`，通过 `streamlit run app.py` 启动。
 - 项目大量依赖 Conda 多环境隔离。
-- README 中约定了 4 个环境：
-  - `matreflect`：Streamlit UI、渲染、分析。
+- README 中当前约定的关键环境：
+  - `matreflect`：V2 backend、V1 Streamlit、渲染、分析。
   - `mitsuba-build`：Mitsuba 编译，Python 2.7 + SCons。
   - `nbrdf-train`：Neural-BRDF 训练。
-  - `hyperbrdf`：HyperBRDF / DecoupledHyperBRDF 训练与推理。
+  - `hyperbrdf`：HyperBRDF 训练与推理。
+  - `decoupledhyperbrdf`：DecoupledHyperBRDF 训练与推理。
 
 不要假设所有功能都能在当前 Python 环境直接运行。训练页大量通过 `conda run -n ...` 调外部环境。
 
@@ -28,9 +37,11 @@
 
 ### 3.1 主工作区
 
-- `app.py`：主页与系统状态展示。
-- `pages/`：Streamlit 多页面入口。
-- `pages/_modules/`：真正的页面逻辑与后端 action，核心维护点在这里。
+- `frontend/`：V2 React 前端，当前默认 UI。
+- `backend/`：V2 FastAPI 后端、任务接口、WebSocket、静态托管。
+- `app.py`：V1 Streamlit 入口。
+- `pages/`：V1 Streamlit 多页面入口。
+- `pages/_modules/`：V1 页面逻辑与旧 action。
 - `scripts/`：启动脚本与本地批处理脚本。
 - `scene/`：Mitsuba 场景 XML、环境贴图、OBJ 资源。
 
@@ -78,7 +89,18 @@
 
 ## 5. 优先修改位置
 
-大多数集成任务优先改这里：
+大多数集成任务现在优先改这里：
+
+- `frontend/src/components/`
+- `frontend/src/features/`
+- `frontend/src/lib/`
+- `backend/api/v1/`
+- `backend/services/`
+- `backend/models/`
+- `backend/core/`
+- `scripts/start_v2_*.ps1`
+
+只有在任务明确落在 V1 兼容层时，再优先改这里：
 
 - `pages/_modules/render_tool_actions.py`
 - `pages/_modules/render_tool_page.py`
@@ -87,7 +109,6 @@
 - `pages/_modules/training_hyper_tab.py`
 - `pages/_modules/analysis_page.py`
 - `pages/_modules/__init__.py`
-- `scripts/*.ps1`
 - `scene/dj_xml/*.xml`
 
 除非任务明确要求，否则不要优先大改：
@@ -96,7 +117,7 @@
 - `Neural-BRDF/` 原始上游训练逻辑。
 - `HyperBRDF/` 原版基线逻辑。
 
-研究性增强优先落在 `DecoupledHyperBRDF/` 与 Streamlit 集成层。
+研究性增强优先落在 `DecoupledHyperBRDF/` 与 V2 集成层；V1 只做必要兼容，不再作为主要演进方向。
 
 ## 6. 当前代码中的关键耦合
 
@@ -115,18 +136,19 @@
 
 ### 6.2 Neural-BRDF 链路
 
-- UI 直接把 `.binary` 送给 `Neural-BRDF/binary_to_nbrdf/pytorch_code/train_NBRDF_pytorch.py`。
+- V2 / V1 最终都会把 `.binary` 送给 `Neural-BRDF/binary_to_nbrdf/pytorch_code/train_NBRDF_pytorch.py`。
 - PyTorch 版本直接输出 6 个 `.npy` 文件。
 - Keras 版本先产出 `.h5/.json`，再调用 `h5_to_npy.py` 转换。
 - NBRDF 渲染依赖 Mitsuba 插件 `nbrdf_npy.dll`，并要求 XML 中 `nn_basename` 指向权重前缀。
 
 ### 6.3 HyperBRDF / DecoupledHyperBRDF 链路
 
-- 训练页通过 `training_actions.py` 统一调：
+- 当前主链路通过 `backend/services/train_service.py` 统一调度：
   - `main.py` 训练
   - `test.py` 提取材质参数 `.pt`
   - `pt_to_fullmerl.py` 转 `.fullbin`
-  - `fit_analytic_teacher.py` 生成解析 teacher
+- V1 兼容链路仍存在于 `pages/_modules/training_actions.py`
+- `fit_analytic_teacher.py` 仍属于 Decoupled 研究能力，但暂未单独迁成 V2 独立面板
 - Decoupled 版本已经扩展了：
   - `model_type`
   - `sampling_mode`
@@ -156,7 +178,9 @@
 ### 8.1 UI / 集成改动
 
 - 在 `matreflect` 环境下运行：
-  - `streamlit run app.py`
+  - V2 开发：`scripts/start_v2_dev.ps1`
+  - V2 生产：`scripts/start_v2_prod.ps1`
+  - V1 兜底：`streamlit run app.py`
 
 ### 8.2 渲染改动
 
@@ -191,12 +215,17 @@
 
 ## 10. 常用入口
 
-- 主应用：`app.py`
-- 渲染逻辑：`pages/_modules/render_tool_actions.py`
-- 训练编排：`pages/_modules/training_actions.py`
-- 分析页：`pages/_modules/analysis_page.py`
+- V2 前端入口：`frontend/src/App.tsx`
+- V2 后端入口：`backend/main.py`
+- V1 主应用：`app.py`
+- V2 渲染逻辑：`backend/api/v1/render.py`、`backend/services/`
+- V2 训练编排：`backend/services/train_service.py`
+- V2 分析页：`frontend/src/components/AnalysisWorkbench.tsx`
+- V1 渲染逻辑：`pages/_modules/render_tool_actions.py`
+- V1 训练编排：`pages/_modules/training_actions.py`
+- V1 分析页：`pages/_modules/analysis_page.py`
 - HyperBRDF 基线训练：`HyperBRDF/main.py`
 - Decoupled 训练：`DecoupledHyperBRDF/main.py`
 - Teacher 拟合：`DecoupledHyperBRDF/fit_analytic_teacher.py`
-- 启动脚本：`scripts/start_matreflect.ps1`
-
+- V2 启动脚本：`scripts/start_v2_dev.ps1`
+- V1 启动脚本：`scripts/start_matreflect.ps1`

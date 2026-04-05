@@ -1,5 +1,6 @@
 import type { FileListItem } from '../types/api'
 import { toBackendUrl } from '../lib/api'
+import { FeedbackPanel } from './FeedbackPanel'
 
 type GalleryPreviewProps = {
   items: FileListItem[]
@@ -17,9 +18,7 @@ export function GalleryPreview({ items, isLoading }: GalleryPreviewProps) {
       </div>
       {isLoading ? <p className="muted">正在读取渲染输出...</p> : null}
       {!isLoading && items.length === 0 ? (
-        <div className="empty-card">
-          <strong>暂无图片</strong>
-        </div>
+        <FeedbackPanel title="暂无图片" message="任务完成后，最新输出会出现在这里。" tone="empty" compact />
       ) : null}
       {items.length > 0 ? (
         <div className="gallery-grid">

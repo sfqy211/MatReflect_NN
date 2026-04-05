@@ -14,7 +14,7 @@ export function toBackendUrl(path: string | null | undefined): string | undefine
 export async function apiGet<T>(path: string): Promise<T> {
   const response = await fetch(`${API_BASE}${path}`)
   if (!response.ok) {
-    throw new Error(`GET ${path} failed: ${response.status}`)
+    throw new Error(await buildErrorMessage(response, 'GET', path))
   }
   return response.json() as Promise<T>
 }
@@ -28,7 +28,27 @@ export async function apiPost<T>(path: string, body: unknown): Promise<T> {
     body: JSON.stringify(body),
   })
   if (!response.ok) {
-    throw new Error(`POST ${path} failed: ${response.status}`)
+    throw new Error(await buildErrorMessage(response, 'POST', path))
   }
   return response.json() as Promise<T>
+}
+
+async function buildErrorMessage(response: Response, method: string, path: string) {
+  let detail = ''
+
+  try {
+    const contentType = response.headers.get('content-type') ?? ''
+    if (contentType.includes('application/json')) {
+      const payload = (await response.json()) as { detail?: string }
+      detail = payload.detail ?? ''
+    } else {
+      detail = (await response.text()).trim()
+    }
+  } catch {
+    detail = ''
+  }
+
+  return detail
+    ? `${method} ${path} failed (${response.status}): ${detail}`
+    : `${method} ${path} failed (${response.status})`
 }
