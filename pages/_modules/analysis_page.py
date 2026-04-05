@@ -2,10 +2,17 @@ import streamlit as st
 import os
 from pathlib import Path
 from . import render_tool_actions as actions
+from . import ui_shell
 
-def render_page():
+def render_page(embedded=False):
     actions.init_state()
-    st.title("📊 数据分析与评估")
+    if embedded:
+        ui_shell.render_section_heading(
+            "Analysis Module",
+            "材质表达结果分析",
+        )
+    else:
+        st.title("📊 数据分析与评估")
     
     tabs = st.tabs(["图片预览", "量化评估", "网格拼图", "对比拼图"])
     
