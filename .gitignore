@@ -8,3 +8,7 @@ Neural-BRDF/
 .claude
 results/
 mitsuba_merl_npy_fullbin/
+backend/runtime/tasks/
+backend/runtime/logs/
+frontend/node_modules/
+frontend/dist/
