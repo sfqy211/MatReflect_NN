@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from datetime import datetime
 
 from backend.core.config import MEDIA_OUTPUTS_PREFIX, OUTPUTS_ROOT

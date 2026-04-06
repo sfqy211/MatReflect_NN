@@ -1,4 +1,6 @@
-from typing import Literal
+from __future__ import annotations
+
+from typing import Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -15,7 +17,7 @@ class RenderSceneItem(BaseModel):
 
 
 class RenderScenesResponse(BaseModel):
-    default_scene: str | None = None
+    default_scene: Optional[str] = None
     items: list[RenderSceneItem] = Field(default_factory=list)
 
 
@@ -42,7 +44,7 @@ class RenderBatchRequest(BaseModel):
     sample_count: int = Field(default=256, ge=1, le=8192)
     auto_convert: bool = True
     skip_existing: bool = False
-    custom_cmd: str | None = None
+    custom_cmd: Optional[str] = None
 
 
 class RenderConvertRequest(BaseModel):

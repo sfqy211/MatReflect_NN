@@ -52,14 +52,14 @@ export function App() {
           onChange={setActiveModule}
           collapsed={railCollapsed}
           onToggleCollapse={() => setRailCollapsed((current) => !current)}
+          theme={theme}
+          onThemeChange={setTheme}
         />
         <main className="center-stack">
           <WorkspaceCanvas
             activeModule={activeModule}
             galleryItems={galleryItems}
             galleryCount={galleryCount}
-            theme={theme}
-            onThemeChange={setTheme}
             system={systemQuery.data}
             systemError={statusError}
             systemLoading={systemQuery.isLoading}

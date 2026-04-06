@@ -233,12 +233,50 @@ export function ModelsWorkbench() {
         ? taskRecord.message || '训练任务已取消。'
         : null
 
-  const toggleMaterial = (name: string) => {
-    setSelectedMaterials((current) => (current.includes(name) ? current.filter((item) => item !== name) : [...current, name]))
+  const toggleMaterial = (name: string, event?: React.MouseEvent) => {
+    setSelectedMaterials((current) => {
+      const currentIndex = materialItems.findIndex(f => f.name === name);
+      if (event?.shiftKey && current.length > 0 && currentIndex !== -1) {
+        const lastSelectedName = current[current.length - 1];
+        const lastSelectedIndex = materialItems.findIndex(f => f.name === lastSelectedName);
+        if (lastSelectedIndex !== -1) {
+          const start = Math.min(lastSelectedIndex, currentIndex);
+          const end = Math.max(lastSelectedIndex, currentIndex);
+          const namesToSelect = materialItems.slice(start, end + 1).map(f => f.name);
+          const newSelection = [...current];
+          for (const n of namesToSelect) {
+            if (!newSelection.includes(n)) {
+              newSelection.push(n);
+            }
+          }
+          return newSelection;
+        }
+      }
+      return current.includes(name) ? current.filter((item) => item !== name) : [...current, name];
+    })
   }
 
-  const togglePt = (name: string) => {
-    setSelectedPts((current) => (current.includes(name) ? current.filter((item) => item !== name) : [...current, name]))
+  const togglePt = (name: string, event?: React.MouseEvent) => {
+    setSelectedPts((current) => {
+      const currentIndex = ptItems.findIndex(f => f.name === name);
+      if (event?.shiftKey && current.length > 0 && currentIndex !== -1) {
+        const lastSelectedName = current[current.length - 1];
+        const lastSelectedIndex = ptItems.findIndex(f => f.name === lastSelectedName);
+        if (lastSelectedIndex !== -1) {
+          const start = Math.min(lastSelectedIndex, currentIndex);
+          const end = Math.max(lastSelectedIndex, currentIndex);
+          const namesToSelect = ptItems.slice(start, end + 1).map(f => f.name);
+          const newSelection = [...current];
+          for (const n of namesToSelect) {
+            if (!newSelection.includes(n)) {
+              newSelection.push(n);
+            }
+          }
+          return newSelection;
+        }
+      }
+      return current.includes(name) ? current.filter((item) => item !== name) : [...current, name];
+    })
   }
 
   const applyPreset = () => {
@@ -612,8 +650,11 @@ export function ModelsWorkbench() {
               />
             ) : null}
             {materialItems.map((item) => (
-              <label key={item.path} className="file-item">
-                <input type="checkbox" checked={selectedMaterials.includes(item.name)} onChange={() => toggleMaterial(item.name)} />
+              <label key={item.path} className="file-item" onClick={(e) => {
+                e.preventDefault();
+                toggleMaterial(item.name, e);
+              }}>
+                <input type="checkbox" checked={selectedMaterials.includes(item.name)} readOnly />
                 <span>{item.name}</span>
               </label>
             ))}
@@ -743,8 +784,11 @@ export function ModelsWorkbench() {
                   />
                 ) : null}
                 {ptItems.map((item) => (
-                  <label key={item.path} className="file-item">
-                    <input type="checkbox" checked={selectedPts.includes(item.name)} onChange={() => togglePt(item.name)} />
+                  <label key={item.path} className="file-item" onClick={(e) => {
+                    e.preventDefault();
+                    togglePt(item.name, e);
+                  }}>
+                    <input type="checkbox" checked={selectedPts.includes(item.name)} readOnly />
                     <span>{item.name}</span>
                   </label>
                 ))}

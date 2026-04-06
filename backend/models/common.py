@@ -1,5 +1,7 @@
+from __future__ import annotations
+
 from datetime import datetime
-from typing import Any, Literal
+from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -37,7 +39,7 @@ class FileListItem(BaseModel):
     size: int
     modified_at: datetime
     is_dir: bool
-    preview_url: str | None = None
+    preview_url: Optional[str] = None
 
 
 class FileListResponse(BaseModel):
@@ -53,12 +55,12 @@ class TaskRecord(BaseModel):
     task_id: str
     task_type: str
     created_at: datetime
-    started_at: datetime | None = None
-    finished_at: datetime | None = None
+    started_at: Optional[datetime] = None
+    finished_at: Optional[datetime] = None
     status: TaskStatus = "pending"
     progress: int = 0
     message: str = ""
-    log_path: str | None = None
+    log_path: Optional[str] = None
     result_payload: dict[str, Any] = Field(default_factory=dict)
 
 

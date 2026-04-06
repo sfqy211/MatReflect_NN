@@ -65,6 +65,8 @@ export function RenderWorkbench() {
   const [customCmd, setCustomCmd] = useState('')
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null)
   const [liveLogs, setLiveLogs] = useState<string[]>([])
+  const [showLogs, setShowLogs] = useState(false)
+  const [showCustomCmd, setShowCustomCmd] = useState(false)
 
   const scenesQuery = useRenderScenes()
   const inputsQuery = useRenderInputs(renderMode, search)
@@ -145,6 +147,7 @@ export function RenderWorkbench() {
       return
     }
     setLiveLogs([])
+    setShowLogs(true)
     const response = await startRenderMutation.mutateAsync({
       render_mode: renderMode,
       scene_path: scenePath,
@@ -168,6 +171,7 @@ export function RenderWorkbench() {
 
   const convertOutputs = async () => {
     setLiveLogs([])
+    setShowLogs(true)
     const response = await convertMutation.mutateAsync(renderMode)
     setActiveTaskId(response.task_id)
   }
@@ -179,8 +183,36 @@ export function RenderWorkbench() {
     setSelectedFiles(presetSelection)
   }
 
-  const toggleFile = (name: string) => {
-    setSelectedFiles((current) => (current.includes(name) ? current.filter((item) => item !== name) : [...current, name]))
+  const toggleFile = (name: string, event?: React.MouseEvent) => {
+    setSelectedFiles((current) => {
+      const currentIndex = availableFiles.findIndex(f => f.name === name);
+      
+      if (event?.shiftKey && current.length > 0) {
+        // Find the last clicked item in the current selection
+        // Since we don't store the exact last clicked index reliably across renders without a ref,
+        // we'll just use the last item in the current selection array as a heuristic
+        const lastSelectedName = current[current.length - 1];
+        const lastSelectedIndex = availableFiles.findIndex(f => f.name === lastSelectedName);
+        
+        if (lastSelectedIndex !== -1 && currentIndex !== -1) {
+          const start = Math.min(lastSelectedIndex, currentIndex);
+          const end = Math.max(lastSelectedIndex, currentIndex);
+          
+          const namesToSelect = availableFiles.slice(start, end + 1).map(f => f.name);
+          
+          // Add all names in range that aren't already selected
+          const newSelection = [...current];
+          for (const n of namesToSelect) {
+            if (!newSelection.includes(n)) {
+              newSelection.push(n);
+            }
+          }
+          return newSelection;
+        }
+      }
+      
+      return current.includes(name) ? current.filter((item) => item !== name) : [...current, name];
+    })
   }
 
   const summaryChips = useMemo(
@@ -207,9 +239,17 @@ export function RenderWorkbench() {
             {chip}
           </span>
         ))}
+        <button
+          type="button"
+          className="detail-pill"
+          onClick={() => setShowLogs((s) => !s)}
+          style={{ cursor: 'pointer', background: showLogs ? 'var(--surface-strong)' : '' }}
+        >
+          {showLogs ? '隐藏日志面板' : '显示日志面板'}
+        </button>
       </div>
 
-      <div className="render-layout">
+      <div className={`render-layout ${showLogs ? '' : 'render-layout--no-logs'}`}>
         <section className="render-section">
           <div className="detail-board__lead">
             <h3>工作流面板</h3>
@@ -257,16 +297,6 @@ export function RenderWorkbench() {
             </label>
           </div>
 
-          <label className="field">
-            <span>自定义命令</span>
-            <input
-              type="text"
-              value={customCmd}
-              onChange={(event) => setCustomCmd(event.target.value)}
-              placeholder="{mitsuba} -o {output} {input}"
-            />
-          </label>
-
           <div className="render-toggle-row">
             <label className="toggle-field">
               <input type="checkbox" checked={autoConvert} onChange={(event) => setAutoConvert(event.target.checked)} />
@@ -276,7 +306,23 @@ export function RenderWorkbench() {
               <input type="checkbox" checked={skipExisting} onChange={(event) => setSkipExisting(event.target.checked)} />
               <span>跳过已存在结果</span>
             </label>
+            <label className="toggle-field">
+              <input type="checkbox" checked={showCustomCmd} onChange={(event) => setShowCustomCmd(event.target.checked)} />
+              <span>开启自定义命令</span>
+            </label>
           </div>
+
+          {showCustomCmd && (
+            <label className="field" style={{ animation: 'fadeIn 0.2s ease' }}>
+              <span>自定义命令</span>
+              <input
+                type="text"
+                value={customCmd}
+                onChange={(event) => setCustomCmd(event.target.value)}
+                placeholder="{mitsuba} -o {output} {input}"
+              />
+            </label>
+          )}
 
           <div className="file-toolbar">
             <input
@@ -299,6 +345,23 @@ export function RenderWorkbench() {
             </div>
           </div>
 
+          <div className="render-actions">
+            <button
+              type="button"
+              className="theme-toggle render-actions--primary"
+              onClick={startRender}
+              disabled={selectedFiles.length === 0 || startRenderMutation.isPending}
+            >
+              启动渲染
+            </button>
+            <button type="button" className="theme-toggle render-actions--danger" onClick={stopRender} disabled={!activeTaskId || stopRenderMutation.isPending}>
+              停止渲染
+            </button>
+            <button type="button" className="theme-toggle" onClick={convertOutputs} disabled={convertMutation.isPending}>
+              转换EXR
+            </button>
+          </div>
+
           <div className="file-list">
             {inputsQuery.error instanceof Error ? (
               <FeedbackPanel
@@ -313,8 +376,11 @@ export function RenderWorkbench() {
               />
             ) : null}
             {availableFiles.map((item) => (
-              <label key={item.path} className="file-item">
-                <input type="checkbox" checked={selectedFiles.includes(item.name)} onChange={() => toggleFile(item.name)} />
+              <label key={item.path} className="file-item" onClick={(e) => {
+                e.preventDefault(); // Prevent default label behavior to handle shift click manually
+                toggleFile(item.name, e);
+              }}>
+                <input type="checkbox" checked={selectedFiles.includes(item.name)} readOnly />
                 <span>{item.name}</span>
               </label>
             ))}
@@ -322,76 +388,61 @@ export function RenderWorkbench() {
               <FeedbackPanel title="当前模式下没有可用输入文件" message="请检查输入目录是否已有对应格式的材质文件。" tone="empty" compact />
             ) : null}
           </div>
-
-          <div className="render-actions">
-            <button
-              type="button"
-              className="theme-toggle"
-              onClick={startRender}
-              disabled={selectedFiles.length === 0 || startRenderMutation.isPending}
-            >
-              启动渲染
-            </button>
-            <button type="button" className="theme-toggle" onClick={stopRender} disabled={!activeTaskId || stopRenderMutation.isPending}>
-              停止渲染
-            </button>
-            <button type="button" className="theme-toggle" onClick={convertOutputs} disabled={convertMutation.isPending}>
-              转换当前模式 EXR
-            </button>
-          </div>
         </section>
 
         <section className="render-section render-section--wide">
           <GalleryPreview items={outputsQuery.data?.items ?? []} isLoading={outputsQuery.isLoading} />
         </section>
 
-        <aside className="render-section">
-          <div className="detail-board__lead">
-            <h3>任务状态 / 日志</h3>
-          </div>
-
-          <div className="task-summary">
-            <div className="settings-row">
-              <span>Task ID</span>
-              <strong>{activeTaskId ?? '-'}</strong>
+        {showLogs && (
+          <aside className="render-section">
+            <div className="detail-board__lead">
+              <h3>任务状态 / 日志</h3>
             </div>
-            <div className="settings-row">
-              <span>Status</span>
-              <strong>{currentStatus}</strong>
+
+            <div className="task-summary">
+              <div className="settings-row">
+                <span>Task ID</span>
+                <strong>{activeTaskId ?? '-'}</strong>
+              </div>
+              <div className="settings-row">
+                <span>Status</span>
+                <strong>{currentStatus}</strong>
+              </div>
+              <div className="settings-row">
+                <span>Progress</span>
+                <strong>{progressValue}%</strong>
+              </div>
             </div>
-            <div className="settings-row">
-              <span>Progress</span>
-              <strong>{progressValue}%</strong>
+
+            <div className="progress-bar">
+              <div className="progress-bar__fill" style={{ width: `${progressValue}%` }} />
             </div>
-          </div>
 
-          <div className="progress-bar">
-            <div className="progress-bar__fill" style={{ width: `${progressValue}%` }} />
-          </div>
+            {taskStateMessage ? (
+              <FeedbackPanel
+                title={taskRecord?.status === 'failed' ? '渲染任务失败' : '渲染任务已取消'}
+                message={taskStateMessage}
+                tone={taskRecord?.status === 'failed' ? 'error' : 'info'}
+                compact
+              />
+            ) : null}
 
-          {taskStateMessage ? (
-            <FeedbackPanel
-              title={taskRecord?.status === 'failed' ? '渲染任务失败' : '渲染任务已取消'}
-              message={taskStateMessage}
-              tone={taskRecord?.status === 'failed' ? 'error' : 'info'}
-              compact
-            />
-          ) : null}
+            <div className="log-panel">
+              {logs.length > 0 ? (
+                logs.map((line, index) => (
+                  <div key={`${index}-${line.slice(0, 16)}`} className="log-line">
+                    {line}
+                  </div>
+                ))
+              ) : (
+                <FeedbackPanel title="等待任务日志" message="启动任务后会在这里持续推送执行日志。" tone="empty" compact />
+              )}
+            </div>
 
-          <div className="log-panel">
-            {logs.length > 0 ? (
-              logs.map((line, index) => (
-                <div key={`${index}-${line.slice(0, 16)}`} className="log-line">
-                  {line}
-                </div>
-              ))
-            ) : (
-              <FeedbackPanel title="等待任务日志" message="启动任务后会在这里持续推送执行日志。" tone="empty" compact />
-            )}
-          </div>
-
-          {mutationError instanceof Error ? <FeedbackPanel title="操作提交失败" message={mutationError.message} tone="error" compact /> : null}
-        </aside>
+            {mutationError instanceof Error ? <FeedbackPanel title="操作提交失败" message={mutationError.message} tone="error" compact /> : null}
+          </aside>
+        )}
       </div>
     </section>
   )

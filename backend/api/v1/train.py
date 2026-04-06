@@ -1,4 +1,5 @@
 from fastapi import APIRouter, HTTPException, Query
+from typing import Optional
 
 from backend.models.train import (
     HyperDecodeRequest,
@@ -25,7 +26,7 @@ def train_models() -> TrainModelsResponse:
 
 
 @router.get("/train/runs", response_model=TrainRunsResponse)
-def train_runs(project_variant: TrainProjectVariant | None = Query(default=None)) -> TrainRunsResponse:
+def train_runs(project_variant: Optional[TrainProjectVariant] = Query(default=None)) -> TrainRunsResponse:
     return train_service.list_runs(project_variant=project_variant)
 
 

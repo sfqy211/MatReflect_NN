@@ -5,14 +5,10 @@ import { AnalysisWorkbench } from './AnalysisWorkbench'
 import { ModelsWorkbench } from './ModelsWorkbench'
 import { RenderWorkbench } from './RenderWorkbench'
 
-type ThemeMode = 'dark' | 'light'
-
 type WorkspaceCanvasProps = {
   activeModule: ModuleKey
   galleryItems: FileListItem[]
   galleryCount: number
-  theme: ThemeMode
-  onThemeChange: (theme: ThemeMode) => void
   system?: SystemSummary
   systemError?: string
   systemLoading: boolean
@@ -106,49 +102,22 @@ function SettingRow({ label, value }: { label: string; value: string }) {
 }
 
 function SettingsCanvas({
-  theme,
-  onThemeChange,
   system,
   systemError,
   systemLoading,
   galleryCount,
-}: Pick<WorkspaceCanvasProps, 'theme' | 'onThemeChange' | 'system' | 'systemError' | 'systemLoading' | 'galleryCount'>) {
+}: Pick<WorkspaceCanvasProps, 'system' | 'systemError' | 'systemLoading' | 'galleryCount'>) {
   const pathKeys = system?.available_path_keys ?? []
 
   return (
     <section className="workspace-canvas">
       <div className="workspace-hero">
         <div>
-          <h2>设置</h2>
+          <h2>设置与系统状态</h2>
         </div>
       </div>
 
       <div className="settings-grid">
-        <section className="settings-card">
-          <div className="detail-board__lead">
-            <h3>外观</h3>
-          </div>
-          <div className="settings-actions">
-            <button
-              type="button"
-              className={theme === 'light' ? 'settings-action settings-action--active' : 'settings-action'}
-              onClick={() => onThemeChange('light')}
-            >
-              浅色
-            </button>
-            <button
-              type="button"
-              className={theme === 'dark' ? 'settings-action settings-action--active' : 'settings-action'}
-              onClick={() => onThemeChange('dark')}
-            >
-              深色
-            </button>
-          </div>
-          <div className="detail-pill-grid">
-            <span className="detail-pill">当前主题: {theme === 'dark' ? '深色' : '浅色'}</span>
-          </div>
-        </section>
-
         <section className="settings-card">
           <div className="detail-board__lead">
             <h3>系统状态</h3>
@@ -206,8 +175,6 @@ export function WorkspaceCanvas({
   activeModule,
   galleryItems,
   galleryCount,
-  theme,
-  onThemeChange,
   system,
   systemError,
   systemLoading,
@@ -227,8 +194,6 @@ export function WorkspaceCanvas({
   if (activeModule === 'settings') {
     return (
       <SettingsCanvas
-        theme={theme}
-        onThemeChange={onThemeChange}
         system={system}
         systemError={systemError}
         systemLoading={systemLoading}

@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import type { FileListItem } from '../types/api'
 import { toBackendUrl } from '../lib/api'
 import { FeedbackPanel } from './FeedbackPanel'
@@ -7,9 +8,26 @@ type GalleryPreviewProps = {
   isLoading: boolean
 }
 
+function formatDisplayName(name: string) {
+  // Remove the timestamp suffix like _13_204338
+  const withoutTimestamp = name.replace(/_\d{1,2}_\d{6}/, '')
+  return withoutTimestamp
+}
+
 export function GalleryPreview({ items, isLoading }: GalleryPreviewProps) {
+  const [selectedImage, setSelectedImage] = useState<string | null>(null)
+
   return (
     <section className="gallery-panel">
+      {selectedImage && (
+        <div 
+          className="fullscreen-modal" 
+          onClick={() => setSelectedImage(null)}
+          title="点击关闭"
+        >
+          <img src={selectedImage} alt="Detailed preview" className="fullscreen-modal__image" />
+        </div>
+      )}
       <div className="gallery-header">
         <div className="panel-head">
           <h2>输出画廊预览</h2>
@@ -26,13 +44,26 @@ export function GalleryPreview({ items, isLoading }: GalleryPreviewProps) {
             <article key={item.path} className="gallery-item">
               <div className="gallery-item__thumb">
                 {item.preview_url ? (
-                  <img src={toBackendUrl(item.preview_url)} alt={item.name} className="gallery-item__image" />
+                  <img 
+                    src={toBackendUrl(item.preview_url)} 
+                    alt={item.name} 
+                    className="gallery-item__image"
+                    onClick={() => {
+                      const url = toBackendUrl(item.preview_url);
+                      if (url) {
+                        setSelectedImage(url)
+                      }
+                    }}
+                    style={{ cursor: 'zoom-in' }}
+                  />
                 ) : (
                   <span>{String(index + 1).padStart(2, '0')}</span>
                 )}
               </div>
-              <div className="gallery-item__meta">
-                <strong>{item.name}</strong>
+              <div className="gallery-item__meta" title={item.name}>
+                <strong style={{ wordBreak: 'break-word', fontSize: '0.9rem', lineHeight: '1.2' }}>
+                  {formatDisplayName(item.name)}
+                </strong>
                 <span>{Math.max(1, Math.round(item.size / 1024))} KB</span>
               </div>
             </article>

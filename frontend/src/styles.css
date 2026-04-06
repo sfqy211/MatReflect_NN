@@ -171,10 +171,16 @@ button {
   grid-template-columns: 290px minmax(0, 1fr);
   gap: 22px;
   align-items: start;
+  transition: grid-template-columns 0.4s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .workspace-grid--collapsed {
   grid-template-columns: 92px minmax(0, 1fr);
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 .module-rail,
@@ -204,6 +210,7 @@ button {
   display: flex;
   flex-direction: column;
   gap: 18px;
+  height: calc(100vh - 40px);
 }
 
 .module-rail--collapsed {
@@ -476,6 +483,10 @@ button {
   gap: 12px;
 }
 
+.render-layout--no-logs {
+  grid-template-columns: 340px minmax(0, 1fr);
+}
+
 .analysis-layout {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -709,11 +720,43 @@ button {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+  margin-bottom: 12px;
+}
+
+.render-actions--primary {
+  background: color-mix(in oklab, var(--accent) 80%, transparent);
+  color: var(--page-bg);
+  border-color: transparent;
+  font-weight: 700;
+}
+
+.render-actions--primary:hover {
+  background: var(--accent);
+  color: var(--page-bg);
+  border-color: transparent;
+}
+
+.render-actions--danger:hover {
+  background: color-mix(in oklab, var(--danger) 80%, transparent);
+  color: white;
+  border-color: transparent;
 }
 
 .task-summary {
   display: grid;
   margin-bottom: 12px;
+}
+
+.file-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0.4rem 0.6rem;
+  border-radius: 6px;
+  background: color-mix(in oklab, var(--surface-soft) 12%, transparent);
+  color: var(--text-base);
+  cursor: pointer;
+  user-select: none;
 }
 
 .progress-bar {
@@ -877,8 +920,28 @@ button {
 
 .gallery-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 8px;
+}
+
+.fullscreen-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: rgba(0, 0, 0, 0.85);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: zoom-out;
+}
+
+.fullscreen-modal__image {
+  max-width: 90vw;
+  max-height: 90vh;
+  object-fit: contain;
+  border-radius: 8px;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.4);
 }
 
 .gallery-item {
