@@ -30,6 +30,8 @@ export type FileListResponse = {
 }
 
 export type RenderMode = 'brdfs' | 'fullbin' | 'npy'
+export type RenderSourceModel = 'gt' | 'neural' | 'hyperbrdf' | 'decoupled'
+export type RenderReconstructModel = 'neural' | 'hyperbrdf' | 'decoupled'
 export type AnalysisImageSet = 'brdfs' | 'fullbin' | 'npy' | 'grids' | 'comparisons'
 
 export type RenderSceneItem = {
@@ -67,6 +69,27 @@ export type RenderBatchRequest = {
   auto_convert: boolean
   skip_existing: boolean
   custom_cmd: string | null
+}
+
+export type RenderReconstructRequest = {
+  model_key: RenderReconstructModel
+  checkpoint_path: string
+  merl_dir: string
+  output_dir: string
+  selected_materials: string[]
+  conda_env: string
+  dataset: TrainDataset
+  sparse_samples: number
+  cuda_device: string
+  neural_device: 'cpu' | 'cuda'
+  neural_epochs: number
+  scene_path: string
+  integrator_type: string
+  sample_count: number
+  auto_convert: boolean
+  skip_existing: boolean
+  custom_cmd: string | null
+  render_after_reconstruct: boolean
 }
 
 export type TaskStartResponse = {

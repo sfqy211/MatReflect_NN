@@ -4,6 +4,9 @@ import asyncio
 import locale
 import os
 import re
+import shutil
+import subprocess
+import sys
 import xml.etree.ElementTree as ET
 from datetime import datetime
 from pathlib import Path
@@ -17,9 +20,11 @@ from backend.models.render import (
     RenderFilesResponse,
     RenderMode,
     RenderOutputFilesResponse,
+    RenderReconstructRequest,
     RenderSceneItem,
     RenderScenesResponse,
 )
+from backend.models.train import TrainProjectVariant
 from backend.services.file_service import build_preview_url
 from backend.services.task_manager import task_manager
 
@@ -28,6 +33,29 @@ MERL_STANDARD_FILE_SIZE = 12 + 90 * 90 * 180 * 3 * 8
 MERL_FULL_FILE_SIZE = 12 + 90 * 90 * 360 * 3 * 8
 TEMP_XML_ROOT = RUNTIME_ROOT / "render_xml"
 TEMP_XML_ROOT.mkdir(parents=True, exist_ok=True)
+
+NEURAL_BRDF_DIR = PROJECT_ROOT / "Neural-BRDF"
+HYPER_BRDF_DIR = PROJECT_ROOT / "HyperBRDF"
+DECOUPLED_HB_DIR = PROJECT_ROOT / "DecoupledHyperBRDF"
+DATA_INPUTS_NPY = PROJECT_ROOT / "data" / "inputs" / "npy"
+DATA_INPUTS_FULLBIN = PROJECT_ROOT / "data" / "inputs" / "fullbin"
+BINARY_TO_NBRDF_DIR = NEURAL_BRDF_DIR / "binary_to_nbrdf"
+PYTORCH_SCRIPT = BINARY_TO_NBRDF_DIR / "pytorch_code" / "train_NBRDF_pytorch.py"
+
+HB_RENDER_PROJECTS: dict[TrainProjectVariant, dict[str, Path | str]] = {
+    "hyperbrdf": {
+        "label": "HyperBRDF",
+        "dir": HYPER_BRDF_DIR,
+        "test_script": HYPER_BRDF_DIR / "test.py",
+        "pt_to_fullbin_script": HYPER_BRDF_DIR / "pt_to_fullmerl.py",
+    },
+    "decoupled": {
+        "label": "DecoupledHyperBRDF",
+        "dir": DECOUPLED_HB_DIR,
+        "test_script": DECOUPLED_HB_DIR / "test.py",
+        "pt_to_fullbin_script": DECOUPLED_HB_DIR / "pt_to_fullmerl.py",
+    },
+}
 
 
 def decode_subprocess_output(raw: bytes | str | None) -> str:
@@ -46,6 +74,15 @@ def decode_subprocess_output(raw: bytes | str | None) -> str:
         except UnicodeDecodeError:
             continue
     return raw.decode("utf-8", errors="replace")
+
+
+def ensure_exists(path: Path, *, file_ok: bool = False) -> None:
+    if file_ok:
+        if not path.exists() or not path.is_file():
+            raise FileNotFoundError(path)
+        return
+    if not path.exists() or not path.is_dir():
+        raise FileNotFoundError(path)
 
 
 def detect_merl_variant(file_path: Path) -> str | None:
@@ -122,10 +159,6 @@ def resolve_scene_resource(scene_dir: Path, value: str) -> Path:
         (PROJECT_ROOT / "scene" / cleaned).resolve(),
         (scene_dir / Path(cleaned).name).resolve(),
     ]
-    if "dj_xml/" in cleaned:
-        candidates.append((scene_dir / cleaned.split("dj_xml/")[-1]).resolve())
-    if "old_xml/" in cleaned:
-        candidates.append((scene_dir / cleaned.split("old_xml/")[-1]).resolve())
     for candidate in candidates:
         if candidate.exists():
             return candidate
@@ -142,16 +175,8 @@ def find_target_bsdf(root: ET.Element) -> ET.Element | None:
     for bsdf in root.iter("bsdf"):
         if bsdf.get("id") == "Material":
             return bsdf
-    preferred_types = {
-        "merl",
-        "fullmerl",
-        "nbrdf_npy",
-        "merl_accelerated",
-        "SIREN_h21l5_nbrdf_npy",
-        "SIREN_gray_h21l5_nbrdf_npy",
-    }
     for bsdf in root.iter("bsdf"):
-        if bsdf.get("type") in preferred_types:
+        if bsdf.get("type") in {"merl", "fullmerl", "nbrdf_npy", "merl_accelerated", "SIREN_h21l5_nbrdf_npy", "SIREN_gray_h21l5_nbrdf_npy"}:
             return bsdf
     return None
 
@@ -160,56 +185,18 @@ def configure_bsdf_smart(bsdf_node: ET.Element, filename: str) -> None:
     for child in list(bsdf_node):
         if child.tag == "bsdf":
             bsdf_node.remove(child)
-    name = filename.lower()
-    is_metal = False
-    metal_material = "Cu"
-    if "gold" in name:
-        is_metal = True
-        metal_material = "Au"
-    elif "silver" in name:
-        is_metal = True
-        metal_material = "Ag"
-    elif "aluminium" in name or "alum-" in name:
-        is_metal = True
-        metal_material = "Al"
-    elif "chrome" in name or "steel" in name or "ss440" in name:
-        is_metal = True
-        metal_material = "Cr"
-    elif "nickel" in name:
-        is_metal = True
-        metal_material = "Cr"
-    elif "tungsten" in name:
-        is_metal = True
-        metal_material = "W"
-    elif "brass" in name or "bronze" in name or "copper" in name:
-        is_metal = True
-        metal_material = "Cu"
-    elif "hematite" in name:
-        is_metal = True
-        metal_material = "Cr"
-    elif "metallic" in name:
-        is_metal = True
-        metal_material = "Al"
-    if is_metal:
-        guide = ET.SubElement(bsdf_node, "bsdf", {"type": "roughconductor"})
-        ET.SubElement(guide, "string", {"name": "material", "value": metal_material})
-        alpha_val = "0.02"
-        if "mirror" in name or "polished" in name or "smooth" in name or "specular" in name:
-            alpha_val = "0.005"
-        elif "chrome" in name or "steel" in name or "silver" in name or "gold" in name:
-            alpha_val = "0.01"
-        elif "alum" in name or "aluminium" in name or "aluminum" in name:
-            alpha_val = "0.015"
-        elif "brushed" in name or "matte" in name or "satin" in name:
-            alpha_val = "0.05"
-        elif "rough" in name:
-            alpha_val = "0.1"
-        ET.SubElement(guide, "float", {"name": "alpha", "value": alpha_val})
-        return
     guide = ET.SubElement(bsdf_node, "bsdf", {"type": "roughplastic"})
     ET.SubElement(guide, "string", {"name": "intIOR", "value": "polypropylene"})
     ET.SubElement(guide, "spectrum", {"name": "diffuseReflectance", "value": "0.5 0.5 0.5"})
-    ET.SubElement(guide, "float", {"name": "alpha", "value": "0.1"})
+    alpha = "0.1"
+    lowered = filename.lower()
+    if any(token in lowered for token in ("chrome", "steel", "gold", "silver", "mirror")):
+        guide.set("type", "roughconductor")
+        for child in list(guide):
+            guide.remove(child)
+        ET.SubElement(guide, "string", {"name": "material", "value": "Cr"})
+        alpha = "0.01"
+    ET.SubElement(guide, "float", {"name": "alpha", "value": alpha})
 
 
 def update_bsdf_for_mode(
@@ -220,9 +207,8 @@ def update_bsdf_for_mode(
     mitsuba_dir: Path,
 ) -> str:
     existing_type = bsdf_node.get("type", "")
-    name_keys = {"filename", "binary", "nn_basename", "nn_basename_r", "nn_basename_g", "nn_basename_b"}
     for child in list(bsdf_node):
-        if child.get("name") in name_keys:
+        if child.get("name") in {"filename", "binary", "nn_basename", "nn_basename_r", "nn_basename_g", "nn_basename_b"}:
             bsdf_node.remove(child)
     if render_mode == "brdfs":
         if existing_type == "merl_accelerated" and has_merl_accelerated(mitsuba_dir):
@@ -236,19 +222,17 @@ def update_bsdf_for_mode(
         configure_bsdf_smart(bsdf_node, filename)
         return selected_type
     if render_mode == "fullbin":
-        detected_type = detect_merl_variant(file_path)
-        if detected_type == "merl":
+        if detect_merl_variant(file_path) == "merl":
             bsdf_node.set("type", "merl")
             ET.SubElement(bsdf_node, "string", {"name": "binary", "value": str(file_path).replace("\\", "/")})
+            selected_type = "merl"
         else:
             bsdf_node.set("type", "fullmerl")
             ET.SubElement(bsdf_node, "string", {"name": "filename", "value": str(file_path).replace("\\", "/")})
+            selected_type = "fullmerl"
         configure_bsdf_smart(bsdf_node, filename)
-        return detected_type or "fullmerl_unknown"
+        return selected_type
     base_path = normalize_npy_base_path(file_path)
-    for child in list(bsdf_node):
-        if child.tag == "bsdf":
-            bsdf_node.remove(child)
     if existing_type == "SIREN_gray_h21l5_nbrdf_npy":
         bsdf_node.set("type", existing_type)
         r_path, g_path, b_path = split_rgb_base_paths(base_path)
@@ -302,19 +286,39 @@ class RenderService:
             "npy": "render_outputs_npy_png",
         }[render_mode]
 
+    def _project_config(self, project_variant: TrainProjectVariant) -> dict[str, Path | str]:
+        return HB_RENDER_PROJECTS[project_variant]
+
+    def _default_conda_env(self, project_variant: TrainProjectVariant) -> str:
+        return "decoupledhyperbrdf" if project_variant == "decoupled" else "hyperbrdf"
+
+    def _make_hyper_env(self, project_variant: TrainProjectVariant) -> dict[str, str]:
+        config = self._project_config(project_variant)
+        env = os.environ.copy()
+        env["PYTHONUNBUFFERED"] = "1"
+        env["PYTHONPATH"] = os.pathsep.join([str(PROJECT_ROOT), str(config["dir"]), env.get("PYTHONPATH", "")]).rstrip(os.pathsep)
+        return env
+
+    def _make_neural_env(self) -> dict[str, str]:
+        env = os.environ.copy()
+        env["PYTHONUNBUFFERED"] = "1"
+        env["PYTHONPATH"] = os.pathsep.join([str(BINARY_TO_NBRDF_DIR), str(PYTORCH_SCRIPT.parent), env.get("PYTHONPATH", "")]).rstrip(os.pathsep)
+        return env
+
+    def _python_runner(self, conda_env: str | None = None) -> tuple[list[str], bool]:
+        conda = shutil.which("conda")
+        if conda and conda_env:
+            return [conda, "run", "--no-capture-output", "-n", conda_env, "python"], True
+        return [sys.executable], False
+
     def list_scenes(self) -> RenderScenesResponse:
         default_scene = get_default_scene_path()
-        items = [
-            RenderSceneItem(
-                label=scene_path.name,
-                path=scene_path.as_posix(),
-                is_default=default_scene == scene_path,
-            )
-            for scene_path in list_scene_xmls()
-        ]
         return RenderScenesResponse(
             default_scene=default_scene.as_posix() if default_scene else None,
-            items=items,
+            items=[
+                RenderSceneItem(label=scene_path.name, path=scene_path.as_posix(), is_default=scene_path == default_scene)
+                for scene_path in list_scene_xmls()
+            ],
         )
 
     def list_input_files(self, render_mode: RenderMode, page: int = 1, page_size: int = 200, search: str = "") -> RenderFilesResponse:
@@ -328,48 +332,44 @@ class RenderService:
             entries = sorted(input_dir.glob("*.fullbin"))
         if search:
             entries = [entry for entry in entries if search.lower() in entry.name.lower()]
-        total = len(entries)
         paged = entries[(page - 1) * page_size : page * page_size]
-        items = [
-            FileListItem(
-                name=entry.name,
-                path=str(entry.resolve()),
-                size=entry.stat().st_size,
-                modified_at=datetime.fromtimestamp(entry.stat().st_mtime),
-                is_dir=False,
-            )
-            for entry in paged
-        ]
         return RenderFilesResponse(
             render_mode=render_mode,
             input_dir=str(input_dir.resolve()),
-            total=total,
-            items=items,
+            total=len(entries),
+            items=[
+                FileListItem(
+                    name=entry.name,
+                    path=str(entry.resolve()),
+                    size=entry.stat().st_size,
+                    modified_at=datetime.fromtimestamp(entry.stat().st_mtime),
+                    is_dir=False,
+                )
+                for entry in paged
+            ],
         )
 
     def list_output_files(self, render_mode: RenderMode, page: int = 1, page_size: int = 24) -> RenderOutputFilesResponse:
         output_dir = self._output_dir(render_mode) / "png"
         output_dir.mkdir(parents=True, exist_ok=True)
         entries = sorted(output_dir.glob("*.png"), key=lambda entry: entry.stat().st_mtime, reverse=True)
-        total = len(entries)
         paged = entries[(page - 1) * page_size : page * page_size]
-        items = [
-            FileListItem(
-                name=entry.name,
-                path=str(entry.resolve()),
-                size=entry.stat().st_size,
-                modified_at=datetime.fromtimestamp(entry.stat().st_mtime),
-                is_dir=False,
-                preview_url=build_preview_url(entry),
-            )
-            for entry in paged
-        ]
         return RenderOutputFilesResponse(
             render_mode=render_mode,
             path_key=self._output_path_key(render_mode),
             resolved_path=str(output_dir.resolve()),
-            total=total,
-            items=items,
+            total=len(entries),
+            items=[
+                FileListItem(
+                    name=entry.name,
+                    path=str(entry.resolve()),
+                    size=entry.stat().st_size,
+                    modified_at=datetime.fromtimestamp(entry.stat().st_mtime),
+                    is_dir=False,
+                    preview_url=build_preview_url(entry),
+                )
+                for entry in paged
+            ],
         )
 
     def _resolve_scene_path(self, requested_path: str) -> Path:
@@ -397,24 +397,67 @@ class RenderService:
         total_width = len(content)
         if total_width == 0:
             return None
-        done_count = content.count("+")
-        percent = done_count / total_width
-        overall_percent = (index + percent) / total
-        return min(99, int(overall_percent * 100))
+        return min(99, int(((index + content.count("+") / total_width) / total) * 100))
 
-    async def _write_log(self, task_id: str, log_path: Path, message: str, *, status: str | None = None, progress: int | None = None, event: str = "log", result_payload: dict | None = None) -> None:
+    async def _write_log(
+        self,
+        task_id: str,
+        log_path: Path,
+        message: str,
+        *,
+        status: str | None = None,
+        progress: int | None = None,
+        event: str = "log",
+        result_payload: dict | None = None,
+    ) -> None:
         clean_message = message.replace("\r", "").replace("\b", "")
         with log_path.open("a", encoding="utf-8") as handle:
             handle.write(clean_message + "\n")
-        await task_manager.update(
-            task_id,
-            status=status,
-            progress=progress,
-            message=clean_message,
-            log_path=str(log_path),
-            result_payload=result_payload,
-            event=event,
-        )
+        await task_manager.update(task_id, status=status, progress=progress, message=clean_message, log_path=str(log_path), result_payload=result_payload, event=event)
+
+    async def _run_command(
+        self,
+        task_id: str,
+        log_path: Path,
+        cmd: list[str],
+        *,
+        cwd: Path,
+        env: dict[str, str],
+        progress: int | None = None,
+        start_message: str,
+        use_shell: bool = False,
+        cancel_event: asyncio.Event | None = None,
+    ) -> int:
+        await self._write_log(task_id, log_path, start_message, status="running", progress=progress)
+        if use_shell:
+            process = await asyncio.create_subprocess_shell(subprocess.list2cmdline(cmd), stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT, cwd=str(cwd), env=env)
+        else:
+            process = await asyncio.create_subprocess_exec(*cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT, cwd=str(cwd), env=env)
+        self._processes[task_id] = process
+        try:
+            while True:
+                if cancel_event and cancel_event.is_set():
+                    if process.returncode is None:
+                        process.terminate()
+                        await process.wait()
+                    return -1
+                try:
+                    line = await asyncio.wait_for(process.stdout.readline(), timeout=0.5) if process.stdout else b""
+                except asyncio.TimeoutError:
+                    if process.returncode is not None:
+                        break
+                    continue
+                if not line:
+                    if process.returncode is None:
+                        await asyncio.sleep(0.1)
+                        continue
+                    break
+                text = decode_subprocess_output(line).strip()
+                if text:
+                    await self._write_log(task_id, log_path, text, progress=progress)
+            return await process.wait()
+        finally:
+            self._processes.pop(task_id, None)
 
     async def start_batch(self, request: RenderBatchRequest):
         log_path = LOGS_ROOT / f"render_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.log"
@@ -422,6 +465,14 @@ class RenderService:
         cancel_event = asyncio.Event()
         self._cancel_events[record.task_id] = cancel_event
         asyncio.create_task(self._run_batch(record.task_id, request, log_path, cancel_event))
+        return record
+
+    async def start_reconstruct(self, request: RenderReconstructRequest):
+        log_path = LOGS_ROOT / f"render_reconstruct_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.log"
+        record = task_manager.create("render_reconstruct", "Reconstruct task queued", log_path=str(log_path))
+        cancel_event = asyncio.Event()
+        self._cancel_events[record.task_id] = cancel_event
+        asyncio.create_task(self._run_reconstruct(record.task_id, request, log_path, cancel_event))
         return record
 
     async def stop_task(self, task_id: str) -> bool:
@@ -449,218 +500,173 @@ class RenderService:
             return None
         logs: list[str] = []
         if record.log_path and Path(record.log_path).exists():
-            lines = Path(record.log_path).read_text(encoding="utf-8", errors="replace").splitlines()
-            logs = lines[-limit:]
+            logs = Path(record.log_path).read_text(encoding="utf-8", errors="replace").splitlines()[-limit:]
         return TaskDetailResponse(record=record, logs=logs)
 
     async def _run_batch(self, task_id: str, request: RenderBatchRequest, log_path: Path, cancel_event: asyncio.Event) -> None:
         try:
-            scene_path = self._resolve_scene_path(request.scene_path)
-            input_dir = self._input_dir(request.render_mode)
-            output_dir = self._output_dir(request.render_mode)
-            output_dir.mkdir(parents=True, exist_ok=True)
-            exr_dir = output_dir / "exr"
-            png_dir = output_dir / "png"
-            exr_dir.mkdir(parents=True, exist_ok=True)
-            png_dir.mkdir(parents=True, exist_ok=True)
-
-            if not request.selected_files:
-                await self._write_log(task_id, log_path, "未选择渲染文件", status="failed", progress=100, event="done")
-                return
-
-            paths = get_mitsuba_paths()
-            mitsuba_exe = paths["mitsuba_exe"]
-            mtsutil_exe = paths["mtsutil_exe"]
-            mitsuba_dir = paths["mitsuba_dir"]
-            if not mitsuba_exe.exists():
-                await self._write_log(task_id, log_path, f"未找到 Mitsuba 可执行文件: {mitsuba_exe}", status="failed", progress=100, event="done")
-                return
-
-            scene_xml_text = scene_path.read_text(encoding="utf-8")
-            timestamp = datetime.now().strftime("%d_%H%M%S")
-            total = len(request.selected_files)
-            generated_pngs: list[str] = []
-
-            await self._write_log(task_id, log_path, "渲染任务已启动", status="running", progress=0)
-
-            for index, filename in enumerate(request.selected_files):
-                if cancel_event.is_set():
-                    await self._write_log(task_id, log_path, "渲染已停止", status="cancelled", progress=min(99, int(index / total * 100)), event="done")
-                    return
-
-                file_path = input_dir / filename
-                if not file_path.exists():
-                    await self._write_log(task_id, log_path, f"跳过不存在的输入文件: {filename}")
-                    continue
-
-                basename = file_path.stem
-                exr_out = exr_dir / f"{basename}_{timestamp}.exr"
-                png_out = png_dir / f"{basename}_{timestamp}.png"
-
-                if request.skip_existing:
-                    target_dir = png_dir if request.auto_convert else exr_dir
-                    suffix = ".png" if request.auto_convert else ".exr"
-                    if any(
-                        (entry.stem == basename or entry.stem.startswith(f"{basename}_")) and entry.suffix.lower() == suffix
-                        for entry in target_dir.glob(f"*{suffix}")
-                    ):
-                        await self._write_log(
-                            task_id,
-                            log_path,
-                            f"[{index + 1}/{total}] 跳过已存在结果: {basename}",
-                            progress=min(99, int((index + 1) / total * 100)),
-                        )
-                        continue
-
-                root = ET.fromstring(scene_xml_text)
-                update_integrator_and_sampler(root, request.integrator_type, request.sample_count)
-                ensure_hdr_film(root)
-                scene_dir = scene_path.parent
-
-                for string_node in root.iter("string"):
-                    if string_node.get("name") == "filename":
-                        value = string_node.get("value")
-                        if value and not os.path.isabs(value) and not is_placeholder_value(value):
-                            resolved = resolve_scene_resource(scene_dir, value)
-                            string_node.set("value", resolved.as_posix())
-
-                target_bsdf = find_target_bsdf(root)
-                if target_bsdf is None:
-                    await self._write_log(task_id, log_path, "场景中未找到可替换材质节点", status="failed", progress=100, event="done")
-                    return
-
-                selected_type = update_bsdf_for_mode(target_bsdf, request.render_mode, file_path, filename, mitsuba_dir)
-                tree = ET.ElementTree(root)
-                temp_xml = TEMP_XML_ROOT / f"{basename}_{timestamp}_{index}.xml"
-                tree.write(temp_xml, encoding="utf-8", xml_declaration=True)
-
-                if request.custom_cmd:
-                    final_cmd = (
-                        request.custom_cmd.replace("{mitsuba}", mitsuba_exe.as_posix())
-                        .replace("{input}", temp_xml.as_posix())
-                        .replace("{output}", exr_out.as_posix())
-                    )
-                    cmd = final_cmd.split()
-                else:
-                    cmd = [str(mitsuba_exe), "-o", str(exr_out), str(temp_xml)]
-
-                env = os.environ.copy()
-                env["PYTHONUNBUFFERED"] = "1"
-                env["PATH"] = str(mitsuba_dir) + os.pathsep + env.get("PATH", "")
-                await self._write_log(task_id, log_path, f"[{index + 1}/{total}] 渲染 {filename} ({selected_type})")
-
-                process = await asyncio.create_subprocess_exec(
-                    *cmd,
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.STDOUT,
-                    env=env,
-                )
-                self._processes[task_id] = process
-
-                while True:
-                    if cancel_event.is_set():
-                        if process.returncode is None:
-                            process.terminate()
-                            await process.wait()
-                        await self._write_log(task_id, log_path, "渲染已停止", status="cancelled", progress=min(99, int(index / total * 100)), event="done")
-                        return
-                    try:
-                        line = (
-                            await asyncio.wait_for(process.stdout.readline(), timeout=0.5)
-                            if process.stdout
-                            else b""
-                        )
-                    except asyncio.TimeoutError:
-                        if process.returncode is not None:
-                            break
-                        continue
-                    if not line:
-                        if process.returncode is None:
-                            await asyncio.sleep(0.1)
-                            continue
-                        break
-                    text = decode_subprocess_output(line).strip()
-                    if text:
-                        parsed_progress = self._parse_progress(text, index, total)
-                        await self._write_log(task_id, log_path, text, progress=parsed_progress)
-
-                return_code = await process.wait()
-                self._processes.pop(task_id, None)
-                if return_code != 0:
-                    await self._write_log(task_id, log_path, f"渲染失败，退出码: {return_code}", status="failed", progress=100, event="done")
-                    return
-
-                if exr_out.exists():
-                    await self._write_log(task_id, log_path, f"EXR 输出完成: {exr_out.name}")
-                    if request.auto_convert:
-                        if not mtsutil_exe.exists():
-                            await self._write_log(task_id, log_path, f"未找到 mtsutil: {mtsutil_exe}")
-                        else:
-                            convert_process = await asyncio.create_subprocess_exec(
-                                str(mtsutil_exe),
-                                "tonemap",
-                                "-o",
-                                str(png_out),
-                                str(exr_out),
-                                stdout=asyncio.subprocess.PIPE,
-                                stderr=asyncio.subprocess.STDOUT,
-                                env=env,
-                            )
-                            convert_output, _ = await convert_process.communicate()
-                            text = decode_subprocess_output(convert_output).strip()
-                            if text:
-                                await self._write_log(task_id, log_path, text)
-                            if convert_process.returncode == 0 and png_out.exists():
-                                generated_pngs.append(png_out.name)
-                                await self._write_log(task_id, log_path, f"PNG 输出完成: {png_out.name}")
-                else:
-                    fallback_png = exr_out.with_suffix(".png")
-                    if fallback_png.exists():
-                        fallback_png.replace(png_out)
-                        generated_pngs.append(png_out.name)
-                        await self._write_log(task_id, log_path, f"PNG 输出完成: {png_out.name}")
-                    else:
-                        await self._write_log(task_id, log_path, "未找到 EXR/PNG 输出")
-
-                await task_manager.update(
-                    task_id,
-                    status="running",
-                    progress=min(99, int((index + 1) / total * 100)),
-                    message=f"已完成 {index + 1}/{total}: {filename}",
-                    result_payload={
-                        "render_mode": request.render_mode,
-                        "output_path_key": self._output_path_key(request.render_mode),
-                        "generated_pngs": generated_pngs,
-                    },
-                    event="log",
-                )
-
-            await self._write_log(
-                task_id,
-                log_path,
-                "渲染任务完成",
-                status="success",
-                progress=100,
-                event="done",
-                result_payload={
-                    "render_mode": request.render_mode,
-                    "output_path_key": self._output_path_key(request.render_mode),
-                    "generated_pngs": generated_pngs,
-                },
-            )
+            await self._execute_render_batch(task_id, request, log_path, cancel_event)
         except Exception as exc:
-            await self._write_log(task_id, log_path, f"渲染任务异常: {exc}", status="failed", progress=100, event="done")
+            await self._write_log(task_id, log_path, f"Render task failed: {exc}", status="failed", progress=100, event="done")
         finally:
-            self._processes.pop(task_id, None)
             self._cancel_events.pop(task_id, None)
+            self._processes.pop(task_id, None)
+
+    async def _run_reconstruct(self, task_id: str, request: RenderReconstructRequest, log_path: Path, cancel_event: asyncio.Event) -> None:
+        try:
+            merl_dir = Path(request.merl_dir).resolve()
+            ensure_exists(merl_dir)
+            if not request.selected_materials:
+                await self._write_log(task_id, log_path, "No MERL materials selected", status="failed", progress=100, event="done")
+                return
+
+            if request.model_key == "neural":
+                output_dir = Path(request.output_dir).resolve() if request.output_dir else DATA_INPUTS_NPY
+                output_dir.mkdir(parents=True, exist_ok=True)
+                env = self._make_neural_env()
+                runner, use_shell = self._python_runner("nbrdf-train")
+                generated_files: list[str] = []
+                total = len(request.selected_materials)
+                for index, material in enumerate(request.selected_materials):
+                    binary_path = merl_dir / material
+                    ensure_exists(binary_path, file_ok=True)
+                    cmd = [*runner, str(PYTORCH_SCRIPT), str(binary_path), "--outpath", str(output_dir), "--epochs", str(request.neural_epochs), "--device", request.neural_device]
+                    return_code = await self._run_command(task_id, log_path, cmd, cwd=PYTORCH_SCRIPT.parent, env=env, progress=min(95, int(index / total * 100)), start_message=f"[{index + 1}/{total}] Reconstruct NBRDF: {material}", use_shell=use_shell, cancel_event=cancel_event)
+                    if return_code != 0:
+                        await self._write_log(task_id, log_path, f"Neural reconstruction failed: {material}", status="failed", progress=100, event="done")
+                        return
+                    generated_files.append(f"{Path(material).stem}_fc1.npy")
+                await self._write_log(task_id, log_path, "Neural-BRDF reconstruction completed", status="success", progress=100, event="done", result_payload={"pipeline": "reconstruct_only", "model_key": request.model_key, "output_dir": str(output_dir), "generated_files": generated_files})
+                return
+
+            project_variant = request.model_key
+            config = self._project_config(project_variant)
+            checkpoint_path = Path(request.checkpoint_path).resolve()
+            ensure_exists(checkpoint_path, file_ok=True)
+            output_dir = Path(request.output_dir).resolve() if request.output_dir else DATA_INPUTS_FULLBIN
+            output_dir.mkdir(parents=True, exist_ok=True)
+            pt_dir = (RUNTIME_ROOT / "render_pipeline" / task_id / "pt").resolve()
+            pt_dir.mkdir(parents=True, exist_ok=True)
+            env = self._make_hyper_env(project_variant)
+            runner, use_shell = self._python_runner(request.conda_env or self._default_conda_env(project_variant))
+            extracted_pts: list[str] = []
+            total = len(request.selected_materials)
+
+            for index, material in enumerate(request.selected_materials):
+                binary_path = merl_dir / material
+                ensure_exists(binary_path, file_ok=True)
+                before_pts = {entry.name for entry in pt_dir.glob("*.pt")}
+                cmd = [*runner, str(config["test_script"]), "--model", str(checkpoint_path), "--binary", str(binary_path), "--destdir", str(pt_dir), "--dataset", request.dataset]
+                if project_variant == "decoupled":
+                    cmd.extend(["--sparse_samples", str(request.sparse_samples)])
+                return_code = await self._run_command(task_id, log_path, cmd, cwd=Path(config["dir"]), env=env, progress=min(45, 5 + int(index / total * 40)), start_message=f"[{index + 1}/{total}] Extract PT: {material}", use_shell=use_shell, cancel_event=cancel_event)
+                if return_code != 0:
+                    await self._write_log(task_id, log_path, f"PT extraction failed: {material}", status="failed", progress=100, event="done")
+                    return
+                after_pts = {entry.name for entry in pt_dir.glob("*.pt")}
+                extracted_pts.extend(sorted((after_pts - before_pts) or {f"{Path(material).stem}.pt"}))
+
+            env["CUDA_VISIBLE_DEVICES"] = request.cuda_device
+            generated_fullbins: list[str] = []
+            total_pts = max(len(extracted_pts), 1)
+            for index, pt_name in enumerate(extracted_pts):
+                pt_path = pt_dir / pt_name
+                ensure_exists(pt_path, file_ok=True)
+                before_fullbins = {entry.name for entry in output_dir.glob("*.fullbin")}
+                cmd = [*runner, str(config["pt_to_fullbin_script"]), str(pt_path), str(output_dir), "--dataset", request.dataset, "--cuda_device", request.cuda_device]
+                return_code = await self._run_command(task_id, log_path, cmd, cwd=Path(config["dir"]), env=env, progress=min(95, 48 + int(index / total_pts * 47)), start_message=f"[{index + 1}/{total_pts}] Decode FullBin: {pt_name}", use_shell=use_shell, cancel_event=cancel_event)
+                if return_code != 0:
+                    await self._write_log(task_id, log_path, f"FullBin decode failed: {pt_name}", status="failed", progress=100, event="done")
+                    return
+                after_fullbins = {entry.name for entry in output_dir.glob("*.fullbin")}
+                generated_fullbins.extend(sorted((after_fullbins - before_fullbins) or {f"{Path(pt_name).stem}.fullbin"}))
+
+            if request.render_after_reconstruct:
+                render_request = RenderBatchRequest(render_mode="fullbin", scene_path=request.scene_path, selected_files=generated_fullbins, integrator_type=request.integrator_type, sample_count=request.sample_count, auto_convert=request.auto_convert, skip_existing=request.skip_existing, custom_cmd=request.custom_cmd)
+                await self._execute_render_batch(task_id, render_request, log_path, cancel_event, input_dir_override=output_dir, progress_offset=80, progress_span=20, start_message="Reconstruction finished. Start Mitsuba rendering.", result_payload_extra={"pipeline": "reconstruct_render", "model_key": request.model_key, "output_dir": str(output_dir)})
+                return
+
+            await self._write_log(task_id, log_path, f"{config['label']} reconstruction completed", status="success", progress=100, event="done", result_payload={"pipeline": "reconstruct_only", "model_key": request.model_key, "output_dir": str(output_dir), "generated_files": generated_fullbins})
+        except Exception as exc:
+            await self._write_log(task_id, log_path, f"Reconstruct task failed: {exc}", status="failed", progress=100, event="done")
+        finally:
+            self._cancel_events.pop(task_id, None)
+            self._processes.pop(task_id, None)
+
+    async def _execute_render_batch(self, task_id: str, request: RenderBatchRequest, log_path: Path, cancel_event: asyncio.Event, *, input_dir_override: Path | None = None, progress_offset: int = 0, progress_span: int = 100, start_message: str = "Render task started", result_payload_extra: dict | None = None) -> None:
+        scene_path = self._resolve_scene_path(request.scene_path)
+        input_dir = input_dir_override or self._input_dir(request.render_mode)
+        output_dir = self._output_dir(request.render_mode)
+        exr_dir = output_dir / "exr"
+        png_dir = output_dir / "png"
+        exr_dir.mkdir(parents=True, exist_ok=True)
+        png_dir.mkdir(parents=True, exist_ok=True)
+        if not request.selected_files:
+            await self._write_log(task_id, log_path, "No render inputs selected", status="failed", progress=100, event="done")
+            return
+        paths = get_mitsuba_paths()
+        mitsuba_exe = paths["mitsuba_exe"]
+        mtsutil_exe = paths["mtsutil_exe"]
+        mitsuba_dir = paths["mitsuba_dir"]
+        scene_xml_text = scene_path.read_text(encoding="utf-8")
+        total = len(request.selected_files)
+        generated_pngs: list[str] = []
+        result_payload = {"render_mode": request.render_mode, "output_path_key": self._output_path_key(request.render_mode), "generated_pngs": generated_pngs, **(result_payload_extra or {})}
+        await self._write_log(task_id, log_path, start_message, status="running", progress=progress_offset, result_payload=result_payload)
+        timestamp = datetime.now().strftime("%d_%H%M%S")
+
+        for index, filename in enumerate(request.selected_files):
+            file_path = input_dir / filename
+            if not file_path.exists():
+                continue
+            root = ET.fromstring(scene_xml_text)
+            update_integrator_and_sampler(root, request.integrator_type, request.sample_count)
+            ensure_hdr_film(root)
+            for string_node in root.iter("string"):
+                if string_node.get("name") == "filename":
+                    value = string_node.get("value")
+                    if value and not os.path.isabs(value) and not is_placeholder_value(value):
+                        string_node.set("value", resolve_scene_resource(scene_path.parent, value).as_posix())
+            target_bsdf = find_target_bsdf(root)
+            if target_bsdf is None:
+                await self._write_log(task_id, log_path, "Material node not found in scene", status="failed", progress=100, event="done", result_payload=result_payload)
+                return
+            selected_type = update_bsdf_for_mode(target_bsdf, request.render_mode, file_path, filename, mitsuba_dir)
+            temp_xml = TEMP_XML_ROOT / f"{file_path.stem}_{timestamp}_{index}.xml"
+            ET.ElementTree(root).write(temp_xml, encoding="utf-8", xml_declaration=True)
+            exr_out = exr_dir / f"{file_path.stem}_{timestamp}.exr"
+            png_out = png_dir / f"{file_path.stem}_{timestamp}.png"
+            cmd = [str(mitsuba_exe), "-o", str(exr_out), str(temp_xml)]
+            env = os.environ.copy()
+            env["PYTHONUNBUFFERED"] = "1"
+            env["PATH"] = str(mitsuba_dir) + os.pathsep + env.get("PATH", "")
+            process = await asyncio.create_subprocess_exec(*cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT, env=env)
+            self._processes[task_id] = process
+            while True:
+                line = await process.stdout.readline() if process.stdout else b""
+                if not line:
+                    break
+                text = decode_subprocess_output(line).strip()
+                if text:
+                    parsed = self._parse_progress(text, index, total)
+                    progress = progress_offset + int((parsed or 0) * progress_span / 100)
+                    await self._write_log(task_id, log_path, text, progress=min(99, progress), result_payload=result_payload)
+            if await process.wait() != 0:
+                await self._write_log(task_id, log_path, f"Render failed: {filename}", status="failed", progress=100, event="done", result_payload=result_payload)
+                return
+            await self._write_log(task_id, log_path, f"Rendered {filename} ({selected_type})", result_payload=result_payload)
+            if request.auto_convert and exr_out.exists() and mtsutil_exe.exists():
+                convert = await asyncio.create_subprocess_exec(str(mtsutil_exe), "tonemap", "-o", str(png_out), str(exr_out), stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT, env=env)
+                await convert.communicate()
+                if png_out.exists():
+                    generated_pngs.append(png_out.name)
+            await task_manager.update(task_id, status="running", progress=min(99, progress_offset + int((index + 1) / total * progress_span)), message=f"Completed {index + 1}/{total}: {filename}", result_payload=result_payload, event="log")
+
+        await self._write_log(task_id, log_path, "Render task completed", status="success", progress=100, event="done", result_payload=result_payload)
 
     async def _run_convert(self, task_id: str, request: RenderConvertRequest, log_path: Path) -> None:
         try:
-            paths = get_mitsuba_paths()
-            mtsutil_exe = paths["mtsutil_exe"]
-            if not mtsutil_exe.exists():
-                await self._write_log(task_id, log_path, f"未找到 mtsutil: {mtsutil_exe}", status="failed", progress=100, event="done")
-                return
+            mtsutil_exe = get_mitsuba_paths()["mtsutil_exe"]
             output_dir = self._output_dir(request.render_mode)
             exr_dir = output_dir / "exr"
             png_dir = output_dir / "png"
@@ -670,46 +676,16 @@ class RenderService:
                 requested = set(request.filenames)
                 candidates = [entry for entry in candidates if entry.name in requested]
             if not candidates:
-                await self._write_log(task_id, log_path, "没有可转换的 EXR 文件", status="failed", progress=100, event="done")
+                await self._write_log(task_id, log_path, "No EXR files to convert", status="failed", progress=100, event="done")
                 return
-            await self._write_log(task_id, log_path, "EXR 转 PNG 已启动", status="running", progress=0)
-            total = len(candidates)
-            generated_pngs: list[str] = []
             for index, entry in enumerate(candidates):
                 png_out = png_dir / f"{entry.stem}.png"
-                process = await asyncio.create_subprocess_exec(
-                    str(mtsutil_exe),
-                    "tonemap",
-                    "-o",
-                    str(png_out),
-                    str(entry),
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.STDOUT,
-                )
-                output, _ = await process.communicate()
-                text = decode_subprocess_output(output).strip()
-                if text:
-                    await self._write_log(task_id, log_path, text)
-                if process.returncode == 0 and png_out.exists():
-                    generated_pngs.append(png_out.name)
-                    await self._write_log(task_id, log_path, f"已转换: {entry.name}", progress=min(99, int((index + 1) / total * 100)))
-                else:
-                    await self._write_log(task_id, log_path, f"转换失败: {entry.name}")
-            await self._write_log(
-                task_id,
-                log_path,
-                "EXR 转 PNG 完成",
-                status="success",
-                progress=100,
-                event="done",
-                result_payload={
-                    "render_mode": request.render_mode,
-                    "output_path_key": self._output_path_key(request.render_mode),
-                    "generated_pngs": generated_pngs,
-                },
-            )
+                process = await asyncio.create_subprocess_exec(str(mtsutil_exe), "tonemap", "-o", str(png_out), str(entry), stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT)
+                await process.communicate()
+                await self._write_log(task_id, log_path, f"Converted {entry.name}", progress=min(99, int((index + 1) / len(candidates) * 100)))
+            await self._write_log(task_id, log_path, "EXR to PNG conversion completed", status="success", progress=100, event="done")
         except Exception as exc:
-            await self._write_log(task_id, log_path, f"转换任务异常: {exc}", status="failed", progress=100, event="done")
+            await self._write_log(task_id, log_path, f"Convert task failed: {exc}", status="failed", progress=100, event="done")
 
 
 render_service = RenderService()

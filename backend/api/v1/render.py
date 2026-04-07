@@ -6,6 +6,7 @@ from backend.models.render import (
     RenderFilesResponse,
     RenderMode,
     RenderOutputFilesResponse,
+    RenderReconstructRequest,
     RenderScenesResponse,
     TaskStartResponse,
     TaskStopRequest,
@@ -43,6 +44,12 @@ def render_outputs(
 @router.post("/render/batch", response_model=TaskStartResponse)
 async def render_batch(request: RenderBatchRequest) -> TaskStartResponse:
     record = await render_service.start_batch(request)
+    return TaskStartResponse(task_id=record.task_id, status=record.status)
+
+
+@router.post("/render/reconstruct", response_model=TaskStartResponse)
+async def render_reconstruct(request: RenderReconstructRequest) -> TaskStartResponse:
+    record = await render_service.start_reconstruct(request)
     return TaskStartResponse(task_id=record.task_id, status=record.status)
 
 

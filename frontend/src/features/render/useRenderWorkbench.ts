@@ -6,6 +6,7 @@ import type {
   RenderFilesResponse,
   RenderMode,
   RenderOutputsResponse,
+  RenderReconstructRequest,
   RenderScenesResponse,
   TaskDetailResponse,
   TaskStartResponse,
@@ -58,6 +59,14 @@ export function useRenderTaskDetail(taskId: string | null) {
 export function useStartRender() {
   return useMutation({
     mutationFn: (payload: RenderBatchRequest) => apiPost<TaskStartResponse>('/render/batch', payload),
+  })
+}
+
+
+export function useStartReconstruct() {
+  return useMutation({
+    mutationFn: (payload: RenderReconstructRequest) =>
+      apiPost<TaskStartResponse>('/render/reconstruct', payload),
   })
 }
 
