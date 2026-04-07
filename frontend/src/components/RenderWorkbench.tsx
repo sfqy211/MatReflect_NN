@@ -48,21 +48,18 @@ const MODEL_LABELS: Record<RenderSourceModel, string> = {
   gt: 'GT / MERL 材质',
   neural: 'Neural-BRDF',
   hyperbrdf: 'HyperBRDF',
-  decoupled: 'DecoupledHyperBRDF',
 }
 
 const INPUT_TYPE_LABELS: Record<RenderSourceModel, string> = {
   gt: '.binary / merl',
   neural: '.npy / nbrdf_npy',
   hyperbrdf: '.fullbin / fullmerl',
-  decoupled: '.fullbin / fullmerl',
 }
 
 const RECONSTRUCT_NOTES: Record<RenderSourceModel, string> = {
   gt: 'GT 直接使用 MERL .binary，无需重建',
   neural: 'Neural-BRDF 一键重建会将 MERL .binary 转为 Mitsuba 可读的 .npy 权重组',
   hyperbrdf: 'HyperBRDF 一键重建会从 checkpoint 提取参数并解码为 .fullbin',
-  decoupled: 'DecoupledHyperBRDF 一键重建会从 checkpoint 提取参数并解码为 .fullbin',
 }
 
 function getRenderMode(model: RenderSourceModel): RenderMode {
@@ -95,7 +92,7 @@ export function RenderWorkbench() {
 
   const renderMode = useMemo(() => getRenderMode(sourceModel), [sourceModel])
   const canReconstruct = sourceModel !== 'gt'
-  const needsCheckpoint = sourceModel === 'hyperbrdf' || sourceModel === 'decoupled'
+  const needsCheckpoint = sourceModel === 'hyperbrdf'
   const projectVariant = needsCheckpoint ? (sourceModel as TrainProjectVariant) : null
   const isReconstructMode = canReconstruct && workflowMode === 'reconstruct'
 
@@ -241,7 +238,7 @@ export function RenderWorkbench() {
       merl_dir: materialsQuery.data?.resolved_path ?? 'data/inputs/binary',
       output_dir: sourceModel === 'neural' ? 'data/inputs/npy' : 'data/inputs/fullbin',
       selected_materials: selectedFiles,
-      conda_env: sourceModel === 'decoupled' ? 'decoupledhyperbrdf' : sourceModel === 'hyperbrdf' ? 'hyperbrdf' : 'nbrdf-train',
+      conda_env: sourceModel === 'hyperbrdf' ? 'hyperbrdf' : 'nbrdf-train',
       dataset: 'MERL',
       sparse_samples: Number(selectedRun?.args.sparse_samples ?? 4000),
       cuda_device: '0',
@@ -299,7 +296,6 @@ export function RenderWorkbench() {
                 <option value="gt">GT / MERL</option>
                 <option value="neural">Neural-BRDF</option>
                 <option value="hyperbrdf">HyperBRDF</option>
-                <option value="decoupled">DecoupledHyperBRDF</option>
               </select>
             </label>
 

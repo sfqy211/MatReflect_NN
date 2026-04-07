@@ -108,19 +108,6 @@ class HyperTrainRunRequest(BaseModel):
     keepon: bool = False
     train_subset: int = Field(default=0, ge=0)
     train_seed: int = Field(default=42, ge=0)
-    model_type: Literal["baseline", "decoupled"] = "decoupled"
-    sampling_mode: Literal["random", "hybrid"] = "hybrid"
-    teacher_dir: str = ""
-    analytic_lobes: Literal[1, 2] = 1
-    baseline_checkpoint: str = ""
-    analytic_loss_weight: float = 0.1
-    residual_loss_weight: float = 0.1
-    spec_loss_weight: float = 0.2
-    gate_reg_weight: float = 0.05
-    spec_percentile: float = Field(default=0.9, ge=0.5, le=0.999)
-    gate_bias_init: float = -2.0
-    stage_a_epochs: int = Field(default=10, ge=0)
-    stage_b_ramp_epochs: int = Field(default=20, ge=0)
 
 
 class HyperExtractRequest(BaseModel):

@@ -11,7 +11,6 @@ from . import get_project_root
 ROOT_DIR = get_project_root()
 NEURAL_BRDF_DIR = ROOT_DIR / "Neural-BRDF"
 HYPER_BRDF_DIR = ROOT_DIR / "HyperBRDF"
-DECOUPLED_HB_DIR = ROOT_DIR / "DecoupledHyperBRDF"
 DATA_INPUTS_BRDFS = ROOT_DIR / "data" / "inputs" / "binary"
 DATA_INPUTS_NPY = ROOT_DIR / "data" / "inputs" / "npy"
 DATA_INTERMEDIATE_H5 = NEURAL_BRDF_DIR / "data" / "merl_nbrdf"
@@ -40,19 +39,6 @@ HB_PROJECTS = {
         "default_results_dir": HYPER_BRDF_DIR / "results",
         "default_extract_dir": HYPER_BRDF_DIR / "results" / "extracted_pts",
         "supports_teacher": False,
-    },
-    "decoupled": {
-        "label": "DecoupledHyperBRDF",
-        "dir": DECOUPLED_HB_DIR,
-        "main_script": DECOUPLED_HB_DIR / "main.py",
-        "test_script": DECOUPLED_HB_DIR / "test.py",
-        "pt_to_fullbin_script": DECOUPLED_HB_DIR / "pt_to_fullmerl.py",
-        "median_script": DECOUPLED_HB_DIR / "compute_median.py",
-        "fit_teacher_script": DECOUPLED_HB_DIR / "fit_analytic_teacher.py",
-        "default_model": DECOUPLED_HB_DIR / "results" / "test" / "MERL" / "checkpoint.pt",
-        "default_results_dir": DECOUPLED_HB_DIR / "results",
-        "default_extract_dir": DECOUPLED_HB_DIR / "results" / "extracted_pts",
-        "supports_teacher": True,
     },
 }
 
@@ -259,19 +245,6 @@ def run_hb_training(
     train_subset=0,
     train_seed=42,
     project_variant="hyperbrdf",
-    model_type=None,
-    sampling_mode="hybrid",
-    teacher_dir="",
-    analytic_lobes=1,
-    baseline_checkpoint="",
-    analytic_loss_weight=0.1,
-    residual_loss_weight=0.1,
-    spec_loss_weight=0.2,
-    gate_reg_weight=0.05,
-    spec_percentile=0.9,
-    gate_bias_init=-2.0,
-    stage_a_epochs=10,
-    stage_b_ramp_epochs=20,
 ):
     if not os.path.exists(merl_dir):
         st.warning(f"目录不存在: {merl_dir}")
@@ -279,7 +252,6 @@ def run_hb_training(
     st.session_state.train_logs = []
     os.makedirs(output_dir, exist_ok=True)
     config, env = _build_hb_env(project_variant)
-    resolved_model_type = model_type or ("decoupled" if project_variant == "decoupled" else "baseline")
     cmd = [
         "conda", "run", "--no-capture-output", "-n", conda_env, "python", str(config["main_script"]),
         "--destdir", str(output_dir),
@@ -293,26 +265,6 @@ def run_hb_training(
         "--train_subset", str(train_subset),
         "--train_seed", str(train_seed),
     ]
-    if project_variant == "decoupled":
-        cmd.extend(
-            [
-                "--model_type", resolved_model_type,
-                "--sampling_mode", sampling_mode,
-                "--analytic_lobes", str(analytic_lobes),
-                "--analytic_loss_weight", str(analytic_loss_weight),
-                "--residual_loss_weight", str(residual_loss_weight),
-                "--spec_loss_weight", str(spec_loss_weight),
-                "--gate_reg_weight", str(gate_reg_weight),
-                "--spec_percentile", str(spec_percentile),
-                "--gate_bias_init", str(gate_bias_init),
-                "--stage_a_epochs", str(stage_a_epochs),
-                "--stage_b_ramp_epochs", str(stage_b_ramp_epochs),
-            ]
-        )
-        if teacher_dir:
-            cmd.extend(["--teacher_dir", str(teacher_dir)])
-        if baseline_checkpoint:
-            cmd.extend(["--baseline_checkpoint", str(baseline_checkpoint)])
     if keepon:
         cmd.append("--keepon")
     returncode = _run_logged_process(
@@ -345,56 +297,6 @@ def run_hb_compute_median(output_dir, log_placeholder, conda_env="hyperbrdf", pr
     else:
         st.error(f"中位数计算失败 (退出码: {returncode})")
 
-def run_hb_fit_teacher(
-    merl_dir,
-    output_dir,
-    log_placeholder,
-    conda_env="hyperbrdf",
-    dataset="MERL",
-    fit_samples=32768,
-    steps=400,
-    lr=5e-2,
-    spec_percentile=0.9,
-    analytic_lobes=1,
-    max_materials=0,
-    seed=42,
-    project_variant="decoupled",
-):
-    if not os.path.exists(merl_dir):
-        st.warning(f"目录不存在: {merl_dir}")
-        return
-    st.session_state.train_logs = []
-    os.makedirs(output_dir, exist_ok=True)
-    config, env = _build_hb_env(project_variant)
-    if not config["supports_teacher"] or not config["fit_teacher_script"]:
-        st.warning(f"{config['label']} 当前未提供教师拟合脚本")
-        return
-
-    cmd = [
-        "conda", "run", "--no-capture-output", "-n", conda_env, "python", str(config["fit_teacher_script"]),
-        "--binary", str(merl_dir),
-        "--dataset", dataset,
-        "--destdir", str(output_dir),
-        "--fit_samples", str(fit_samples),
-        "--steps", str(steps),
-        "--lr", str(lr),
-        "--spec_percentile", str(spec_percentile),
-        "--analytic_lobes", str(analytic_lobes),
-        "--max_materials", str(max_materials),
-        "--seed", str(seed),
-    ]
-    returncode = _run_logged_process(
-        cmd,
-        env,
-        config["dir"],
-        log_placeholder,
-        f"启动 {config['label']} 教师拟合: {' '.join(cmd)}",
-    )
-    if returncode == 0:
-        st.success(f"教师缓存生成完成，输出目录: {output_dir}")
-    else:
-        st.error(f"教师缓存生成失败 (退出码: {returncode})")
-
 
 def run_hb_extraction(
     merl_dir,
@@ -422,8 +324,6 @@ def run_hb_extraction(
             "--destdir", str(output_dir),
             "--dataset", "EPFL",
         ]
-        if project_variant == "decoupled":
-            cmd.extend(["--sparse_samples", str(sparse_samples)])
         returncode = _run_logged_process(
             cmd,
             env,
@@ -445,9 +345,6 @@ def run_hb_extraction(
                 "--destdir", str(output_dir),
                 "--dataset", "MERL",
             ]
-            if project_variant == "decoupled":
-                cmd.extend(["--sparse_samples", str(sparse_samples)])
-
             returncode = _run_logged_process(
                 cmd,
                 env,

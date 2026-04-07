@@ -36,7 +36,6 @@ TEMP_XML_ROOT.mkdir(parents=True, exist_ok=True)
 
 NEURAL_BRDF_DIR = PROJECT_ROOT / "Neural-BRDF"
 HYPER_BRDF_DIR = PROJECT_ROOT / "HyperBRDF"
-DECOUPLED_HB_DIR = PROJECT_ROOT / "DecoupledHyperBRDF"
 DATA_INPUTS_NPY = PROJECT_ROOT / "data" / "inputs" / "npy"
 DATA_INPUTS_FULLBIN = PROJECT_ROOT / "data" / "inputs" / "fullbin"
 BINARY_TO_NBRDF_DIR = NEURAL_BRDF_DIR / "binary_to_nbrdf"
@@ -48,12 +47,6 @@ HB_RENDER_PROJECTS: dict[TrainProjectVariant, dict[str, Path | str]] = {
         "dir": HYPER_BRDF_DIR,
         "test_script": HYPER_BRDF_DIR / "test.py",
         "pt_to_fullbin_script": HYPER_BRDF_DIR / "pt_to_fullmerl.py",
-    },
-    "decoupled": {
-        "label": "DecoupledHyperBRDF",
-        "dir": DECOUPLED_HB_DIR,
-        "test_script": DECOUPLED_HB_DIR / "test.py",
-        "pt_to_fullbin_script": DECOUPLED_HB_DIR / "pt_to_fullmerl.py",
     },
 }
 
@@ -290,7 +283,7 @@ class RenderService:
         return HB_RENDER_PROJECTS[project_variant]
 
     def _default_conda_env(self, project_variant: TrainProjectVariant) -> str:
-        return "decoupledhyperbrdf" if project_variant == "decoupled" else "hyperbrdf"
+        return "hyperbrdf"
 
     def _make_hyper_env(self, project_variant: TrainProjectVariant) -> dict[str, str]:
         config = self._project_config(project_variant)
@@ -557,8 +550,6 @@ class RenderService:
                 ensure_exists(binary_path, file_ok=True)
                 before_pts = {entry.name for entry in pt_dir.glob("*.pt")}
                 cmd = [*runner, str(config["test_script"]), "--model", str(checkpoint_path), "--binary", str(binary_path), "--destdir", str(pt_dir), "--dataset", request.dataset]
-                if project_variant == "decoupled":
-                    cmd.extend(["--sparse_samples", str(request.sparse_samples)])
                 return_code = await self._run_command(task_id, log_path, cmd, cwd=Path(config["dir"]), env=env, progress=min(45, 5 + int(index / total * 40)), start_message=f"[{index + 1}/{total}] Extract PT: {material}", use_shell=use_shell, cancel_event=cancel_event)
                 if return_code != 0:
                     await self._write_log(task_id, log_path, f"PT extraction failed: {material}", status="failed", progress=100, event="done")

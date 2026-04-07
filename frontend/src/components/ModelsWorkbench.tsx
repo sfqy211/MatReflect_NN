@@ -66,10 +66,6 @@ function getRuntimeValue(model: TrainModelItem | null, field: string, fallback =
   return model?.runtime[field] ?? fallback
 }
 
-function supportsDecoupledOptions(model: TrainModelItem | null) {
-  return Boolean(model?.adapter_options?.supports_decoupled_options)
-}
-
 function buildDraft(adapter: TrainModelAdapter): TrainModelCreateRequest {
   const category = adapter === 'hyper-family' ? 'hyper' : 'neural'
   return {
@@ -103,7 +99,7 @@ function buildDraft(adapter: TrainModelAdapter): TrainModelCreateRequest {
         : adapter === 'neural-keras'
           ? { conda_env: '', working_dir: '', train_script: '', convert_script: '' }
           : { conda_env: '', working_dir: '', train_script: '', extract_script: '', decode_script: '' },
-    adapter_options: adapter === 'hyper-family' ? { supports_decoupled_options: false } : {},
+    adapter_options: {},
   }
 }
 
@@ -134,8 +130,6 @@ export function ModelsWorkbench() {
   const [extractOutputDir, setExtractOutputDir] = useState('')
   const [ptDir, setPtDir] = useState('')
   const [fullbinOutputDir, setFullbinOutputDir] = useState(DEFAULT_FULLBIN_OUTPUT)
-  const [teacherDir, setTeacherDir] = useState('')
-  const [baselineCheckpoint, setBaselineCheckpoint] = useState('')
   const [epochs, setEpochs] = useState(100)
   const [sparseSamples, setSparseSamples] = useState(4000)
   const [klWeight, setKlWeight] = useState(0.1)
@@ -144,17 +138,6 @@ export function ModelsWorkbench() {
   const [trainSubset, setTrainSubset] = useState(80)
   const [trainSeed, setTrainSeed] = useState(42)
   const [keepon, setKeepon] = useState(false)
-  const [modelType, setModelType] = useState<'baseline' | 'decoupled'>('decoupled')
-  const [samplingMode, setSamplingMode] = useState<'random' | 'hybrid'>('hybrid')
-  const [analyticLobes, setAnalyticLobes] = useState<1 | 2>(1)
-  const [analyticLossWeight, setAnalyticLossWeight] = useState(0.1)
-  const [residualLossWeight, setResidualLossWeight] = useState(0.1)
-  const [specLossWeight, setSpecLossWeight] = useState(0.2)
-  const [gateRegWeight, setGateRegWeight] = useState(0.05)
-  const [specPercentile, setSpecPercentile] = useState(0.9)
-  const [gateBiasInit, setGateBiasInit] = useState(-2)
-  const [stageAEpochs, setStageAEpochs] = useState(10)
-  const [stageBRampEpochs, setStageBRampEpochs] = useState(20)
 
   const modelQuery = useTrainModels()
   const materialsQuery = useMaterialsDirectory(search)
@@ -202,8 +185,6 @@ export function ModelsWorkbench() {
     setExtractOutputDir(getDefaultPath(activeModel, 'extract_dir', ''))
     setPtDir(getDefaultPath(activeModel, 'extract_dir', ''))
     setCheckpointPath(getDefaultPath(activeModel, 'checkpoint', ''))
-    setTeacherDir(getDefaultPath(activeModel, 'teacher_dir', ''))
-    setBaselineCheckpoint('')
     setFullbinOutputDir(DEFAULT_FULLBIN_OUTPUT)
     setDataset('MERL')
   }, [activeModel?.key])
@@ -412,19 +393,6 @@ export function ModelsWorkbench() {
       keepon,
       train_subset: trainSubset,
       train_seed: trainSeed,
-      model_type: modelType,
-      sampling_mode: samplingMode,
-      teacher_dir: teacherDir,
-      analytic_lobes: analyticLobes,
-      baseline_checkpoint: baselineCheckpoint.trim(),
-      analytic_loss_weight: analyticLossWeight,
-      residual_loss_weight: residualLossWeight,
-      spec_loss_weight: specLossWeight,
-      gate_reg_weight: gateRegWeight,
-      spec_percentile: specPercentile,
-      gate_bias_init: gateBiasInit,
-      stage_a_epochs: stageAEpochs,
-      stage_b_ramp_epochs: stageBRampEpochs,
     })
     setActiveTaskId(response.task_id)
   }
@@ -811,19 +779,7 @@ export function ModelsWorkbench() {
                   <input type="checkbox" checked={draft.supports_runs} onChange={(event) => updateDraft((current) => ({ ...current, supports_runs: event.target.checked }))} />
                   <span>支持运行记录扫描</span>
                 </label>
-                <label className="toggle-field">
-                  <input
-                    type="checkbox"
-                    checked={Boolean(draft.adapter_options.supports_decoupled_options)}
-                    onChange={(event) =>
-                      updateDraft((current) => ({
-                        ...current,
-                        adapter_options: { ...current.adapter_options, supports_decoupled_options: event.target.checked },
-                      }))
-                    }
-                  />
                   <span>支持解耦扩展参数</span>
-                </label>
               </div>
             ) : null}
 
@@ -928,71 +884,7 @@ export function ModelsWorkbench() {
                   <span>继续训练</span>
                 </label>
               </div>
-              {supportsDecoupledOptions(activeModel) ? (
-                <div className="render-form-grid">
-                  <label className="field">
-                    <span>模型类型</span>
-                    <select value={modelType} onChange={(event) => setModelType(event.target.value as 'baseline' | 'decoupled')}>
-                      <option value="decoupled">decoupled</option>
-                      <option value="baseline">baseline</option>
-                    </select>
-                  </label>
-                  <label className="field">
-                    <span>采样策略</span>
-                    <select value={samplingMode} onChange={(event) => setSamplingMode(event.target.value as 'random' | 'hybrid')}>
-                      <option value="hybrid">hybrid</option>
-                      <option value="random">random</option>
-                    </select>
-                  </label>
-                  <label className="field">
-                    <span>Teacher 目录</span>
-                    <input value={teacherDir} onChange={(event) => setTeacherDir(event.target.value)} />
-                  </label>
-                  <label className="field">
-                    <span>Baseline Checkpoint</span>
-                    <input value={baselineCheckpoint} onChange={(event) => setBaselineCheckpoint(event.target.value)} />
-                  </label>
-                  <label className="field">
-                    <span>解析 lobes</span>
-                    <select value={analyticLobes} onChange={(event) => setAnalyticLobes(Number(event.target.value) as 1 | 2)}>
-                      <option value={1}>1</option>
-                      <option value={2}>2</option>
-                    </select>
-                  </label>
-                  <label className="field">
-                    <span>高光分位数</span>
-                    <input type="number" step="0.01" value={specPercentile} onChange={(event) => setSpecPercentile(Number(event.target.value) || 0.9)} />
-                  </label>
-                  <label className="field">
-                    <span>解析损失权重</span>
-                    <input type="number" step="0.01" value={analyticLossWeight} onChange={(event) => setAnalyticLossWeight(Number(event.target.value) || 0)} />
-                  </label>
-                  <label className="field">
-                    <span>残差损失权重</span>
-                    <input type="number" step="0.01" value={residualLossWeight} onChange={(event) => setResidualLossWeight(Number(event.target.value) || 0)} />
-                  </label>
-                  <label className="field">
-                    <span>高光损失权重</span>
-                    <input type="number" step="0.01" value={specLossWeight} onChange={(event) => setSpecLossWeight(Number(event.target.value) || 0)} />
-                  </label>
-                  <label className="field">
-                    <span>门控正则权重</span>
-                    <input type="number" step="0.01" value={gateRegWeight} onChange={(event) => setGateRegWeight(Number(event.target.value) || 0)} />
-                  </label>
-                  <label className="field">
-                    <span>门控 Bias 初值</span>
-                    <input type="number" step="0.1" value={gateBiasInit} onChange={(event) => setGateBiasInit(Number(event.target.value) || 0)} />
-                  </label>
-                  <label className="field">
-                    <span>阶段 A Epochs</span>
-                    <input type="number" value={stageAEpochs} onChange={(event) => setStageAEpochs(Number(event.target.value) || 0)} />
-                  </label>
-                  <label className="field">
-                    <span>阶段 B Ramp Epochs</span>
-                    <input type="number" value={stageBRampEpochs} onChange={(event) => setStageBRampEpochs(Number(event.target.value) || 0)} />
-                  </label>
-                </div>
-              ) : null}
+
             </>
           ) : null}
           <div className="render-actions">

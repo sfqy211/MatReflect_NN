@@ -82,38 +82,6 @@ def _builtin_models() -> list[TrainModelItem]:
                 "extract_script": "HyperBRDF/test.py",
                 "decode_script": "HyperBRDF/pt_to_fullmerl.py",
             },
-            adapter_options={
-                "supports_decoupled_options": False,
-            },
-        ),
-        TrainModelItem(
-            key="decoupled",
-            label="DecoupledHyperBRDF",
-            category="hyper",
-            adapter="hyper-family",
-            built_in=True,
-            description="解耦式 BRDF 研究模型，扩展了解析 teacher 与双分量建模相关选项。",
-            supports_training=True,
-            supports_extract=True,
-            supports_decode=True,
-            supports_runs=True,
-            default_paths={
-                "materials_dir": "data/inputs/binary",
-                "results_dir": "DecoupledHyperBRDF/results",
-                "extract_dir": "DecoupledHyperBRDF/results/extracted_pts",
-                "checkpoint": "DecoupledHyperBRDF/results/test/MERL/checkpoint.pt",
-                "teacher_dir": "DecoupledHyperBRDF/data/analytic_teacher",
-            },
-            runtime={
-                "conda_env": "decoupledhyperbrdf",
-                "working_dir": "DecoupledHyperBRDF",
-                "train_script": "DecoupledHyperBRDF/main.py",
-                "extract_script": "DecoupledHyperBRDF/test.py",
-                "decode_script": "DecoupledHyperBRDF/pt_to_fullmerl.py",
-            },
-            adapter_options={
-                "supports_decoupled_options": True,
-            },
         ),
     ]
 

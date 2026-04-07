@@ -11,7 +11,7 @@
 
 1. 使用 Mitsuba 0.6 渲染 MERL / FullBin / NBRDF 材质。
 2. 使用 Neural-BRDF 训练 `.binary -> .npy` 权重。
-3. 使用 HyperBRDF 或 DecoupledHyperBRDF 训练 `.binary -> checkpoint.pt -> 材质参数 .pt -> .fullbin`。
+3. ?? HyperBRDF ?? `.binary -> checkpoint.pt -> ???? .pt -> .fullbin`?
 4. 对渲染结果做预览、量化评估、网格拼图和对比拼图。
 
 这不是一个纯 Python 库，而是“前端工作台 + 后端任务编排 + 多环境脚本 + 本地数据/结果目录”的集成项目。
@@ -29,7 +29,6 @@
   - `mitsuba-build`：Mitsuba 编译，Python 2.7 + SCons。
   - `nbrdf-train`：Neural-BRDF 训练。
   - `hyperbrdf`：HyperBRDF 训练与推理。
-  - `decoupledhyperbrdf`：DecoupledHyperBRDF 训练与推理。
 
 不要假设所有功能都能在当前 Python 环境直接运行。训练页大量通过 `conda run -n ...` 调外部环境。
 
@@ -49,17 +48,15 @@
 
 - `Neural-BRDF/`：Neural-BRDF 上游代码与集成说明。
 - `HyperBRDF/`：原版 HyperBRDF。
-- `DecoupledHyperBRDF/`：当前增强版研究实现，包含 teacher fitting、解耦模型、改造后的数据处理。
 
 ### 3.3 本地数据与结果目录
 
 - `data/inputs/binary/`：MERL `.binary` 原始材质。
 - `data/inputs/npy/`：Neural-BRDF 权重，文件名成组出现，如 `mat_fc1.npy` 到 `mat_b3.npy`。
-- `data/inputs/fullbin/`：HyperBRDF/DecoupledHyperBRDF 重建出的 `.fullbin`。
+- `data/inputs/fullbin/`?HyperBRDF ???? `.fullbin`?
 - `data/outputs/binary|npy|fullbin/{exr,png}/`：渲染输出。
 - `data/outputs/grids/`、`data/outputs/comparisons/`：分析页生成的拼图。
 - `data/batch_temp_xmls/`：渲染时动态生成的临时 XML，不应手动维护。
-- `HyperBRDF/results/`、`DecoupledHyperBRDF/results/`：训练结果、checkpoint、提取参数等。
 
 ## 4. `.gitignore` 的实际含义
 
@@ -84,7 +81,6 @@
   - `data/inputs/*`
   - `data/outputs/*`
   - `HyperBRDF/results/*`
-  - `DecoupledHyperBRDF/results/*`
   - `mitsuba/dist/*`
 
 ## 5. 优先修改位置
@@ -117,7 +113,6 @@
 - `Neural-BRDF/` 原始上游训练逻辑。
 - `HyperBRDF/` 原版基线逻辑。
 
-研究性增强优先落在 `DecoupledHyperBRDF/` 与 V2 集成层；V1 只做必要兼容，不再作为主要演进方向。
 
 ## 6. 当前代码中的关键耦合
 
@@ -141,7 +136,7 @@
 - Keras 版本先产出 `.h5/.json`，再调用 `h5_to_npy.py` 转换。
 - NBRDF 渲染依赖 Mitsuba 插件 `nbrdf_npy.dll`，并要求 XML 中 `nn_basename` 指向权重前缀。
 
-### 6.3 HyperBRDF / DecoupledHyperBRDF 链路
+### 6.3 HyperBRDF ??
 
 - 当前主链路通过 `backend/services/train_service.py` 统一调度：
   - `main.py` 训练
@@ -150,9 +145,6 @@
 - V1 兼容链路仍存在于 `pages/_modules/training_actions.py`
 - `fit_analytic_teacher.py` 仍属于 Decoupled 研究能力，但暂未单独迁成 V2 独立面板
 - Decoupled 版本已经扩展了：
-  - `model_type`
-  - `sampling_mode`
-  - `teacher_dir`
   - analytic / residual / gate 相关超参数
 - `training_hyper_tab.py` 会读取 `results/**/args.txt` 和 `train_loss.csv` 反推训练信息。
 
@@ -160,8 +152,8 @@
 
 - `training_actions.py`
 - `training_hyper_tab.py`
-- `DecoupledHyperBRDF/test.py`
-- `DecoupledHyperBRDF/pt_to_fullmerl.py`
+- `HyperBRDF/test.py`
+- `HyperBRDF/pt_to_fullmerl.py`
 
 ## 7. 编辑约束
 
@@ -226,7 +218,5 @@
 - V1 训练编排：`pages/_modules/training_actions.py`
 - V1 分析页：`pages/_modules/analysis_page.py`
 - HyperBRDF 基线训练：`HyperBRDF/main.py`
-- Decoupled 训练：`DecoupledHyperBRDF/main.py`
-- Teacher 拟合：`DecoupledHyperBRDF/fit_analytic_teacher.py`
 - V2 启动脚本：`scripts/start_v2_dev.ps1`
 - V1 启动脚本：`scripts/start_matreflect.ps1`

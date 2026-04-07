@@ -9,7 +9,7 @@ from backend.models.train import TrainDataset
 
 
 RenderMode = Literal["brdfs", "fullbin", "npy"]
-RenderReconstructModel = Literal["neural", "hyperbrdf", "decoupled"]
+RenderReconstructModel = Literal["neural", "hyperbrdf"]
 
 
 class RenderSceneItem(BaseModel):

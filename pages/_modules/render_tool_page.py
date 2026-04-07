@@ -65,14 +65,11 @@ def render_page(left_panel, main_panel):
             "brdfs": "GT / 物理基本模型 (.binary)",
             "npy": "Neural-BRDF (优化版1 .npy)",
             "fullbin": "HyperBRDF (优化版2 .fullbin)",
-            "decoupled": "DecoupledHyperBRDF (优化版3 .fullbin)",
         }
-        # In current logic, decoupled might use fullbin render mode as well, but for UI sake let's map them to render modes
         render_mode_map = {
             "brdfs": "brdfs",
             "npy": "npy",
             "fullbin": "fullbin",
-            "decoupled": "fullbin",
         }
         selected_model = st.selectbox(
             "1. 选择网络模型",

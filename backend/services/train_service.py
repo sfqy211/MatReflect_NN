@@ -329,9 +329,6 @@ class TrainService:
             return self._resolve_project_path(train_script, must_exist=True).parent
         return PROJECT_ROOT
 
-    def _supports_decoupled_options(self, model: TrainModelItem) -> bool:
-        return bool(model.adapter_options.get("supports_decoupled_options", False))
-
     def _supports_sparse_samples(self, model: TrainModelItem) -> bool:
         return model.adapter == "hyper-family"
 
@@ -582,37 +579,6 @@ class TrainService:
             ]
             if request.keepon:
                 cmd.append("--keepon")
-            if self._supports_decoupled_options(model):
-                cmd.extend(
-                    [
-                        "--model_type",
-                        request.model_type,
-                        "--sampling_mode",
-                        request.sampling_mode,
-                        "--analytic_lobes",
-                        str(request.analytic_lobes),
-                        "--analytic_loss_weight",
-                        str(request.analytic_loss_weight),
-                        "--residual_loss_weight",
-                        str(request.residual_loss_weight),
-                        "--spec_loss_weight",
-                        str(request.spec_loss_weight),
-                        "--gate_reg_weight",
-                        str(request.gate_reg_weight),
-                        "--spec_percentile",
-                        str(request.spec_percentile),
-                        "--gate_bias_init",
-                        str(request.gate_bias_init),
-                        "--stage_a_epochs",
-                        str(request.stage_a_epochs),
-                        "--stage_b_ramp_epochs",
-                        str(request.stage_b_ramp_epochs),
-                    ]
-                )
-                if request.teacher_dir:
-                    cmd.extend(["--teacher_dir", request.teacher_dir])
-                if request.baseline_checkpoint:
-                    cmd.extend(["--baseline_checkpoint", request.baseline_checkpoint])
 
             return_code = await self._run_command(
                 task_id,

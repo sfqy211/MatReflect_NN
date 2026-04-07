@@ -30,8 +30,8 @@ export type FileListResponse = {
 }
 
 export type RenderMode = 'brdfs' | 'fullbin' | 'npy'
-export type RenderSourceModel = 'gt' | 'neural' | 'hyperbrdf' | 'decoupled'
-export type RenderReconstructModel = 'neural' | 'hyperbrdf' | 'decoupled'
+export type RenderSourceModel = 'gt' | 'neural' | 'hyperbrdf'
+export type RenderReconstructModel = 'neural' | 'hyperbrdf'
 export type AnalysisImageSet = 'brdfs' | 'fullbin' | 'npy' | 'grids' | 'comparisons'
 
 export type RenderSceneItem = {
@@ -283,19 +283,6 @@ export type HyperTrainRunRequest = {
   keepon: boolean
   train_subset: number
   train_seed: number
-  model_type: 'baseline' | 'decoupled'
-  sampling_mode: 'random' | 'hybrid'
-  teacher_dir: string
-  analytic_lobes: 1 | 2
-  baseline_checkpoint: string
-  analytic_loss_weight: number
-  residual_loss_weight: number
-  spec_loss_weight: number
-  gate_reg_weight: number
-  spec_percentile: number
-  gate_bias_init: number
-  stage_a_epochs: number
-  stage_b_ramp_epochs: number
 }
 
 export type HyperExtractRequest = {

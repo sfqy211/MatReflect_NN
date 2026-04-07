@@ -24,7 +24,6 @@
 
 - `Neural-BRDF/`
 - `HyperBRDF/`
-- `DecoupledHyperBRDF/`
 - `scene/`
 - `mitsuba/`
 
@@ -253,7 +252,6 @@ MatReflect_NN/
 ├── scene/
 ├── Neural-BRDF/
 ├── HyperBRDF/
-├── DecoupledHyperBRDF/
 └── mitsuba/
 ```
 
@@ -274,7 +272,6 @@ MatReflect_NN/
    - `data/outputs/*`
    - `scene/dj_xml/*`
    - `HyperBRDF/results/*`
-   - `DecoupledHyperBRDF/results/*`
 4. 确认 V2 首批只覆盖三大模块：
    - 渲染可视化
    - 结果分析
@@ -411,7 +408,6 @@ MatReflect_NN/
 2. 统一任务接口：
    - Neural-BRDF 训练
    - HyperBRDF 训练
-   - DecoupledHyperBRDF 训练
    - teacher fitting
    - 参数提取
    - `.pt -> .fullbin`
@@ -425,7 +421,6 @@ MatReflect_NN/
    - `GET /api/v1/train/models`
 4. 环境与资产约束：
    - `HyperBRDF` 使用 conda 环境 `hyperbrdf`
-   - `DecoupledHyperBRDF` 使用 conda 环境 `decoupledhyperbrdf`
    - 两者 checkpoint 分开管理，不能默认混用
 
 ### React 页面交付

@@ -8,7 +8,6 @@ V2 的“网络模型管理”已改为注册表驱动：
   - `neural-pytorch`
   - `neural-keras`
   - `hyperbrdf`
-  - `decoupled`
 - 开发者可以动态新增或删除自研模型。
 - 固定材质库仍然是 `data/inputs/binary` 下的 100 个材质。
 - “预设 20 材质”仍为前端固定集合，不随模型变化。
@@ -39,7 +38,7 @@ V2 的“网络模型管理”已改为注册表驱动：
 3. `hyper-family`
    - 用于 `.binary -> checkpoint.pt -> 材质参数 .pt -> .fullbin`
    - 支持训练、参数提取、fullbin 解码
-   - 典型代表：HyperBRDF、DecoupledHyperBRDF
+   - ?????HyperBRDF
 
 如果自研模型不满足以上任一流程，就不要直接接入当前系统，先扩展新的适配器。
 
@@ -184,25 +183,13 @@ python main.py \
 
 如果模型支持解耦扩展参数，还需要兼容：
 
-- `--model_type`
-- `--sampling_mode`
-- `--teacher_dir`
-- `--baseline_checkpoint`
 - `--analytic_lobes`
-- `--analytic_loss_weight`
-- `--residual_loss_weight`
-- `--spec_loss_weight`
-- `--gate_reg_weight`
-- `--spec_percentile`
-- `--gate_bias_init`
-- `--stage_a_epochs`
-- `--stage_b_ramp_epochs`
 
 此能力通过：
 
 ```json
 "adapter_options": {
-  "supports_decoupled_options": true
+  "adapter_options": {}
 }
 ```
 
@@ -273,7 +260,7 @@ MyBRDFModel/
     "decode_script": "MyBRDFModel/pt_to_fullmerl.py"
   },
   "adapter_options": {
-    "supports_decoupled_options": false
+    "adapter_options": {}
   }
 }
 ```

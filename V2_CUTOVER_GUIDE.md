@@ -40,8 +40,6 @@ Default URL:
 
 - Backend default env: `matreflect`
 - `HyperBRDF` env: `hyperbrdf`
-- `DecoupledHyperBRDF` env: `decoupledhyperbrdf`
-- `HyperBRDF` and `DecoupledHyperBRDF` checkpoints are managed separately
 
 ## Fallback Entry
 

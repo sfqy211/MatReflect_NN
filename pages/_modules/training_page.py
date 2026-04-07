@@ -13,7 +13,7 @@ def render_page(embedded=False):
         )
     else:
         st.title("材质表达模型训练")
-    tabs = st.tabs(["Neural-BRDF (Baseline)", "HyperBRDF / DecoupledHyperBRDF"])
+    tabs = st.tabs(["Neural-BRDF (Baseline)", "HyperBRDF"])
     with tabs[0]:
         render_neural_brdf_tab()
     with tabs[1]:
@@ -22,7 +22,7 @@ def render_page(embedded=False):
     if not embedded:
         st.sidebar.markdown("---")
         st.sidebar.info(
-            "HyperBRDF 页签已同时集成原版 HyperBRDF 和增强版 DecoupledHyperBRDF。"
+            "当前仅保留 HyperBRDF 训练链路。"
         )
     else:
         st.caption("当前模块保留原有训练链路，只重排成主画布工作区。后续如有需要，可以继续补充模型增删与资产管理视图。")
