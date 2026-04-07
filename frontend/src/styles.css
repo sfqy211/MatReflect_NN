@@ -611,6 +611,11 @@ button {
   background: color-mix(in oklab, var(--surface-soft) 12%, transparent);
 }
 
+.run-card--selected {
+  border-color: color-mix(in oklab, var(--accent) 50%, var(--border));
+  background: color-mix(in oklab, var(--accent) 10%, var(--surface-soft));
+}
+
 .run-card strong {
   color: var(--text-strong);
 }

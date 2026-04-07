@@ -33,6 +33,14 @@ class FileListRequest(BaseModel):
     search: str = ""
 
 
+class FileListPathRequest(BaseModel):
+    directory: str
+    page: int = Field(default=1, ge=1)
+    page_size: int = Field(default=40, ge=1, le=500)
+    suffix: list[str] = Field(default_factory=list)
+    search: str = ""
+
+
 class FileListItem(BaseModel):
     name: str
     path: str

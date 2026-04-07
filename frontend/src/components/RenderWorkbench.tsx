@@ -14,7 +14,7 @@ import {
   useStopRender,
 } from '../features/render/useRenderWorkbench'
 import { BACKEND_ORIGIN } from '../lib/api'
-import type { RenderMode, RenderSourceModel, TaskEvent, TrainProjectVariant } from '../types/api'
+import type { RenderMode, RenderReconstructModel, RenderSourceModel, TaskEvent, TrainProjectVariant } from '../types/api'
 import { FeedbackPanel } from './FeedbackPanel'
 import { GalleryPreview } from './GalleryPreview'
 
@@ -236,7 +236,7 @@ export function RenderWorkbench() {
     if (needsCheckpoint && !selectedRun) return
     setLiveLogs([])
     const response = await startReconstructMutation.mutateAsync({
-      model_key: sourceModel === 'neural' ? 'neural' : (sourceModel as TrainProjectVariant),
+      model_key: (sourceModel === 'neural' ? 'neural' : sourceModel) as RenderReconstructModel,
       checkpoint_path: selectedRun?.checkpoint_path ?? '',
       merl_dir: materialsQuery.data?.resolved_path ?? 'data/inputs/binary',
       output_dir: sourceModel === 'neural' ? 'data/inputs/npy' : 'data/inputs/fullbin',

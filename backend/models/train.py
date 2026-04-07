@@ -6,20 +6,51 @@ from pydantic import BaseModel, Field
 from backend.models.common import TaskDetailResponse, TaskStatus
 
 
-TrainProjectVariant = Literal["hyperbrdf", "decoupled"]
+TrainModelKey = str
+TrainProjectVariant = str
 TrainDataset = Literal["MERL", "EPFL"]
 NeuralTrainEngine = Literal["pytorch", "keras"]
+TrainModelCategory = Literal["neural", "hyper"]
+TrainModelAdapter = Literal["neural-pytorch", "neural-keras", "hyper-family"]
 
 
 class TrainModelItem(BaseModel):
     key: str
     label: str
-    category: str
+    category: TrainModelCategory
+    adapter: TrainModelAdapter
+    built_in: bool = False
+    description: str = ""
     supports_training: bool = True
     supports_extract: bool = False
     supports_decode: bool = False
     supports_runs: bool = False
     default_paths: dict[str, str] = Field(default_factory=dict)
+    runtime: dict[str, str] = Field(default_factory=dict)
+    adapter_options: dict[str, Any] = Field(default_factory=dict)
+
+
+class TrainModelCreateRequest(BaseModel):
+    key: str = Field(min_length=2, max_length=64)
+    label: str = Field(min_length=1, max_length=128)
+    category: TrainModelCategory
+    adapter: TrainModelAdapter
+    description: str = ""
+    supports_training: bool = True
+    supports_extract: bool = False
+    supports_decode: bool = False
+    supports_runs: bool = False
+    default_paths: dict[str, str] = Field(default_factory=dict)
+    runtime: dict[str, str] = Field(default_factory=dict)
+    adapter_options: dict[str, Any] = Field(default_factory=dict)
+
+
+class TrainModelMutationResponse(BaseModel):
+    item: TrainModelItem
+
+
+class TrainModelDeleteResponse(BaseModel):
+    deleted_key: str
 
 
 class TrainModelsResponse(BaseModel):
@@ -27,8 +58,9 @@ class TrainModelsResponse(BaseModel):
 
 
 class TrainRunSummary(BaseModel):
-    project_variant: TrainProjectVariant
+    model_key: TrainModelKey
     label: str
+    adapter: TrainModelAdapter
     run_name: str
     run_dir: str
     checkpoint_path: str
@@ -45,6 +77,7 @@ class TrainRunsResponse(BaseModel):
 
 
 class NeuralPytorchTrainRequest(BaseModel):
+    model_key: TrainModelKey = "neural-pytorch"
     merl_dir: str
     selected_materials: list[str] = Field(default_factory=list)
     epochs: int = Field(default=100, ge=1, le=100000)
@@ -53,6 +86,7 @@ class NeuralPytorchTrainRequest(BaseModel):
 
 
 class NeuralKerasTrainRequest(BaseModel):
+    model_key: TrainModelKey = "neural-keras"
     merl_dir: str
     selected_materials: list[str] = Field(default_factory=list)
     cuda_device: str = "0"
@@ -61,7 +95,7 @@ class NeuralKerasTrainRequest(BaseModel):
 
 
 class HyperTrainRunRequest(BaseModel):
-    project_variant: TrainProjectVariant = "hyperbrdf"
+    model_key: TrainModelKey = "hyperbrdf"
     merl_dir: str
     output_dir: str
     conda_env: str = ""
@@ -90,7 +124,7 @@ class HyperTrainRunRequest(BaseModel):
 
 
 class HyperExtractRequest(BaseModel):
-    project_variant: TrainProjectVariant = "hyperbrdf"
+    model_key: TrainModelKey = "hyperbrdf"
     merl_dir: str
     selected_materials: list[str] = Field(default_factory=list)
     model_path: str
@@ -101,7 +135,7 @@ class HyperExtractRequest(BaseModel):
 
 
 class HyperDecodeRequest(BaseModel):
-    project_variant: TrainProjectVariant = "hyperbrdf"
+    model_key: TrainModelKey = "hyperbrdf"
     pt_dir: str
     selected_pts: list[str] = Field(default_factory=list)
     output_dir: str

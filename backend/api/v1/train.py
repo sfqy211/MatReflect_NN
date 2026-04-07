@@ -1,5 +1,6 @@
-from fastapi import APIRouter, HTTPException, Query
 from typing import Optional
+
+from fastapi import APIRouter, HTTPException, Query
 
 from backend.models.train import (
     HyperDecodeRequest,
@@ -7,8 +8,10 @@ from backend.models.train import (
     HyperTrainRunRequest,
     NeuralKerasTrainRequest,
     NeuralPytorchTrainRequest,
+    TrainModelCreateRequest,
+    TrainModelDeleteResponse,
+    TrainModelMutationResponse,
     TrainModelsResponse,
-    TrainProjectVariant,
     TrainRunsResponse,
     TrainTaskDetailResponse,
     TrainTaskStartResponse,
@@ -25,9 +28,44 @@ def train_models() -> TrainModelsResponse:
     return train_service.list_models()
 
 
+@router.post("/train/models", response_model=TrainModelMutationResponse)
+def create_train_model(request: TrainModelCreateRequest) -> TrainModelMutationResponse:
+    try:
+        item = train_service.create_model(request)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return TrainModelMutationResponse(item=item)
+
+
+@router.delete("/train/models/{model_key}", response_model=TrainModelDeleteResponse)
+def delete_train_model(model_key: str) -> TrainModelDeleteResponse:
+    try:
+        train_service.delete_model(model_key)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=f"Unknown model_key: {model_key}") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return TrainModelDeleteResponse(deleted_key=model_key)
+
+
 @router.get("/train/runs", response_model=TrainRunsResponse)
-def train_runs(project_variant: Optional[TrainProjectVariant] = Query(default=None)) -> TrainRunsResponse:
-    return train_service.list_runs(project_variant=project_variant)
+def train_runs(
+    model_key: Optional[str] = Query(default=None),
+    project_variant: Optional[str] = Query(default=None),
+) -> TrainRunsResponse:
+    selected_key = None
+    if model_key is not None:
+        normalized = model_key.strip()
+        selected_key = normalized or "__empty__"
+    elif project_variant is not None:
+        normalized = project_variant.strip()
+        selected_key = normalized or "__empty__"
+    if selected_key == "__empty__":
+        return TrainRunsResponse(total=0, items=[])
+    try:
+        return train_service.list_runs(model_key=selected_key)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=f"Unknown model_key: {selected_key}") from exc
 
 
 @router.get("/train/tasks/{task_id}", response_model=TrainTaskDetailResponse)
@@ -51,29 +89,44 @@ async def train_stop(request: TrainTaskStopRequest) -> TrainTaskStartResponse:
 
 @router.post("/train/neural/pytorch", response_model=TrainTaskStartResponse)
 async def train_neural_pytorch(request: NeuralPytorchTrainRequest) -> TrainTaskStartResponse:
-    record = await train_service.start_neural_pytorch(request)
+    try:
+        record = await train_service.start_neural_pytorch(request)
+    except (KeyError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     return TrainTaskStartResponse(task_id=record.task_id, status=record.status)
 
 
 @router.post("/train/neural/keras", response_model=TrainTaskStartResponse)
 async def train_neural_keras(request: NeuralKerasTrainRequest) -> TrainTaskStartResponse:
-    record = await train_service.start_neural_keras(request)
+    try:
+        record = await train_service.start_neural_keras(request)
+    except (KeyError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     return TrainTaskStartResponse(task_id=record.task_id, status=record.status)
 
 
 @router.post("/train/hyper/run", response_model=TrainTaskStartResponse)
 async def train_hyper_run(request: HyperTrainRunRequest) -> TrainTaskStartResponse:
-    record = await train_service.start_hyper_run(request)
+    try:
+        record = await train_service.start_hyper_run(request)
+    except (KeyError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     return TrainTaskStartResponse(task_id=record.task_id, status=record.status)
 
 
 @router.post("/train/hyper/extract", response_model=TrainTaskStartResponse)
 async def train_hyper_extract(request: HyperExtractRequest) -> TrainTaskStartResponse:
-    record = await train_service.start_hyper_extract(request)
+    try:
+        record = await train_service.start_hyper_extract(request)
+    except (KeyError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     return TrainTaskStartResponse(task_id=record.task_id, status=record.status)
 
 
 @router.post("/train/hyper/decode", response_model=TrainTaskStartResponse)
 async def train_hyper_decode(request: HyperDecodeRequest) -> TrainTaskStartResponse:
-    record = await train_service.start_hyper_decode(request)
+    try:
+        record = await train_service.start_hyper_decode(request)
+    except (KeyError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     return TrainTaskStartResponse(task_id=record.task_id, status=record.status)

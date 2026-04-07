@@ -33,6 +33,16 @@ export async function apiPost<T>(path: string, body: unknown): Promise<T> {
   return response.json() as Promise<T>
 }
 
+export async function apiDelete<T>(path: string): Promise<T> {
+  const response = await fetch(`${API_BASE}${path}`, {
+    method: 'DELETE',
+  })
+  if (!response.ok) {
+    throw new Error(await buildErrorMessage(response, 'DELETE', path))
+  }
+  return response.json() as Promise<T>
+}
+
 async function buildErrorMessage(response: Response, method: string, path: string) {
   let detail = ''
 

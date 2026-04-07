@@ -1,17 +1,10 @@
-import { useEffect, useMemo, useState } from 'react'
+import { type MouseEvent, useEffect, useMemo, useState } from 'react'
 
 import { useQueryClient } from '@tanstack/react-query'
 
-import { BACKEND_ORIGIN } from '../lib/api'
-import type {
-  NeuralTrainEngine,
-  TaskEvent,
-  TrainProjectVariant,
-  TrainRunSummary,
-} from '../types/api'
-import { FeedbackPanel } from './FeedbackPanel'
 import {
-  useExtractedPtFiles,
+  useCreateTrainModel,
+  useDeleteTrainModel,
   useMaterialsDirectory,
   useStartHyperDecode,
   useStartHyperExtract,
@@ -22,7 +15,18 @@ import {
   useTrainModels,
   useTrainRuns,
   useTrainTaskDetail,
+  useWorkspaceFiles,
 } from '../features/models/useModelsWorkbench'
+import { BACKEND_ORIGIN } from '../lib/api'
+import type {
+  NeuralTrainEngine,
+  TaskEvent,
+  TrainModelAdapter,
+  TrainModelCreateRequest,
+  TrainModelItem,
+  TrainRunSummary,
+} from '../types/api'
+import { FeedbackPanel } from './FeedbackPanel'
 
 
 const TEST_SET_20 = [
@@ -48,25 +52,67 @@ const TEST_SET_20 = [
   'yellow-paint',
 ]
 
-type WorkbenchMode = 'neural' | TrainProjectVariant
+const DEFAULT_FULLBIN_OUTPUT = 'data/inputs/fullbin'
 
 function normalizeBinaryName(name: string) {
   return name.replace(/\.binary$/i, '')
 }
 
-function getDefaultPath(
-  models: ReturnType<typeof useTrainModels>['data'],
-  key: string,
-  field: string,
-  fallback: string,
-) {
-  return models?.items.find((item) => item.key === key)?.default_paths[field] ?? fallback
+function getDefaultPath(model: TrainModelItem | null, field: string, fallback: string) {
+  return model?.default_paths[field] ?? fallback
+}
+
+function getRuntimeValue(model: TrainModelItem | null, field: string, fallback = '') {
+  return model?.runtime[field] ?? fallback
+}
+
+function supportsDecoupledOptions(model: TrainModelItem | null) {
+  return Boolean(model?.adapter_options?.supports_decoupled_options)
+}
+
+function buildDraft(adapter: TrainModelAdapter): TrainModelCreateRequest {
+  const category = adapter === 'hyper-family' ? 'hyper' : 'neural'
+  return {
+    key: '',
+    label: '',
+    category,
+    adapter,
+    description: '',
+    supports_training: true,
+    supports_extract: adapter === 'hyper-family',
+    supports_decode: adapter === 'hyper-family',
+    supports_runs: adapter === 'hyper-family',
+    default_paths:
+      adapter === 'neural-pytorch'
+        ? { materials_dir: 'data/inputs/binary', output_dir: 'data/inputs/npy' }
+        : adapter === 'neural-keras'
+          ? {
+              materials_dir: 'data/inputs/binary',
+              h5_output_dir: 'Neural-BRDF/data/merl_nbrdf',
+              npy_output_dir: 'data/inputs/npy',
+            }
+          : {
+              materials_dir: 'data/inputs/binary',
+              results_dir: '',
+              extract_dir: '',
+              checkpoint: '',
+            },
+    runtime:
+      adapter === 'neural-pytorch'
+        ? { conda_env: '', working_dir: '', train_script: '' }
+        : adapter === 'neural-keras'
+          ? { conda_env: '', working_dir: '', train_script: '', convert_script: '' }
+          : { conda_env: '', working_dir: '', train_script: '', extract_script: '', decode_script: '' },
+    adapter_options: adapter === 'hyper-family' ? { supports_decoupled_options: false } : {},
+  }
 }
 
 export function ModelsWorkbench() {
   const queryClient = useQueryClient()
-  const [mode, setMode] = useState<WorkbenchMode>('hyperbrdf')
-  const [neuralEngine, setNeuralEngine] = useState<NeuralTrainEngine>('pytorch')
+
+  const [activeModelKey, setActiveModelKey] = useState('')
+  const [draft, setDraft] = useState<TrainModelCreateRequest>(() => buildDraft('hyper-family'))
+  const [showCreateForm, setShowCreateForm] = useState(false)
   const [search, setSearch] = useState('')
   const [ptSearch, setPtSearch] = useState('')
   const [selectedMaterials, setSelectedMaterials] = useState<string[]>([])
@@ -74,19 +120,7 @@ export function ModelsWorkbench() {
   const [dataset, setDataset] = useState<'MERL' | 'EPFL'>('MERL')
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null)
   const [liveLogs, setLiveLogs] = useState<string[]>([])
-
-  const modelQuery = useTrainModels()
-  const materialsQuery = useMaterialsDirectory(search)
-  const runsQuery = useTrainRuns(mode === 'neural' ? null : mode)
-  const ptFilesQuery = useExtractedPtFiles(mode === 'neural' ? 'hyperbrdf' : mode, ptSearch)
-  const taskDetailQuery = useTrainTaskDetail(activeTaskId)
-
-  const startNeuralPytorch = useStartNeuralPytorch()
-  const startNeuralKeras = useStartNeuralKeras()
-  const startHyperRun = useStartHyperRun()
-  const startHyperExtract = useStartHyperExtract()
-  const startHyperDecode = useStartHyperDecode()
-  const stopTrainTask = useStopTrainTask()
+  const [neuralEngine, setNeuralEngine] = useState<NeuralTrainEngine>('pytorch')
 
   const [merlDir, setMerlDir] = useState('')
   const [neuralOutputDir, setNeuralOutputDir] = useState('')
@@ -99,7 +133,7 @@ export function ModelsWorkbench() {
   const [trainOutputDir, setTrainOutputDir] = useState('')
   const [extractOutputDir, setExtractOutputDir] = useState('')
   const [ptDir, setPtDir] = useState('')
-  const [fullbinOutputDir, setFullbinOutputDir] = useState('data/inputs/fullbin')
+  const [fullbinOutputDir, setFullbinOutputDir] = useState(DEFAULT_FULLBIN_OUTPUT)
   const [teacherDir, setTeacherDir] = useState('')
   const [baselineCheckpoint, setBaselineCheckpoint] = useState('')
   const [epochs, setEpochs] = useState(100)
@@ -122,44 +156,57 @@ export function ModelsWorkbench() {
   const [stageAEpochs, setStageAEpochs] = useState(10)
   const [stageBRampEpochs, setStageBRampEpochs] = useState(20)
 
+  const modelQuery = useTrainModels()
+  const materialsQuery = useMaterialsDirectory(search)
+  const activeModel = useMemo(
+    () => modelQuery.data?.items.find((item) => item.key === activeModelKey) ?? null,
+    [activeModelKey, modelQuery.data?.items],
+  )
+  const runsQuery = useTrainRuns(activeModel?.supports_runs ? activeModel.key : null, Boolean(activeModel?.supports_runs))
+  const ptFilesQuery = useWorkspaceFiles(ptDir, ['.pt'], ptSearch, Boolean(activeModel?.supports_decode))
+  const taskDetailQuery = useTrainTaskDetail(activeTaskId)
+
+  const createTrainModel = useCreateTrainModel()
+  const deleteTrainModel = useDeleteTrainModel()
+  const startNeuralPytorch = useStartNeuralPytorch()
+  const startNeuralKeras = useStartNeuralKeras()
+  const startHyperRun = useStartHyperRun()
+  const startHyperExtract = useStartHyperExtract()
+  const startHyperDecode = useStartHyperDecode()
+  const stopTrainTask = useStopTrainTask()
+
   const materialItems = materialsQuery.data?.items ?? []
   const ptItems = ptFilesQuery.data?.items ?? []
+  const runs = activeModel?.supports_runs ? runsQuery.data?.items ?? [] : []
   const taskDetail = taskDetailQuery.data
   const taskRecord = taskDetail?.record
 
   useEffect(() => {
-    if (!merlDir) {
-      setMerlDir(getDefaultPath(modelQuery.data, 'neural-pytorch', 'materials_dir', 'data/inputs/binary'))
+    const firstModel = modelQuery.data?.items[0]?.key ?? ''
+    if (!activeModelKey && firstModel) {
+      setActiveModelKey(firstModel)
     }
-    if (!neuralOutputDir) {
-      setNeuralOutputDir(getDefaultPath(modelQuery.data, 'neural-pytorch', 'output_dir', 'data/inputs/npy'))
-    }
-    if (!kerasH5Dir) {
-      setKerasH5Dir(getDefaultPath(modelQuery.data, 'neural-keras', 'h5_output_dir', 'Neural-BRDF/data/merl_nbrdf'))
-    }
-    if (!kerasNpyDir) {
-      setKerasNpyDir(getDefaultPath(modelQuery.data, 'neural-keras', 'npy_output_dir', 'data/inputs/npy'))
-    }
-  }, [kerasH5Dir, kerasNpyDir, merlDir, modelQuery.data, neuralOutputDir])
+  }, [activeModelKey, modelQuery.data?.items])
 
   useEffect(() => {
-    if (mode === 'hyperbrdf') {
-      setTrainOutputDir(getDefaultPath(modelQuery.data, 'hyperbrdf', 'results_dir', 'HyperBRDF/results'))
-      setExtractOutputDir(getDefaultPath(modelQuery.data, 'hyperbrdf', 'extract_dir', 'HyperBRDF/results/extracted_pts'))
-      setPtDir(getDefaultPath(modelQuery.data, 'hyperbrdf', 'extract_dir', 'HyperBRDF/results/extracted_pts'))
-      setCheckpointPath(getDefaultPath(modelQuery.data, 'hyperbrdf', 'checkpoint', 'HyperBRDF/results/test/MERL/checkpoint.pt'))
-      setCondaEnv('hyperbrdf')
+    if (!activeModel) {
+      return
     }
-    if (mode === 'decoupled') {
-      setTrainOutputDir(getDefaultPath(modelQuery.data, 'decoupled', 'results_dir', 'DecoupledHyperBRDF/results'))
-      setExtractOutputDir(getDefaultPath(modelQuery.data, 'decoupled', 'extract_dir', 'DecoupledHyperBRDF/results/extracted_pts'))
-      setPtDir(getDefaultPath(modelQuery.data, 'decoupled', 'extract_dir', 'DecoupledHyperBRDF/results/extracted_pts'))
-      setCheckpointPath(getDefaultPath(modelQuery.data, 'decoupled', 'checkpoint', 'DecoupledHyperBRDF/results/test/MERL/checkpoint.pt'))
-      setTeacherDir('DecoupledHyperBRDF/data/analytic_teacher')
-      setBaselineCheckpoint('')
-      setCondaEnv('decoupledhyperbrdf')
-    }
-  }, [mode, modelQuery.data])
+    setNeuralEngine(activeModel.adapter === 'neural-keras' ? 'keras' : 'pytorch')
+    setMerlDir(getDefaultPath(activeModel, 'materials_dir', 'data/inputs/binary'))
+    setNeuralOutputDir(getDefaultPath(activeModel, 'output_dir', 'data/inputs/npy'))
+    setKerasH5Dir(getDefaultPath(activeModel, 'h5_output_dir', 'Neural-BRDF/data/merl_nbrdf'))
+    setKerasNpyDir(getDefaultPath(activeModel, 'npy_output_dir', 'data/inputs/npy'))
+    setCondaEnv(getRuntimeValue(activeModel, 'conda_env'))
+    setTrainOutputDir(getDefaultPath(activeModel, 'results_dir', ''))
+    setExtractOutputDir(getDefaultPath(activeModel, 'extract_dir', ''))
+    setPtDir(getDefaultPath(activeModel, 'extract_dir', ''))
+    setCheckpointPath(getDefaultPath(activeModel, 'checkpoint', ''))
+    setTeacherDir(getDefaultPath(activeModel, 'teacher_dir', ''))
+    setBaselineCheckpoint('')
+    setFullbinOutputDir(DEFAULT_FULLBIN_OUTPUT)
+    setDataset('MERL')
+  }, [activeModel?.key])
 
   useEffect(() => {
     const available = new Set(materialItems.map((item) => item.name))
@@ -197,7 +244,7 @@ export function ModelsWorkbench() {
       }
       queryClient.invalidateQueries({ queryKey: ['train-task-detail', activeTaskId] })
       queryClient.invalidateQueries({ queryKey: ['train-runs'] })
-      queryClient.invalidateQueries({ queryKey: ['train-extracted-pts'] })
+      queryClient.invalidateQueries({ queryKey: ['workspace-files'] })
     }
 
     return () => {
@@ -207,19 +254,22 @@ export function ModelsWorkbench() {
 
   const summaryChips = useMemo(
     () => [
-      `模式: ${mode === 'neural' ? `Neural-BRDF / ${neuralEngine}` : mode === 'hyperbrdf' ? 'HyperBRDF' : 'DecoupledHyperBRDF'}`,
-      `材质数: ${materialItems.length}`,
+      `当前模型: ${activeModel?.label ?? '-'}`,
+      `适配器: ${activeModel?.adapter ?? '-'}`,
+      `固定材质库: ${materialItems.length}`,
       `已选材质: ${selectedMaterials.length}`,
-      `运行记录: ${runsQuery.data?.total ?? 0}`,
+      `运行记录: ${runs.length}`,
       `PT 文件: ${ptItems.length}`,
     ],
-    [materialItems.length, mode, neuralEngine, ptItems.length, runsQuery.data?.total, selectedMaterials.length],
+    [activeModel?.adapter, activeModel?.label, materialItems.length, ptItems.length, runs.length, selectedMaterials.length],
   )
 
   const logs = liveLogs.length > 0 ? liveLogs : taskDetail?.logs ?? []
   const currentStatus = taskRecord?.status ?? 'idle'
   const progressValue = taskRecord?.progress ?? 0
   const taskError =
+    createTrainModel.error ??
+    deleteTrainModel.error ??
     startNeuralPytorch.error ??
     startNeuralKeras.error ??
     startHyperRun.error ??
@@ -228,54 +278,42 @@ export function ModelsWorkbench() {
     stopTrainTask.error
   const taskStateMessage =
     taskRecord?.status === 'failed'
-      ? taskRecord.message || '训练任务执行失败，请检查环境、路径和日志输出。'
+      ? taskRecord.message || '任务执行失败，请检查环境、路径和日志输出。'
       : taskRecord?.status === 'cancelled'
-        ? taskRecord.message || '训练任务已取消。'
+        ? taskRecord.message || '任务已取消。'
         : null
 
-  const toggleMaterial = (name: string, event?: React.MouseEvent) => {
+  const toggleMaterial = (name: string, event?: MouseEvent) => {
     setSelectedMaterials((current) => {
-      const currentIndex = materialItems.findIndex(f => f.name === name);
+      const currentIndex = materialItems.findIndex((item) => item.name === name)
       if (event?.shiftKey && current.length > 0 && currentIndex !== -1) {
-        const lastSelectedName = current[current.length - 1];
-        const lastSelectedIndex = materialItems.findIndex(f => f.name === lastSelectedName);
+        const lastSelectedName = current[current.length - 1]
+        const lastSelectedIndex = materialItems.findIndex((item) => item.name === lastSelectedName)
         if (lastSelectedIndex !== -1) {
-          const start = Math.min(lastSelectedIndex, currentIndex);
-          const end = Math.max(lastSelectedIndex, currentIndex);
-          const namesToSelect = materialItems.slice(start, end + 1).map(f => f.name);
-          const newSelection = [...current];
-          for (const n of namesToSelect) {
-            if (!newSelection.includes(n)) {
-              newSelection.push(n);
-            }
-          }
-          return newSelection;
+          const start = Math.min(lastSelectedIndex, currentIndex)
+          const end = Math.max(lastSelectedIndex, currentIndex)
+          const rangeNames = materialItems.slice(start, end + 1).map((item) => item.name)
+          return Array.from(new Set([...current, ...rangeNames]))
         }
       }
-      return current.includes(name) ? current.filter((item) => item !== name) : [...current, name];
+      return current.includes(name) ? current.filter((item) => item !== name) : [...current, name]
     })
   }
 
-  const togglePt = (name: string, event?: React.MouseEvent) => {
+  const togglePt = (name: string, event?: MouseEvent) => {
     setSelectedPts((current) => {
-      const currentIndex = ptItems.findIndex(f => f.name === name);
+      const currentIndex = ptItems.findIndex((item) => item.name === name)
       if (event?.shiftKey && current.length > 0 && currentIndex !== -1) {
-        const lastSelectedName = current[current.length - 1];
-        const lastSelectedIndex = ptItems.findIndex(f => f.name === lastSelectedName);
+        const lastSelectedName = current[current.length - 1]
+        const lastSelectedIndex = ptItems.findIndex((item) => item.name === lastSelectedName)
         if (lastSelectedIndex !== -1) {
-          const start = Math.min(lastSelectedIndex, currentIndex);
-          const end = Math.max(lastSelectedIndex, currentIndex);
-          const namesToSelect = ptItems.slice(start, end + 1).map(f => f.name);
-          const newSelection = [...current];
-          for (const n of namesToSelect) {
-            if (!newSelection.includes(n)) {
-              newSelection.push(n);
-            }
-          }
-          return newSelection;
+          const start = Math.min(lastSelectedIndex, currentIndex)
+          const end = Math.max(lastSelectedIndex, currentIndex)
+          const rangeNames = ptItems.slice(start, end + 1).map((item) => item.name)
+          return Array.from(new Set([...current, ...rangeNames]))
         }
       }
-      return current.includes(name) ? current.filter((item) => item !== name) : [...current, name];
+      return current.includes(name) ? current.filter((item) => item !== name) : [...current, name]
     })
   }
 
@@ -287,26 +325,70 @@ export function ModelsWorkbench() {
   }
 
   const applyRun = (run: TrainRunSummary) => {
-    setMode(run.project_variant)
+    setActiveModelKey(run.model_key)
     setCheckpointPath(run.checkpoint_path)
     setDataset(run.dataset === 'EPFL' ? 'EPFL' : 'MERL')
   }
 
-  const startTraining = async () => {
-    setLiveLogs([])
-    if (mode === 'neural') {
-      if (neuralEngine === 'pytorch') {
-        const response = await startNeuralPytorch.mutateAsync({
-          merl_dir: merlDir,
-          selected_materials: selectedMaterials,
-          epochs,
-          output_dir: neuralOutputDir,
-          device: neuralDevice,
-        })
-        setActiveTaskId(response.task_id)
-        return
+  const updateDraft = (updater: (current: TrainModelCreateRequest) => TrainModelCreateRequest) => {
+    setDraft((current) => updater(current))
+  }
+
+  const changeDraftAdapter = (adapter: TrainModelAdapter) => {
+    setDraft((current) => {
+      const next = buildDraft(adapter)
+      return {
+        ...next,
+        key: current.key,
+        label: current.label,
+        description: current.description,
       }
+    })
+  }
+
+  const submitCreateModel = async () => {
+    const response = await createTrainModel.mutateAsync(draft)
+    await queryClient.invalidateQueries({ queryKey: ['train-models'] })
+    setActiveModelKey(response.item.key)
+    setShowCreateForm(false)
+    setDraft(buildDraft(draft.adapter))
+  }
+
+  const removeModel = async (model: TrainModelItem) => {
+    if (model.built_in) {
+      return
+    }
+    if (!window.confirm(`确认删除模型 ${model.label} (${model.key}) 吗？`)) {
+      return
+    }
+    await deleteTrainModel.mutateAsync(model.key)
+    await queryClient.invalidateQueries({ queryKey: ['train-models'] })
+    if (activeModelKey === model.key) {
+      const fallback = modelQuery.data?.items.find((item) => item.key !== model.key)?.key ?? ''
+      setActiveModelKey(fallback)
+    }
+  }
+
+  const startTraining = async () => {
+    if (!activeModel) {
+      return
+    }
+    setLiveLogs([])
+    if (activeModel.adapter === 'neural-pytorch') {
+      const response = await startNeuralPytorch.mutateAsync({
+        model_key: activeModel.key,
+        merl_dir: merlDir,
+        selected_materials: selectedMaterials,
+        epochs,
+        output_dir: neuralOutputDir,
+        device: neuralDevice,
+      })
+      setActiveTaskId(response.task_id)
+      return
+    }
+    if (activeModel.adapter === 'neural-keras') {
       const response = await startNeuralKeras.mutateAsync({
+        model_key: activeModel.key,
         merl_dir: merlDir,
         selected_materials: selectedMaterials,
         cuda_device: cudaDevice,
@@ -316,9 +398,8 @@ export function ModelsWorkbench() {
       setActiveTaskId(response.task_id)
       return
     }
-
     const response = await startHyperRun.mutateAsync({
-      project_variant: mode,
+      model_key: activeModel.key,
       merl_dir: merlDir,
       output_dir: trainOutputDir,
       conda_env: condaEnv,
@@ -349,12 +430,12 @@ export function ModelsWorkbench() {
   }
 
   const startExtract = async () => {
-    if (mode === 'neural') {
+    if (!activeModel || activeModel.adapter !== 'hyper-family' || !activeModel.supports_extract) {
       return
     }
     setLiveLogs([])
     const response = await startHyperExtract.mutateAsync({
-      project_variant: mode,
+      model_key: activeModel.key,
       merl_dir: merlDir,
       selected_materials: selectedMaterials,
       model_path: checkpointPath,
@@ -367,12 +448,12 @@ export function ModelsWorkbench() {
   }
 
   const startDecode = async () => {
-    if (mode === 'neural') {
+    if (!activeModel || activeModel.adapter !== 'hyper-family' || !activeModel.supports_decode) {
       return
     }
     setLiveLogs([])
     const response = await startHyperDecode.mutateAsync({
-      project_variant: mode,
+      model_key: activeModel.key,
       pt_dir: ptDir,
       selected_pts: selectedPts,
       output_dir: fullbinOutputDir,
@@ -407,45 +488,360 @@ export function ModelsWorkbench() {
         ))}
       </div>
 
-      <div className="action-grid">
-        <button type="button" className={mode === 'neural' ? 'action-tile action-tile--active' : 'action-tile'} onClick={() => setMode('neural')}>
-          <span className="action-tile__label">Neural-BRDF</span>
-        </button>
-        <button
-          type="button"
-          className={mode === 'hyperbrdf' ? 'action-tile action-tile--active' : 'action-tile'}
-          onClick={() => setMode('hyperbrdf')}
-        >
-          <span className="action-tile__label">HyperBRDF</span>
-        </button>
-        <button
-          type="button"
-          className={mode === 'decoupled' ? 'action-tile action-tile--active' : 'action-tile'}
-          onClick={() => setMode('decoupled')}
-        >
-          <span className="action-tile__label">DecoupledHyperBRDF</span>
-        </button>
-      </div>
-
       <div className="models-layout">
+        <section className="models-section">
+          <div className="detail-board__lead">
+            <h3>模型注册表</h3>
+          </div>
+          <div className="render-actions">
+            <button type="button" className="theme-toggle" onClick={() => setShowCreateForm((current) => !current)}>
+              {showCreateForm ? '收起新增表单' : '添加自研模型'}
+            </button>
+            {activeModel && !activeModel.built_in ? (
+              <button
+                type="button"
+                className="theme-toggle render-actions--danger"
+                onClick={() => void removeModel(activeModel)}
+              >
+                删除当前模型
+              </button>
+            ) : null}
+          </div>
+          {activeModel?.built_in ? (
+            <FeedbackPanel
+              title="当前模型为内建模型"
+              message="内建模型仅支持使用与兼容，不提供删除操作。切换到自定义模型后可执行删除。"
+              tone="info"
+              compact
+            />
+          ) : null}
+          <div className="runs-list">
+            {(modelQuery.data?.items ?? []).map((model) => (
+              <article
+                key={model.key}
+                className={activeModelKey === model.key ? 'run-card run-card--selected' : 'run-card'}
+              >
+                <strong>{model.label}</strong>
+                <span>{model.key}</span>
+                <div className="detail-pill-grid">
+                  <span className="detail-pill">{model.adapter}</span>
+                  <span className="detail-pill">{model.category}</span>
+                  <span className="detail-pill">{model.built_in ? '内建' : '自定义'}</span>
+                </div>
+                {model.description ? <span>{model.description}</span> : null}
+                <div className="render-actions">
+                  <button type="button" className="theme-toggle" onClick={() => setActiveModelKey(model.key)}>
+                    切换到此模型
+                  </button>
+                  {!model.built_in ? (
+                    <button type="button" className="theme-toggle render-actions--danger" onClick={() => void removeModel(model)}>
+                      删除模型
+                    </button>
+                  ) : null}
+                </div>
+              </article>
+            ))}
+          </div>
+        </section>
+
+        <section className="models-section">
+          <div className="detail-board__lead">
+            <h3>固定材质选择</h3>
+          </div>
+          <div className="file-toolbar">
+            <input
+              type="search"
+              className="search-input"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="搜索 binary 材质"
+            />
+            <div className="file-toolbar__actions">
+              <button type="button" className="theme-toggle" onClick={() => setSelectedMaterials(materialItems.map((item) => item.name))}>
+                全选
+              </button>
+              <button type="button" className="theme-toggle" onClick={applyPreset}>
+                预设 20
+              </button>
+              <button type="button" className="theme-toggle" onClick={() => setSelectedMaterials([])}>
+                清空
+              </button>
+            </div>
+          </div>
+          <div className="file-list">
+            {materialsQuery.error instanceof Error ? (
+              <FeedbackPanel title="材质目录读取失败" message={materialsQuery.error.message} tone="error" compact />
+            ) : null}
+            {materialItems.map((item) => (
+              <label
+                key={item.path}
+                className="file-item"
+                onClick={(event) => {
+                  event.preventDefault()
+                  toggleMaterial(item.name, event)
+                }}
+              >
+                <input type="checkbox" checked={selectedMaterials.includes(item.name)} readOnly />
+                <span>{item.name}</span>
+              </label>
+            ))}
+            {!materialsQuery.error && materialItems.length === 0 ? (
+              <FeedbackPanel title="当前没有可训练材质" message="请检查 data/inputs/binary 下是否存在 .binary 文件。" tone="empty" compact />
+            ) : null}
+          </div>
+        </section>
+
+        {showCreateForm ? (
+          <section className="models-section models-section--wide">
+            <div className="detail-board__lead">
+              <h3>新增模型</h3>
+            </div>
+            <div className="render-form-grid">
+              <label className="field">
+                <span>模型 key</span>
+                <input value={draft.key} onChange={(event) => updateDraft((current) => ({ ...current, key: event.target.value }))} />
+              </label>
+              <label className="field">
+                <span>显示名称</span>
+                <input value={draft.label} onChange={(event) => updateDraft((current) => ({ ...current, label: event.target.value }))} />
+              </label>
+              <label className="field">
+                <span>适配器</span>
+                <select value={draft.adapter} onChange={(event) => changeDraftAdapter(event.target.value as TrainModelAdapter)}>
+                  <option value="hyper-family">hyper-family</option>
+                  <option value="neural-pytorch">neural-pytorch</option>
+                  <option value="neural-keras">neural-keras</option>
+                </select>
+              </label>
+              <label className="field">
+                <span>说明</span>
+                <input value={draft.description} onChange={(event) => updateDraft((current) => ({ ...current, description: event.target.value }))} />
+              </label>
+            </div>
+
+            <div className="render-form-grid">
+              <label className="field">
+                <span>Conda 环境</span>
+                <input
+                  value={draft.runtime.conda_env ?? ''}
+                  onChange={(event) =>
+                    updateDraft((current) => ({
+                      ...current,
+                      runtime: { ...current.runtime, conda_env: event.target.value },
+                    }))
+                  }
+                />
+              </label>
+              <label className="field">
+                <span>工作目录</span>
+                <input
+                  value={draft.runtime.working_dir ?? ''}
+                  onChange={(event) =>
+                    updateDraft((current) => ({
+                      ...current,
+                      runtime: { ...current.runtime, working_dir: event.target.value },
+                    }))
+                  }
+                />
+              </label>
+              <label className="field">
+                <span>训练脚本</span>
+                <input
+                  value={draft.runtime.train_script ?? ''}
+                  onChange={(event) =>
+                    updateDraft((current) => ({
+                      ...current,
+                      runtime: { ...current.runtime, train_script: event.target.value },
+                    }))
+                  }
+                />
+              </label>
+              {draft.adapter === 'neural-keras' ? (
+                <label className="field">
+                  <span>转换脚本</span>
+                  <input
+                    value={draft.runtime.convert_script ?? ''}
+                    onChange={(event) =>
+                      updateDraft((current) => ({
+                        ...current,
+                        runtime: { ...current.runtime, convert_script: event.target.value },
+                      }))
+                    }
+                  />
+                </label>
+              ) : null}
+              {draft.adapter === 'hyper-family' ? (
+                <>
+                  <label className="field">
+                    <span>提取脚本</span>
+                    <input
+                      value={draft.runtime.extract_script ?? ''}
+                      onChange={(event) =>
+                        updateDraft((current) => ({
+                          ...current,
+                          runtime: { ...current.runtime, extract_script: event.target.value },
+                        }))
+                      }
+                    />
+                  </label>
+                  <label className="field">
+                    <span>解码脚本</span>
+                    <input
+                      value={draft.runtime.decode_script ?? ''}
+                      onChange={(event) =>
+                        updateDraft((current) => ({
+                          ...current,
+                          runtime: { ...current.runtime, decode_script: event.target.value },
+                        }))
+                      }
+                    />
+                  </label>
+                </>
+              ) : null}
+            </div>
+
+            <div className="render-form-grid">
+              <label className="field">
+                <span>材质目录</span>
+                <input
+                  value={draft.default_paths.materials_dir ?? ''}
+                  onChange={(event) =>
+                    updateDraft((current) => ({
+                      ...current,
+                      default_paths: { ...current.default_paths, materials_dir: event.target.value },
+                    }))
+                  }
+                />
+              </label>
+              {draft.adapter === 'neural-pytorch' ? (
+                <label className="field">
+                  <span>输出目录</span>
+                  <input
+                    value={draft.default_paths.output_dir ?? ''}
+                    onChange={(event) =>
+                      updateDraft((current) => ({
+                        ...current,
+                        default_paths: { ...current.default_paths, output_dir: event.target.value },
+                      }))
+                    }
+                  />
+                </label>
+              ) : null}
+              {draft.adapter === 'neural-keras' ? (
+                <>
+                  <label className="field">
+                    <span>H5 输出目录</span>
+                    <input
+                      value={draft.default_paths.h5_output_dir ?? ''}
+                      onChange={(event) =>
+                        updateDraft((current) => ({
+                          ...current,
+                          default_paths: { ...current.default_paths, h5_output_dir: event.target.value },
+                        }))
+                      }
+                    />
+                  </label>
+                  <label className="field">
+                    <span>NPY 输出目录</span>
+                    <input
+                      value={draft.default_paths.npy_output_dir ?? ''}
+                      onChange={(event) =>
+                        updateDraft((current) => ({
+                          ...current,
+                          default_paths: { ...current.default_paths, npy_output_dir: event.target.value },
+                        }))
+                      }
+                    />
+                  </label>
+                </>
+              ) : null}
+              {draft.adapter === 'hyper-family' ? (
+                <>
+                  <label className="field">
+                    <span>结果目录</span>
+                    <input
+                      value={draft.default_paths.results_dir ?? ''}
+                      onChange={(event) =>
+                        updateDraft((current) => ({
+                          ...current,
+                          default_paths: { ...current.default_paths, results_dir: event.target.value },
+                        }))
+                      }
+                    />
+                  </label>
+                  <label className="field">
+                    <span>PT 目录</span>
+                    <input
+                      value={draft.default_paths.extract_dir ?? ''}
+                      onChange={(event) =>
+                        updateDraft((current) => ({
+                          ...current,
+                          default_paths: { ...current.default_paths, extract_dir: event.target.value },
+                        }))
+                      }
+                    />
+                  </label>
+                  <label className="field">
+                    <span>默认 Checkpoint</span>
+                    <input
+                      value={draft.default_paths.checkpoint ?? ''}
+                      onChange={(event) =>
+                        updateDraft((current) => ({
+                          ...current,
+                          default_paths: { ...current.default_paths, checkpoint: event.target.value },
+                        }))
+                      }
+                    />
+                  </label>
+                </>
+              ) : null}
+            </div>
+
+            {draft.adapter === 'hyper-family' ? (
+              <div className="render-toggle-row">
+                <label className="toggle-field">
+                  <input type="checkbox" checked={draft.supports_extract} onChange={(event) => updateDraft((current) => ({ ...current, supports_extract: event.target.checked }))} />
+                  <span>支持参数提取</span>
+                </label>
+                <label className="toggle-field">
+                  <input type="checkbox" checked={draft.supports_decode} onChange={(event) => updateDraft((current) => ({ ...current, supports_decode: event.target.checked }))} />
+                  <span>支持 fullbin 解码</span>
+                </label>
+                <label className="toggle-field">
+                  <input type="checkbox" checked={draft.supports_runs} onChange={(event) => updateDraft((current) => ({ ...current, supports_runs: event.target.checked }))} />
+                  <span>支持运行记录扫描</span>
+                </label>
+                <label className="toggle-field">
+                  <input
+                    type="checkbox"
+                    checked={Boolean(draft.adapter_options.supports_decoupled_options)}
+                    onChange={(event) =>
+                      updateDraft((current) => ({
+                        ...current,
+                        adapter_options: { ...current.adapter_options, supports_decoupled_options: event.target.checked },
+                      }))
+                    }
+                  />
+                  <span>支持解耦扩展参数</span>
+                </label>
+              </div>
+            ) : null}
+
+            <div className="render-actions">
+              <button type="button" className="theme-toggle render-actions--primary" onClick={() => void submitCreateModel()}>
+                保存模型
+              </button>
+              <button type="button" className="theme-toggle" onClick={() => setDraft(buildDraft(draft.adapter))}>
+                重置表单
+              </button>
+            </div>
+          </section>
+        ) : null}
+
         <section className="models-section">
           <div className="detail-board__lead">
             <h3>训练入口</h3>
           </div>
-
-          {mode === 'neural' ? (
-            <div className="render-toggle-row">
-              <label className="toggle-field">
-                <input type="radio" checked={neuralEngine === 'pytorch'} onChange={() => setNeuralEngine('pytorch')} />
-                <span>PyTorch</span>
-              </label>
-              <label className="toggle-field">
-                <input type="radio" checked={neuralEngine === 'keras'} onChange={() => setNeuralEngine('keras')} />
-                <span>Keras + h5 to npy</span>
-              </label>
-            </div>
-          ) : null}
-
           <div className="render-form-grid">
             <label className="field">
               <span>材质目录</span>
@@ -453,7 +849,7 @@ export function ModelsWorkbench() {
             </label>
             <label className="field">
               <span>数据集</span>
-              <select value={dataset} onChange={(event) => setDataset(event.target.value as 'MERL' | 'EPFL')} disabled={mode === 'neural'}>
+              <select value={dataset} onChange={(event) => setDataset(event.target.value as 'MERL' | 'EPFL')} disabled={activeModel?.category === 'neural'}>
                 <option value="MERL">MERL</option>
                 <option value="EPFL">EPFL</option>
               </select>
@@ -463,45 +859,46 @@ export function ModelsWorkbench() {
               <input type="number" value={epochs} onChange={(event) => setEpochs(Number(event.target.value) || 1)} />
             </label>
             <label className="field">
-              <span>{mode === 'neural' ? '设备 / CUDA' : 'Conda 环境'}</span>
-              {mode === 'neural' && neuralEngine === 'pytorch' ? (
+              <span>{activeModel?.category === 'neural' && neuralEngine === 'pytorch' ? '训练设备' : 'Conda 环境'}</span>
+              {activeModel?.adapter === 'neural-pytorch' ? (
                 <select value={neuralDevice} onChange={(event) => setNeuralDevice(event.target.value as 'cpu' | 'cuda')}>
                   <option value="cpu">cpu</option>
                   <option value="cuda">cuda</option>
                 </select>
-              ) : mode === 'neural' ? (
-                <input value={cudaDevice} onChange={(event) => setCudaDevice(event.target.value)} />
               ) : (
                 <input value={condaEnv} onChange={(event) => setCondaEnv(event.target.value)} />
               )}
             </label>
           </div>
-
-          {mode === 'neural' ? (
+          {activeModel?.adapter === 'neural-pytorch' ? (
             <div className="render-form-grid">
-              {neuralEngine === 'pytorch' ? (
-                <label className="field">
-                  <span>输出目录</span>
-                  <input value={neuralOutputDir} onChange={(event) => setNeuralOutputDir(event.target.value)} />
-                </label>
-              ) : (
-                <>
-                  <label className="field">
-                    <span>H5 目录</span>
-                    <input value={kerasH5Dir} onChange={(event) => setKerasH5Dir(event.target.value)} />
-                  </label>
-                  <label className="field">
-                    <span>NPY 目录</span>
-                    <input value={kerasNpyDir} onChange={(event) => setKerasNpyDir(event.target.value)} />
-                  </label>
-                </>
-              )}
+              <label className="field">
+                <span>NPY 输出目录</span>
+                <input value={neuralOutputDir} onChange={(event) => setNeuralOutputDir(event.target.value)} />
+              </label>
             </div>
-          ) : (
+          ) : null}
+          {activeModel?.adapter === 'neural-keras' ? (
+            <div className="render-form-grid">
+              <label className="field">
+                <span>CUDA 设备</span>
+                <input value={cudaDevice} onChange={(event) => setCudaDevice(event.target.value)} />
+              </label>
+              <label className="field">
+                <span>H5 输出目录</span>
+                <input value={kerasH5Dir} onChange={(event) => setKerasH5Dir(event.target.value)} />
+              </label>
+              <label className="field">
+                <span>NPY 输出目录</span>
+                <input value={kerasNpyDir} onChange={(event) => setKerasNpyDir(event.target.value)} />
+              </label>
+            </div>
+          ) : null}
+          {activeModel?.adapter === 'hyper-family' ? (
             <>
               <div className="render-form-grid">
                 <label className="field">
-                  <span>训练输出目录</span>
+                  <span>训练结果目录</span>
                   <input value={trainOutputDir} onChange={(event) => setTrainOutputDir(event.target.value)} />
                 </label>
                 <label className="field">
@@ -531,8 +928,7 @@ export function ModelsWorkbench() {
                   <span>继续训练</span>
                 </label>
               </div>
-
-              {mode === 'decoupled' ? (
+              {supportsDecoupledOptions(activeModel) ? (
                 <div className="render-form-grid">
                   <label className="field">
                     <span>模型类型</span>
@@ -549,22 +945,22 @@ export function ModelsWorkbench() {
                     </select>
                   </label>
                   <label className="field">
-                    <span>教师缓存目录</span>
+                    <span>Teacher 目录</span>
                     <input value={teacherDir} onChange={(event) => setTeacherDir(event.target.value)} />
                   </label>
                   <label className="field">
-                    <span>基线 Checkpoint</span>
+                    <span>Baseline Checkpoint</span>
                     <input value={baselineCheckpoint} onChange={(event) => setBaselineCheckpoint(event.target.value)} />
                   </label>
                   <label className="field">
-                    <span>解析 lobe 数</span>
+                    <span>解析 lobes</span>
                     <select value={analyticLobes} onChange={(event) => setAnalyticLobes(Number(event.target.value) as 1 | 2)}>
                       <option value={1}>1</option>
                       <option value={2}>2</option>
                     </select>
                   </label>
                   <label className="field">
-                    <span>高光阈值</span>
+                    <span>高光分位数</span>
                     <input type="number" step="0.01" value={specPercentile} onChange={(event) => setSpecPercentile(Number(event.target.value) || 0.9)} />
                   </label>
                   <label className="field">
@@ -598,14 +994,13 @@ export function ModelsWorkbench() {
                 </div>
               ) : null}
             </>
-          )}
-
+          ) : null}
           <div className="render-actions">
             <button
               type="button"
-              className="theme-toggle"
-              onClick={startTraining}
-              disabled={mode === 'neural' && selectedMaterials.length === 0}
+              className="theme-toggle render-actions--primary"
+              onClick={() => void startTraining()}
+              disabled={!activeModel || (activeModel.category === 'neural' && selectedMaterials.length === 0)}
             >
               启动训练
             </button>
@@ -614,194 +1009,135 @@ export function ModelsWorkbench() {
 
         <section className="models-section">
           <div className="detail-board__lead">
-            <h3>材质选择</h3>
-          </div>
-          <div className="file-toolbar">
-            <input
-              type="search"
-              className="search-input"
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="搜索 binary 材质"
-            />
-            <div className="file-toolbar__actions">
-              <button type="button" className="theme-toggle" onClick={() => setSelectedMaterials(materialItems.map((item) => item.name))}>
-                全选
-              </button>
-              <button type="button" className="theme-toggle" onClick={applyPreset}>
-                预设20
-              </button>
-              <button type="button" className="theme-toggle" onClick={() => setSelectedMaterials([])}>
-                清空
-              </button>
-            </div>
-          </div>
-          <div className="file-list">
-            {materialsQuery.error instanceof Error ? (
-              <FeedbackPanel
-                title="材质目录读取失败"
-                message={materialsQuery.error.message}
-                tone="error"
-                actionLabel="重新加载"
-                onAction={() => {
-                  void materialsQuery.refetch()
-                }}
-                compact
-              />
-            ) : null}
-            {materialItems.map((item) => (
-              <label key={item.path} className="file-item" onClick={(e) => {
-                e.preventDefault();
-                toggleMaterial(item.name, e);
-              }}>
-                <input type="checkbox" checked={selectedMaterials.includes(item.name)} readOnly />
-                <span>{item.name}</span>
-              </label>
-            ))}
-            {!materialsQuery.error && materialItems.length === 0 ? (
-              <FeedbackPanel title="当前没有可训练材质" message="请检查 `data/inputs/binary` 下是否已有 `.binary` 文件。" tone="empty" compact />
-            ) : null}
-          </div>
-        </section>
-
-        <section className="models-section">
-          <div className="detail-board__lead">
             <h3>运行记录</h3>
           </div>
           <div className="runs-list">
-            {runsQuery.error instanceof Error ? (
-              <FeedbackPanel
-                title="运行记录读取失败"
-                message={runsQuery.error.message}
-                tone="error"
-                actionLabel="重新加载"
-                onAction={() => {
-                  void runsQuery.refetch()
-                }}
-                compact
-              />
+            {!activeModel?.supports_runs ? (
+              <FeedbackPanel title="当前模型无运行记录" message="该模型未启用 supports_runs，因此不会显示其它模型的训练记录。" tone="empty" compact />
             ) : null}
-            {(runsQuery.data?.items ?? []).map((run) => (
-              <article key={`${run.project_variant}-${run.run_dir}`} className="run-card">
+            {runsQuery.error instanceof Error ? (
+              <FeedbackPanel title="运行记录读取失败" message={runsQuery.error.message} tone="error" compact />
+            ) : null}
+            {runs.map((run) => (
+              <article key={`${run.model_key}-${run.run_dir}`} className="run-card">
                 <strong>{run.label}</strong>
                 <span>{run.run_name}</span>
                 <span>{run.dataset} / 已训练 {run.completed_epochs} epochs</span>
-                <button type="button" className="theme-toggle" onClick={() => applyRun(run)} disabled={!run.has_checkpoint}>
-                  应用 Checkpoint
-                </button>
+                <div className="render-actions">
+                  <button type="button" className="theme-toggle" onClick={() => applyRun(run)} disabled={!run.has_checkpoint}>
+                    应用 Checkpoint
+                  </button>
+                </div>
               </article>
             ))}
-            {!runsQuery.error && (runsQuery.data?.items ?? []).length === 0 ? (
-              <FeedbackPanel title="当前没有运行记录" message="启动一次训练后，这里会显示 checkpoint 和 run 信息。" tone="empty" compact />
+            {!runsQuery.error && activeModel?.supports_runs && runs.length === 0 ? (
+              <FeedbackPanel title="当前没有运行记录" message="该模型尚未产出可扫描的结果目录，或未启用 supports_runs。" tone="empty" compact />
             ) : null}
           </div>
         </section>
-
-        {mode !== 'neural' ? (
+        {activeModel?.adapter === 'hyper-family' ? (
           <>
-            <section className="models-section">
-              <div className="detail-board__lead">
-                <h3>参数提取</h3>
-              </div>
-              <div className="render-form-grid">
-                <label className="field">
-                  <span>Checkpoint</span>
-                  <input value={checkpointPath} onChange={(event) => setCheckpointPath(event.target.value)} />
-                </label>
-                <label className="field">
-                  <span>输出 PT 目录</span>
-                  <input
-                    value={extractOutputDir}
-                    onChange={(event) => {
-                      setExtractOutputDir(event.target.value)
-                      setPtDir(event.target.value)
-                    }}
-                  />
-                </label>
-                <label className="field">
-                  <span>随机种子</span>
-                  <input type="number" value={trainSeed} onChange={(event) => setTrainSeed(Number(event.target.value) || 0)} />
-                </label>
-              </div>
-              <div className="render-actions">
-                <button
-                  type="button"
-                  className="theme-toggle"
-                  onClick={startExtract}
-                  disabled={dataset === 'MERL' && selectedMaterials.length === 0}
-                >
-                  启动参数提取
-                </button>
-              </div>
-            </section>
-
-            <section className="models-section">
-              <div className="detail-board__lead">
-                <h3>完整重建</h3>
-              </div>
-              <div className="render-form-grid">
-                <label className="field">
-                  <span>PT 目录</span>
-                  <input value={ptDir} onChange={(event) => setPtDir(event.target.value)} />
-                </label>
-                <label className="field">
-                  <span>FullBin 输出目录</span>
-                  <input value={fullbinOutputDir} onChange={(event) => setFullbinOutputDir(event.target.value)} />
-                </label>
-                <label className="field">
-                  <span>CUDA 设备</span>
-                  <input value={cudaDevice} onChange={(event) => setCudaDevice(event.target.value)} />
-                </label>
-              </div>
-              <div className="file-toolbar">
-                <input
-                  type="search"
-                  className="search-input"
-                  value={ptSearch}
-                  onChange={(event) => setPtSearch(event.target.value)}
-                  placeholder="搜索已提取 pt 文件"
-                />
-                <div className="file-toolbar__actions">
-                  <button type="button" className="theme-toggle" onClick={() => setSelectedPts(ptItems.map((item) => item.name))}>
-                    全选
-                  </button>
-                  <button type="button" className="theme-toggle" onClick={() => setSelectedPts([])}>
-                    清空
+            {activeModel.supports_extract ? (
+              <section className="models-section">
+                <div className="detail-board__lead">
+                  <h3>参数提取</h3>
+                </div>
+                <div className="render-form-grid">
+                  <label className="field">
+                    <span>Checkpoint</span>
+                    <input value={checkpointPath} onChange={(event) => setCheckpointPath(event.target.value)} />
+                  </label>
+                  <label className="field">
+                    <span>PT 输出目录</span>
+                    <input
+                      value={extractOutputDir}
+                      onChange={(event) => {
+                        setExtractOutputDir(event.target.value)
+                        setPtDir(event.target.value)
+                      }}
+                    />
+                  </label>
+                  <label className="field">
+                    <span>随机种子</span>
+                    <input type="number" value={trainSeed} onChange={(event) => setTrainSeed(Number(event.target.value) || 0)} />
+                  </label>
+                </div>
+                <div className="render-actions">
+                  <button
+                    type="button"
+                    className="theme-toggle render-actions--primary"
+                    onClick={() => void startExtract()}
+                    disabled={dataset === 'MERL' && selectedMaterials.length === 0}
+                  >
+                    启动参数提取
                   </button>
                 </div>
-              </div>
-              <div className="file-list">
-                {ptFilesQuery.error instanceof Error ? (
-                  <FeedbackPanel
-                    title="PT 列表读取失败"
-                    message={ptFilesQuery.error.message}
-                    tone="error"
-                    actionLabel="重新加载"
-                    onAction={() => {
-                      void ptFilesQuery.refetch()
-                    }}
-                    compact
-                  />
-                ) : null}
-                {ptItems.map((item) => (
-                  <label key={item.path} className="file-item" onClick={(e) => {
-                    e.preventDefault();
-                    togglePt(item.name, e);
-                  }}>
-                    <input type="checkbox" checked={selectedPts.includes(item.name)} readOnly />
-                    <span>{item.name}</span>
+              </section>
+            ) : null}
+            {activeModel.supports_decode ? (
+              <section className="models-section">
+                <div className="detail-board__lead">
+                  <h3>PT 解码</h3>
+                </div>
+                <div className="render-form-grid">
+                  <label className="field">
+                    <span>PT 目录</span>
+                    <input value={ptDir} onChange={(event) => setPtDir(event.target.value)} />
                   </label>
-                ))}
-                {!ptFilesQuery.error && ptItems.length === 0 ? (
-                  <FeedbackPanel title="当前没有可解码的 PT 文件" message="请先完成参数提取，或确认输出目录中已有 `.pt` 文件。" tone="empty" compact />
-                ) : null}
-              </div>
-              <div className="render-actions">
-                <button type="button" className="theme-toggle" onClick={startDecode} disabled={selectedPts.length === 0}>
-                  执行 fullbin 解码
-                </button>
-              </div>
-            </section>
+                  <label className="field">
+                    <span>FullBin 输出目录</span>
+                    <input value={fullbinOutputDir} onChange={(event) => setFullbinOutputDir(event.target.value)} />
+                  </label>
+                  <label className="field">
+                    <span>CUDA 设备</span>
+                    <input value={cudaDevice} onChange={(event) => setCudaDevice(event.target.value)} />
+                  </label>
+                </div>
+                <div className="file-toolbar">
+                  <input
+                    type="search"
+                    className="search-input"
+                    value={ptSearch}
+                    onChange={(event) => setPtSearch(event.target.value)}
+                    placeholder="搜索已提取的 .pt 文件"
+                  />
+                  <div className="file-toolbar__actions">
+                    <button type="button" className="theme-toggle" onClick={() => setSelectedPts(ptItems.map((item) => item.name))}>
+                      全选
+                    </button>
+                    <button type="button" className="theme-toggle" onClick={() => setSelectedPts([])}>
+                      清空
+                    </button>
+                  </div>
+                </div>
+                <div className="file-list">
+                  {ptFilesQuery.error instanceof Error ? (
+                    <FeedbackPanel title="PT 列表读取失败" message={ptFilesQuery.error.message} tone="error" compact />
+                  ) : null}
+                  {ptItems.map((item) => (
+                    <label
+                      key={item.path}
+                      className="file-item"
+                      onClick={(event) => {
+                        event.preventDefault()
+                        togglePt(item.name, event)
+                      }}
+                    >
+                      <input type="checkbox" checked={selectedPts.includes(item.name)} readOnly />
+                      <span>{item.name}</span>
+                    </label>
+                  ))}
+                  {!ptFilesQuery.error && ptItems.length === 0 ? (
+                    <FeedbackPanel title="当前没有可解码的 PT 文件" message="请先完成参数提取，或检查 PT 目录是否正确。" tone="empty" compact />
+                  ) : null}
+                </div>
+                <div className="render-actions">
+                  <button type="button" className="theme-toggle render-actions--primary" onClick={() => void startDecode()} disabled={selectedPts.length === 0}>
+                    执行 fullbin 解码
+                  </button>
+                </div>
+              </section>
+            ) : null}
           </>
         ) : null}
 
@@ -828,14 +1164,14 @@ export function ModelsWorkbench() {
           </div>
           {taskStateMessage ? (
             <FeedbackPanel
-              title={taskRecord?.status === 'failed' ? '训练任务失败' : '训练任务已取消'}
+              title={taskRecord?.status === 'failed' ? '任务失败' : '任务已取消'}
               message={taskStateMessage}
               tone={taskRecord?.status === 'failed' ? 'error' : 'info'}
               compact
             />
           ) : null}
           <div className="render-actions">
-            <button type="button" className="theme-toggle" onClick={stopTask} disabled={!activeTaskId}>
+            <button type="button" className="theme-toggle render-actions--danger" onClick={() => void stopTask()} disabled={!activeTaskId}>
               停止任务
             </button>
           </div>
@@ -847,7 +1183,7 @@ export function ModelsWorkbench() {
                 </div>
               ))
             ) : (
-              <FeedbackPanel title="等待训练日志" message="启动训练、提取或解码后，这里会持续显示运行输出。" tone="empty" compact />
+              <FeedbackPanel title="等待任务日志" message="启动训练、提取或解码后，这里会持续显示执行输出。" tone="empty" compact />
             )}
           </div>
           {taskError instanceof Error ? <FeedbackPanel title="操作提交失败" message={taskError.message} tone="error" compact /> : null}

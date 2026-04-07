@@ -183,28 +183,59 @@ export type GeneratedImageResponse = {
   skipped: string[]
 }
 
-export type TrainProjectVariant = 'hyperbrdf' | 'decoupled'
+export type TrainProjectVariant = string
 export type TrainDataset = 'MERL' | 'EPFL'
 export type NeuralTrainEngine = 'pytorch' | 'keras'
+export type TrainModelCategory = 'neural' | 'hyper'
+export type TrainModelAdapter = 'neural-pytorch' | 'neural-keras' | 'hyper-family'
 
 export type TrainModelItem = {
   key: string
   label: string
-  category: string
+  category: TrainModelCategory
+  adapter: TrainModelAdapter
+  built_in: boolean
+  description: string
   supports_training: boolean
   supports_extract: boolean
   supports_decode: boolean
   supports_runs: boolean
   default_paths: Record<string, string>
+  runtime: Record<string, string>
+  adapter_options: Record<string, unknown>
 }
 
 export type TrainModelsResponse = {
   items: TrainModelItem[]
 }
 
-export type TrainRunSummary = {
-  project_variant: TrainProjectVariant
+export type TrainModelCreateRequest = {
+  key: string
   label: string
+  category: TrainModelCategory
+  adapter: TrainModelAdapter
+  description: string
+  supports_training: boolean
+  supports_extract: boolean
+  supports_decode: boolean
+  supports_runs: boolean
+  default_paths: Record<string, string>
+  runtime: Record<string, string>
+  adapter_options: Record<string, unknown>
+}
+
+export type TrainModelMutationResponse = {
+  item: TrainModelItem
+}
+
+export type TrainModelDeleteResponse = {
+  deleted_key: string
+}
+
+export type TrainRunSummary = {
+  model_key: string
+  label: string
+  adapter: TrainModelAdapter
   run_name: string
   run_dir: string
   checkpoint_path: string
@@ -221,6 +252,7 @@ export type TrainRunsResponse = {
 }
 
 export type NeuralPytorchTrainRequest = {
+  model_key: string
   merl_dir: string
   selected_materials: string[]
   epochs: number
@@ -229,6 +261,7 @@ export type NeuralPytorchTrainRequest = {
 }
 
 export type NeuralKerasTrainRequest = {
+  model_key: string
   merl_dir: string
   selected_materials: string[]
   cuda_device: string
@@ -237,7 +270,7 @@ export type NeuralKerasTrainRequest = {
 }
 
 export type HyperTrainRunRequest = {
-  project_variant: TrainProjectVariant
+  model_key: string
   merl_dir: string
   output_dir: string
   conda_env: string
@@ -266,7 +299,7 @@ export type HyperTrainRunRequest = {
 }
 
 export type HyperExtractRequest = {
-  project_variant: TrainProjectVariant
+  model_key: string
   merl_dir: string
   selected_materials: string[]
   model_path: string
@@ -277,7 +310,7 @@ export type HyperExtractRequest = {
 }
 
 export type HyperDecodeRequest = {
-  project_variant: TrainProjectVariant
+  model_key: string
   pt_dir: string
   selected_pts: string[]
   output_dir: string

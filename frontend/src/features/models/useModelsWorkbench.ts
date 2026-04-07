@@ -1,6 +1,6 @@
 import { useMutation, useQuery } from '@tanstack/react-query'
 
-import { apiGet, apiPost } from '../../lib/api'
+import { apiDelete, apiGet, apiPost } from '../../lib/api'
 import type {
   FileListResponse,
   HyperDecodeRequest,
@@ -10,8 +10,10 @@ import type {
   NeuralPytorchTrainRequest,
   TaskDetailResponse,
   TaskStartResponse,
+  TrainModelCreateRequest,
+  TrainModelDeleteResponse,
+  TrainModelMutationResponse,
   TrainModelsResponse,
-  TrainProjectVariant,
   TrainRunsResponse,
 } from '../../types/api'
 
@@ -25,14 +27,12 @@ export function useTrainModels() {
 }
 
 
-export function useTrainRuns(projectVariant: TrainProjectVariant | null) {
+export function useTrainRuns(modelKey: string | null, enabled = true) {
   return useQuery({
-    queryKey: ['train-runs', projectVariant],
-    queryFn: () =>
-      apiGet<TrainRunsResponse>(
-        projectVariant ? `/train/runs?project_variant=${projectVariant}` : '/train/runs',
-      ),
+    queryKey: ['train-runs', modelKey],
+    queryFn: () => apiGet<TrainRunsResponse>(`/train/runs?model_key=${encodeURIComponent(modelKey ?? '')}`),
     staleTime: 15_000,
+    enabled: enabled && Boolean(modelKey),
   })
 }
 
@@ -65,19 +65,34 @@ export function useMaterialsDirectory(search: string) {
 }
 
 
-export function useExtractedPtFiles(projectVariant: TrainProjectVariant, search: string) {
-  const pathKey =
-    projectVariant === 'hyperbrdf' ? 'train_hyper_extracted_pts' : 'train_decoupled_extracted_pts'
+export function useWorkspaceFiles(directory: string, suffix: string[], search: string, enabled = true) {
   return useQuery({
-    queryKey: ['train-extracted-pts', projectVariant, search],
+    queryKey: ['workspace-files', directory, suffix.join(','), search],
     queryFn: () =>
-      apiPost<FileListResponse>('/fs/list', {
-        path_key: pathKey,
+      apiPost<FileListResponse>('/fs/list-path', {
+        directory,
         page: 1,
         page_size: 200,
-        suffix: ['.pt'],
+        suffix,
         search,
       }),
+    enabled: enabled && Boolean(directory.trim()),
+  })
+}
+
+
+export function useCreateTrainModel() {
+  return useMutation({
+    mutationFn: (payload: TrainModelCreateRequest) =>
+      apiPost<TrainModelMutationResponse>('/train/models', payload),
+  })
+}
+
+
+export function useDeleteTrainModel() {
+  return useMutation({
+    mutationFn: (modelKey: string) =>
+      apiDelete<TrainModelDeleteResponse>(`/train/models/${encodeURIComponent(modelKey)}`),
   })
 }
 

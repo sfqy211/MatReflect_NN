@@ -8,6 +8,7 @@ import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 from backend.core.config import LOGS_ROOT, PROJECT_ROOT
 from backend.models.common import TaskDetailResponse
@@ -17,50 +18,14 @@ from backend.models.train import (
     HyperTrainRunRequest,
     NeuralKerasTrainRequest,
     NeuralPytorchTrainRequest,
+    TrainModelCreateRequest,
     TrainModelItem,
     TrainModelsResponse,
-    TrainProjectVariant,
     TrainRunSummary,
     TrainRunsResponse,
 )
+from backend.services.model_registry import model_registry_service
 from backend.services.task_manager import task_manager
-
-
-NEURAL_BRDF_DIR = PROJECT_ROOT / "Neural-BRDF"
-HYPER_BRDF_DIR = PROJECT_ROOT / "HyperBRDF"
-DECOUPLED_HB_DIR = PROJECT_ROOT / "DecoupledHyperBRDF"
-DATA_INPUTS_BRDFS = PROJECT_ROOT / "data" / "inputs" / "binary"
-DATA_INPUTS_FULLBIN = PROJECT_ROOT / "data" / "inputs" / "fullbin"
-DATA_INPUTS_NPY = PROJECT_ROOT / "data" / "inputs" / "npy"
-DATA_INTERMEDIATE_H5 = NEURAL_BRDF_DIR / "data" / "merl_nbrdf"
-BINARY_TO_NBRDF_DIR = NEURAL_BRDF_DIR / "binary_to_nbrdf"
-PYTORCH_SCRIPT = BINARY_TO_NBRDF_DIR / "pytorch_code" / "train_NBRDF_pytorch.py"
-KERAS_SCRIPT = BINARY_TO_NBRDF_DIR / "binary_to_nbrdf.py"
-H5_TO_NPY_SCRIPT = BINARY_TO_NBRDF_DIR / "h5_to_npy.py"
-
-
-HB_PROJECTS = {
-    "hyperbrdf": {
-        "label": "HyperBRDF",
-        "dir": HYPER_BRDF_DIR,
-        "main_script": HYPER_BRDF_DIR / "main.py",
-        "test_script": HYPER_BRDF_DIR / "test.py",
-        "pt_to_fullbin_script": HYPER_BRDF_DIR / "pt_to_fullmerl.py",
-        "default_model": HYPER_BRDF_DIR / "results" / "test" / "MERL" / "checkpoint.pt",
-        "default_results_dir": HYPER_BRDF_DIR / "results",
-        "default_extract_dir": HYPER_BRDF_DIR / "results" / "extracted_pts",
-    },
-    "decoupled": {
-        "label": "DecoupledHyperBRDF",
-        "dir": DECOUPLED_HB_DIR,
-        "main_script": DECOUPLED_HB_DIR / "main.py",
-        "test_script": DECOUPLED_HB_DIR / "test.py",
-        "pt_to_fullbin_script": DECOUPLED_HB_DIR / "pt_to_fullmerl.py",
-        "default_model": DECOUPLED_HB_DIR / "results" / "test" / "MERL" / "checkpoint.pt",
-        "default_results_dir": DECOUPLED_HB_DIR / "results",
-        "default_extract_dir": DECOUPLED_HB_DIR / "results" / "extracted_pts",
-    },
-}
 
 
 def decode_subprocess_output(raw: bytes | str | None) -> str:
@@ -90,92 +55,47 @@ class TrainService:
         self._processes: dict[str, asyncio.subprocess.Process] = {}
         self._cancel_events: dict[str, asyncio.Event] = {}
 
-    def _project_config(self, project_variant: TrainProjectVariant) -> dict:
-        return HB_PROJECTS[project_variant]
-
-    def _default_conda_env(self, project_variant: TrainProjectVariant) -> str:
-        return "decoupledhyperbrdf" if project_variant == "decoupled" else "hyperbrdf"
-
     def list_models(self) -> TrainModelsResponse:
-        return TrainModelsResponse(
-            items=[
-                TrainModelItem(
-                    key="neural-pytorch",
-                    label="Neural-BRDF / PyTorch",
-                    category="neural",
-                    supports_training=True,
-                    supports_extract=False,
-                    supports_decode=False,
-                    supports_runs=False,
-                    default_paths={
-                        "materials_dir": str(DATA_INPUTS_BRDFS),
-                        "output_dir": str(DATA_INPUTS_NPY),
-                    },
-                ),
-                TrainModelItem(
-                    key="neural-keras",
-                    label="Neural-BRDF / Keras",
-                    category="neural",
-                    supports_training=True,
-                    supports_extract=False,
-                    supports_decode=False,
-                    supports_runs=False,
-                    default_paths={
-                        "materials_dir": str(DATA_INPUTS_BRDFS),
-                        "h5_output_dir": str(DATA_INTERMEDIATE_H5),
-                        "npy_output_dir": str(DATA_INPUTS_NPY),
-                    },
-                ),
-                TrainModelItem(
-                    key="hyperbrdf",
-                    label="HyperBRDF",
-                    category="hyper",
-                    supports_training=True,
-                    supports_extract=True,
-                    supports_decode=True,
-                    supports_runs=True,
-                    default_paths={
-                        "results_dir": str(HB_PROJECTS["hyperbrdf"]["default_results_dir"]),
-                        "extract_dir": str(HB_PROJECTS["hyperbrdf"]["default_extract_dir"]),
-                        "checkpoint": str(HB_PROJECTS["hyperbrdf"]["default_model"]),
-                    },
-                ),
-                TrainModelItem(
-                    key="decoupled",
-                    label="DecoupledHyperBRDF",
-                    category="hyper",
-                    supports_training=True,
-                    supports_extract=True,
-                    supports_decode=True,
-                    supports_runs=True,
-                    default_paths={
-                        "results_dir": str(HB_PROJECTS["decoupled"]["default_results_dir"]),
-                        "extract_dir": str(HB_PROJECTS["decoupled"]["default_extract_dir"]),
-                        "checkpoint": str(HB_PROJECTS["decoupled"]["default_model"]),
-                    },
-                ),
-            ]
-        )
+        return TrainModelsResponse(items=model_registry_service.list_models())
 
-    def list_runs(self, project_variant: TrainProjectVariant | None = None) -> TrainRunsResponse:
-        variants = [project_variant] if project_variant else ["hyperbrdf", "decoupled"]
+    def create_model(self, request: TrainModelCreateRequest) -> TrainModelItem:
+        return model_registry_service.create_model(request)
+
+    def delete_model(self, model_key: str) -> None:
+        model_registry_service.delete_model(model_key)
+
+    def list_runs(self, model_key: str | None = None) -> TrainRunsResponse:
+        if model_key:
+            model = self._get_model(model_key)
+            if model.adapter != "hyper-family" or not model.supports_runs:
+                return TrainRunsResponse(total=0, items=[])
+            model_items = [model]
+        else:
+            model_items = model_registry_service.list_models()
         items: list[TrainRunSummary] = []
-        for variant in variants:
-            if variant is None:
+        for model in model_items:
+            if model.adapter != "hyper-family" or not model.supports_runs:
                 continue
-            config = self._project_config(variant)
-            results_dir = Path(config["default_results_dir"])
+            results_dir_value = model.default_paths.get("results_dir", "").strip()
+            if not results_dir_value:
+                continue
+            results_dir = self._resolve_project_path(results_dir_value, must_exist=False)
             if not results_dir.exists():
                 continue
             for args_path in results_dir.rglob("args.txt"):
                 run_dir = args_path.parent
                 checkpoint_path = run_dir / "checkpoint.pt"
                 args_data = self._read_args(args_path)
+                try:
+                    run_name = str(run_dir.relative_to(results_dir))
+                except ValueError:
+                    run_name = run_dir.name
                 items.append(
                     TrainRunSummary(
-                        project_variant=variant,
-                        label=config["label"],
-                        run_name=str(run_dir.relative_to(results_dir)),
+                        model_key=model.key,
+                        label=model.label,
+                        adapter=model.adapter,
+                        run_name=run_name,
                         run_dir=str(run_dir.resolve()),
                         checkpoint_path=str(checkpoint_path.resolve()),
                         dataset=str(args_data.get("dataset", "MERL")),
@@ -211,46 +131,66 @@ class TrainService:
         return True
 
     async def start_neural_pytorch(self, request: NeuralPytorchTrainRequest):
+        model = self._require_model_adapter(request.model_key, "neural-pytorch")
         log_path = LOGS_ROOT / f"train_neural_pytorch_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.log"
-        record = task_manager.create("train_neural_pytorch", "Neural-BRDF PyTorch queued", log_path=str(log_path))
+        record = task_manager.create("train_neural_pytorch", f"{model.label} queued", log_path=str(log_path))
         cancel_event = asyncio.Event()
         self._cancel_events[record.task_id] = cancel_event
-        asyncio.create_task(self._run_neural_pytorch(record.task_id, request, log_path, cancel_event))
+        asyncio.create_task(self._run_neural_pytorch(record.task_id, model, request, log_path, cancel_event))
         return record
 
     async def start_neural_keras(self, request: NeuralKerasTrainRequest):
+        model = self._require_model_adapter(request.model_key, "neural-keras")
         log_path = LOGS_ROOT / f"train_neural_keras_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.log"
-        record = task_manager.create("train_neural_keras", "Neural-BRDF Keras queued", log_path=str(log_path))
+        record = task_manager.create("train_neural_keras", f"{model.label} queued", log_path=str(log_path))
         cancel_event = asyncio.Event()
         self._cancel_events[record.task_id] = cancel_event
-        asyncio.create_task(self._run_neural_keras(record.task_id, request, log_path, cancel_event))
+        asyncio.create_task(self._run_neural_keras(record.task_id, model, request, log_path, cancel_event))
         return record
 
     async def start_hyper_run(self, request: HyperTrainRunRequest):
+        model = self._require_model_adapter(request.model_key, "hyper-family")
+        if not model.supports_training:
+            raise ValueError(f"模型不支持训练: {model.key}")
         log_path = LOGS_ROOT / f"train_hyper_run_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.log"
-        record = task_manager.create("train_hyper_run", "HyperBRDF training queued", log_path=str(log_path))
+        record = task_manager.create("train_hyper_run", f"{model.label} training queued", log_path=str(log_path))
         cancel_event = asyncio.Event()
         self._cancel_events[record.task_id] = cancel_event
-        asyncio.create_task(self._run_hyper_train(record.task_id, request, log_path, cancel_event))
+        asyncio.create_task(self._run_hyper_train(record.task_id, model, request, log_path, cancel_event))
         return record
 
     async def start_hyper_extract(self, request: HyperExtractRequest):
+        model = self._require_model_adapter(request.model_key, "hyper-family")
+        if not model.supports_extract:
+            raise ValueError(f"模型不支持参数提取: {model.key}")
         log_path = LOGS_ROOT / f"train_hyper_extract_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.log"
-        record = task_manager.create("train_hyper_extract", "HyperBRDF extraction queued", log_path=str(log_path))
+        record = task_manager.create("train_hyper_extract", f"{model.label} extraction queued", log_path=str(log_path))
         cancel_event = asyncio.Event()
         self._cancel_events[record.task_id] = cancel_event
-        asyncio.create_task(self._run_hyper_extract(record.task_id, request, log_path, cancel_event))
+        asyncio.create_task(self._run_hyper_extract(record.task_id, model, request, log_path, cancel_event))
         return record
 
     async def start_hyper_decode(self, request: HyperDecodeRequest):
+        model = self._require_model_adapter(request.model_key, "hyper-family")
+        if not model.supports_decode:
+            raise ValueError(f"模型不支持 fullbin 解码: {model.key}")
         log_path = LOGS_ROOT / f"train_hyper_decode_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.log"
-        record = task_manager.create("train_hyper_decode", "HyperBRDF decode queued", log_path=str(log_path))
+        record = task_manager.create("train_hyper_decode", f"{model.label} decode queued", log_path=str(log_path))
         cancel_event = asyncio.Event()
         self._cancel_events[record.task_id] = cancel_event
-        asyncio.create_task(self._run_hyper_decode(record.task_id, request, log_path, cancel_event))
+        asyncio.create_task(self._run_hyper_decode(record.task_id, model, request, log_path, cancel_event))
         return record
 
-    def _read_args(self, args_path: Path) -> dict:
+    def _get_model(self, model_key: str) -> TrainModelItem:
+        return model_registry_service.get_model(model_key)
+
+    def _require_model_adapter(self, model_key: str, adapter: str) -> TrainModelItem:
+        model = self._get_model(model_key)
+        if model.adapter != adapter:
+            raise ValueError(f"模型 {model_key} 的适配器为 {model.adapter}，不能按 {adapter} 流程执行。")
+        return model
+
+    def _read_args(self, args_path: Path) -> dict[str, Any]:
         try:
             return json.loads(args_path.read_text(encoding="utf-8"))
         except Exception:
@@ -275,7 +215,7 @@ class TrainService:
         status: str | None = None,
         progress: int | None = None,
         event: str = "log",
-        result_payload: dict | None = None,
+        result_payload: dict[str, Any] | None = None,
     ) -> None:
         clean_message = message.replace("\r", "").replace("\b", "")
         with log_path.open("a", encoding="utf-8") as handle:
@@ -329,11 +269,7 @@ class TrainService:
                         await process.wait()
                     return -1
                 try:
-                    line = (
-                        await asyncio.wait_for(process.stdout.readline(), timeout=0.5)
-                        if process.stdout
-                        else b""
-                    )
+                    line = await asyncio.wait_for(process.stdout.readline(), timeout=0.5) if process.stdout else b""
                 except asyncio.TimeoutError:
                     if process.returncode is not None:
                         break
@@ -350,31 +286,59 @@ class TrainService:
         finally:
             self._processes.pop(task_id, None)
 
-    def _make_neural_env(self) -> dict[str, str]:
+    def _make_env(self, model: TrainModelItem, *, include_script_parent: str = "") -> dict[str, str]:
         env = os.environ.copy()
         env["PYTHONUNBUFFERED"] = "1"
-        pythonpath_parts = [str(BINARY_TO_NBRDF_DIR), str(PYTORCH_SCRIPT.parent), env.get("PYTHONPATH", "")]
+        pythonpath_parts: list[str] = [str(PROJECT_ROOT)]
+        working_dir_value = model.runtime.get("working_dir", "").strip()
+        if working_dir_value:
+            pythonpath_parts.append(str(self._resolve_project_path(working_dir_value, must_exist=True)))
+        if include_script_parent:
+            pythonpath_parts.append(str(self._resolve_project_path(include_script_parent, must_exist=True)))
+        existing = env.get("PYTHONPATH", "")
+        if existing:
+            pythonpath_parts.append(existing)
         env["PYTHONPATH"] = os.pathsep.join(part for part in pythonpath_parts if part)
-        return env
-
-    def _make_hyper_env(self, project_variant: TrainProjectVariant) -> dict[str, str]:
-        config = self._project_config(project_variant)
-        env = os.environ.copy()
-        env["PYTHONUNBUFFERED"] = "1"
-        env["PYTHONPATH"] = os.pathsep.join(
-            [str(PROJECT_ROOT), str(config["dir"]), env.get("PYTHONPATH", "")]
-        ).rstrip(os.pathsep)
         return env
 
     def _python_runner(self, conda_env: str | None = None) -> tuple[list[str], bool]:
         conda = shutil.which("conda")
         if conda and conda_env:
-            return [conda, "run", "--no-capture-output", "-n", conda_env, "python"], True
+            return [conda, "run", "--no-capture-output", "-n", conda_env, "python"], False
         return [sys.executable], False
+
+    def _resolve_project_path(self, path_value: str, *, must_exist: bool) -> Path:
+        raw_path = Path(path_value)
+        candidate = raw_path if raw_path.is_absolute() else PROJECT_ROOT / raw_path
+        resolved = candidate.resolve(strict=False)
+        project_root = PROJECT_ROOT.resolve()
+        try:
+            resolved.relative_to(project_root)
+        except ValueError as exc:
+            raise ValueError(f"Path must stay inside project root: {path_value}") from exc
+        if must_exist and not resolved.exists():
+            raise FileNotFoundError(resolved)
+        return resolved
+
+    def _working_dir_for(self, model: TrainModelItem) -> Path:
+        working_dir_value = model.runtime.get("working_dir", "").strip()
+        if working_dir_value:
+            return self._resolve_project_path(working_dir_value, must_exist=True)
+        train_script = model.runtime.get("train_script", "").strip()
+        if train_script:
+            return self._resolve_project_path(train_script, must_exist=True).parent
+        return PROJECT_ROOT
+
+    def _supports_decoupled_options(self, model: TrainModelItem) -> bool:
+        return bool(model.adapter_options.get("supports_decoupled_options", False))
+
+    def _supports_sparse_samples(self, model: TrainModelItem) -> bool:
+        return model.adapter == "hyper-family"
 
     async def _run_neural_pytorch(
         self,
         task_id: str,
+        model: TrainModelItem,
         request: NeuralPytorchTrainRequest,
         log_path: Path,
         cancel_event: asyncio.Event,
@@ -383,18 +347,23 @@ class TrainService:
             merl_dir = Path(request.merl_dir).resolve()
             ensure_exists(merl_dir)
             if not request.selected_materials:
-                raise ValueError("未选择材质文件")
+                raise ValueError("未选择材质文件。")
             output_dir = Path(request.output_dir).resolve()
             output_dir.mkdir(parents=True, exist_ok=True)
-            env = self._make_neural_env()
+
+            train_script = self._resolve_project_path(model.runtime["train_script"], must_exist=True)
+            relative_parent = str(train_script.parent.relative_to(PROJECT_ROOT))
+            env = self._make_env(model, include_script_parent=relative_parent)
+            runner, _ = self._python_runner(model.runtime.get("conda_env", "").strip())
+
             total = len(request.selected_materials)
             generated: list[str] = []
             for index, material in enumerate(request.selected_materials):
                 material_path = merl_dir / material
                 ensure_exists(material_path, file_ok=True)
                 cmd = [
-                    "python",
-                    str(PYTORCH_SCRIPT),
+                    *runner,
+                    str(train_script),
                     str(material_path),
                     "--outpath",
                     str(output_dir),
@@ -407,36 +376,45 @@ class TrainService:
                     task_id,
                     log_path,
                     cmd,
-                    cwd=PYTORCH_SCRIPT.parent,
+                    cwd=self._working_dir_for(model),
                     env=env,
                     progress=min(95, int(index / total * 100)),
-                    start_message=f"[{index + 1}/{total}] 启动 Neural-BRDF PyTorch 训练: {material}",
+                    start_message=f"[{index + 1}/{total}] Start {model.label}: {material}",
                     cancel_event=cancel_event,
                 )
                 if return_code == -1:
-                    await self._write_log(task_id, log_path, "任务已取消", status="cancelled", progress=100, event="done")
+                    await self._write_log(task_id, log_path, "Task cancelled.", status="cancelled", progress=100, event="done")
                     return
                 if return_code != 0:
-                    await self._write_log(task_id, log_path, f"训练失败: {material} (退出码: {return_code})", status="failed", progress=100, event="done")
+                    await self._write_log(
+                        task_id,
+                        log_path,
+                        f"Training failed for {material} (exit code: {return_code}).",
+                        status="failed",
+                        progress=100,
+                        event="done",
+                    )
                     return
                 generated.append(material_path.stem)
+
             await self._write_log(
                 task_id,
                 log_path,
-                "Neural-BRDF PyTorch 训练完成",
+                f"{model.label} training completed.",
                 status="success",
                 progress=100,
                 event="done",
-                result_payload={"output_dir": str(output_dir), "materials": generated},
+                result_payload={"output_dir": str(output_dir), "materials": generated, "model_key": model.key},
             )
         except Exception as exc:
-            await self._write_log(task_id, log_path, f"训练任务异常: {exc}", status="failed", progress=100, event="done")
+            await self._write_log(task_id, log_path, f"Training task failed: {exc}", status="failed", progress=100, event="done")
         finally:
             self._cancel_events.pop(task_id, None)
 
     async def _run_neural_keras(
         self,
         task_id: str,
+        model: TrainModelItem,
         request: NeuralKerasTrainRequest,
         log_path: Path,
         cancel_event: asyncio.Event,
@@ -445,48 +423,55 @@ class TrainService:
             merl_dir = Path(request.merl_dir).resolve()
             ensure_exists(merl_dir)
             if not request.selected_materials:
-                raise ValueError("未选择材质文件")
+                raise ValueError("未选择材质文件。")
             h5_output_dir = Path(request.h5_output_dir).resolve()
             npy_output_dir = Path(request.npy_output_dir).resolve()
             h5_output_dir.mkdir(parents=True, exist_ok=True)
             npy_output_dir.mkdir(parents=True, exist_ok=True)
-            env = self._make_neural_env()
+
+            train_script = self._resolve_project_path(model.runtime["train_script"], must_exist=True)
+            convert_script = self._resolve_project_path(model.runtime["convert_script"], must_exist=True)
+            relative_parent = str(train_script.parent.relative_to(PROJECT_ROOT))
+            env = self._make_env(model, include_script_parent=relative_parent)
             env["CUDA_VISIBLE_DEVICES"] = request.cuda_device
+            runner, _ = self._python_runner(model.runtime.get("conda_env", "").strip())
+
             binary_paths = [str((merl_dir / material).resolve()) for material in request.selected_materials]
             for binary_path in binary_paths:
                 ensure_exists(Path(binary_path), file_ok=True)
-            runner, use_shell = self._python_runner("nbrdf-train")
-            train_cmd = [
-                *runner,
-                str(KERAS_SCRIPT),
-                *binary_paths,
-                "--cuda_device",
-                request.cuda_device,
-            ]
+
+            train_cmd = [*runner, str(train_script), *binary_paths, "--cuda_device", request.cuda_device]
             train_return = await self._run_command(
                 task_id,
                 log_path,
                 train_cmd,
-                cwd=BINARY_TO_NBRDF_DIR,
+                cwd=self._working_dir_for(model),
                 env=env,
                 progress=15,
-                start_message="启动 Neural-BRDF Keras 训练",
-                use_shell=use_shell,
+                start_message=f"Start {model.label} training.",
                 cancel_event=cancel_event,
             )
             if train_return == -1:
-                await self._write_log(task_id, log_path, "任务已取消", status="cancelled", progress=100, event="done")
+                await self._write_log(task_id, log_path, "Task cancelled.", status="cancelled", progress=100, event="done")
                 return
             if train_return != 0:
-                await self._write_log(task_id, log_path, f"Keras 训练失败 (退出码: {train_return})", status="failed", progress=100, event="done")
+                await self._write_log(
+                    task_id,
+                    log_path,
+                    f"Keras training failed (exit code: {train_return}).",
+                    status="failed",
+                    progress=100,
+                    event="done",
+                )
                 return
 
             h5_paths: list[str] = []
+            work_dir = self._working_dir_for(model)
             for material in request.selected_materials:
                 basename = Path(material).stem
-                src_h5 = BINARY_TO_NBRDF_DIR / f"{basename}.h5"
-                src_json = BINARY_TO_NBRDF_DIR / f"{basename}.json"
-                src_loss = BINARY_TO_NBRDF_DIR / f"lossplot_{basename}.png"
+                src_h5 = work_dir / f"{basename}.h5"
+                src_json = work_dir / f"{basename}.json"
+                src_loss = work_dir / f"lossplot_{basename}.png"
                 target_h5 = h5_output_dir / f"{basename}.h5"
                 if src_h5.exists():
                     shutil.move(str(src_h5), str(target_h5))
@@ -495,67 +480,85 @@ class TrainService:
                     if src_loss.exists():
                         shutil.move(str(src_loss), str(h5_output_dir / f"lossplot_{basename}.png"))
                     h5_paths.append(str(target_h5))
-                    await self._write_log(task_id, log_path, f"已归档中间文件: {basename}.h5", progress=45)
+                    await self._write_log(task_id, log_path, f"Archived intermediate file: {basename}.h5", progress=45)
+
             if not h5_paths:
-                await self._write_log(task_id, log_path, "训练完成但未找到生成的 .h5 文件", status="failed", progress=100, event="done")
+                await self._write_log(
+                    task_id,
+                    log_path,
+                    "Training completed but no .h5 outputs were found.",
+                    status="failed",
+                    progress=100,
+                    event="done",
+                )
                 return
 
-            convert_cmd = [
-                *runner,
-                str(H5_TO_NPY_SCRIPT),
-                *h5_paths,
-                "--destdir",
-                str(npy_output_dir),
-            ]
+            convert_cmd = [*runner, str(convert_script), *h5_paths, "--destdir", str(npy_output_dir)]
             convert_return = await self._run_command(
                 task_id,
                 log_path,
                 convert_cmd,
-                cwd=BINARY_TO_NBRDF_DIR,
+                cwd=self._working_dir_for(model),
                 env=env,
                 progress=65,
-                start_message="启动 h5 -> npy 转换",
-                use_shell=use_shell,
+                start_message=f"Start {model.label} h5 -> npy conversion.",
                 cancel_event=cancel_event,
             )
             if convert_return == -1:
-                await self._write_log(task_id, log_path, "任务已取消", status="cancelled", progress=100, event="done")
+                await self._write_log(task_id, log_path, "Task cancelled.", status="cancelled", progress=100, event="done")
                 return
             if convert_return != 0:
-                await self._write_log(task_id, log_path, f"h5 -> npy 转换失败 (退出码: {convert_return})", status="failed", progress=100, event="done")
+                await self._write_log(
+                    task_id,
+                    log_path,
+                    f"h5 -> npy conversion failed (exit code: {convert_return}).",
+                    status="failed",
+                    progress=100,
+                    event="done",
+                )
                 return
+
             await self._write_log(
                 task_id,
                 log_path,
-                "Neural-BRDF Keras 训练与转换完成",
+                f"{model.label} training and conversion completed.",
                 status="success",
                 progress=100,
                 event="done",
-                result_payload={"h5_output_dir": str(h5_output_dir), "npy_output_dir": str(npy_output_dir), "count": len(h5_paths)},
+                result_payload={
+                    "h5_output_dir": str(h5_output_dir),
+                    "npy_output_dir": str(npy_output_dir),
+                    "count": len(h5_paths),
+                    "model_key": model.key,
+                },
             )
         except Exception as exc:
-            await self._write_log(task_id, log_path, f"训练任务异常: {exc}", status="failed", progress=100, event="done")
+            await self._write_log(task_id, log_path, f"Training task failed: {exc}", status="failed", progress=100, event="done")
         finally:
             self._cancel_events.pop(task_id, None)
 
     async def _run_hyper_train(
         self,
         task_id: str,
+        model: TrainModelItem,
         request: HyperTrainRunRequest,
         log_path: Path,
         cancel_event: asyncio.Event,
     ) -> None:
         try:
-            config = self._project_config(request.project_variant)
             merl_dir = Path(request.merl_dir).resolve()
             output_dir = Path(request.output_dir).resolve()
             ensure_exists(merl_dir)
             output_dir.mkdir(parents=True, exist_ok=True)
-            env = self._make_hyper_env(request.project_variant)
-            runner, use_shell = self._python_runner(request.conda_env or self._default_conda_env(request.project_variant))
+
+            train_script = self._resolve_project_path(model.runtime["train_script"], must_exist=True)
+            env = self._make_env(model)
+            conda_env = request.conda_env.strip() or model.runtime.get("conda_env", "").strip()
+            runner, _ = self._python_runner(conda_env)
+
             cmd = [
                 *runner,
-                str(config["main_script"]),
+                str(train_script),
                 "--destdir",
                 str(output_dir),
                 "--binary",
@@ -579,7 +582,7 @@ class TrainService:
             ]
             if request.keepon:
                 cmd.append("--keepon")
-            if request.project_variant == "decoupled":
+            if self._supports_decoupled_options(model):
                 cmd.extend(
                     [
                         "--model_type",
@@ -610,60 +613,72 @@ class TrainService:
                     cmd.extend(["--teacher_dir", request.teacher_dir])
                 if request.baseline_checkpoint:
                     cmd.extend(["--baseline_checkpoint", request.baseline_checkpoint])
+
             return_code = await self._run_command(
                 task_id,
                 log_path,
                 cmd,
-                cwd=Path(config["dir"]),
+                cwd=self._working_dir_for(model),
                 env=env,
                 progress=5,
-                start_message=f"启动 {config['label']} 训练",
-                use_shell=use_shell,
+                start_message=f"Start {model.label} training.",
                 cancel_event=cancel_event,
             )
             if return_code == -1:
-                await self._write_log(task_id, log_path, "任务已取消", status="cancelled", progress=100, event="done")
+                await self._write_log(task_id, log_path, "Task cancelled.", status="cancelled", progress=100, event="done")
                 return
             if return_code != 0:
-                await self._write_log(task_id, log_path, f"训练失败 (退出码: {return_code})", status="failed", progress=100, event="done")
+                await self._write_log(
+                    task_id,
+                    log_path,
+                    f"Training failed (exit code: {return_code}).",
+                    status="failed",
+                    progress=100,
+                    event="done",
+                )
                 return
+
             await self._write_log(
                 task_id,
                 log_path,
-                f"{config['label']} 训练完成",
+                f"{model.label} training completed.",
                 status="success",
                 progress=100,
                 event="done",
-                result_payload={"output_dir": str(output_dir), "project_variant": request.project_variant},
+                result_payload={"output_dir": str(output_dir), "model_key": model.key},
             )
         except Exception as exc:
-            await self._write_log(task_id, log_path, f"训练任务异常: {exc}", status="failed", progress=100, event="done")
+            await self._write_log(task_id, log_path, f"Training task failed: {exc}", status="failed", progress=100, event="done")
         finally:
             self._cancel_events.pop(task_id, None)
 
     async def _run_hyper_extract(
         self,
         task_id: str,
+        model: TrainModelItem,
         request: HyperExtractRequest,
         log_path: Path,
         cancel_event: asyncio.Event,
     ) -> None:
         try:
-            config = self._project_config(request.project_variant)
             merl_dir = Path(request.merl_dir).resolve()
             model_path = Path(request.model_path).resolve()
             output_dir = Path(request.output_dir).resolve()
             ensure_exists(merl_dir)
             ensure_exists(model_path, file_ok=True)
             if request.dataset == "MERL" and not request.selected_materials:
-                raise ValueError("未选择材质文件")
+                raise ValueError("未选择材质文件。")
             output_dir.mkdir(parents=True, exist_ok=True)
-            env = self._make_hyper_env(request.project_variant)
-            runner, use_shell = self._python_runner(request.conda_env or self._default_conda_env(request.project_variant))
+
+            extract_script = self._resolve_project_path(model.runtime["extract_script"], must_exist=True)
+            env = self._make_env(model)
+            conda_env = request.conda_env.strip() or model.runtime.get("conda_env", "").strip()
+            runner, _ = self._python_runner(conda_env)
+
             if request.dataset == "EPFL":
                 cmd = [
                     *runner,
-                    str(config["test_script"]),
+                    str(extract_script),
                     "--model",
                     str(model_path),
                     "--binary",
@@ -673,24 +688,30 @@ class TrainService:
                     "--dataset",
                     "EPFL",
                 ]
-                if request.project_variant == "decoupled":
+                if self._supports_sparse_samples(model):
                     cmd.extend(["--sparse_samples", str(request.sparse_samples)])
                 return_code = await self._run_command(
                     task_id,
                     log_path,
                     cmd,
-                    cwd=Path(config["dir"]),
+                    cwd=self._working_dir_for(model),
                     env=env,
                     progress=10,
-                    start_message=f"启动 {config['label']} 参数提取: EPFL",
-                    use_shell=use_shell,
+                    start_message=f"Start {model.label} extraction for EPFL.",
                     cancel_event=cancel_event,
                 )
                 if return_code == -1:
-                    await self._write_log(task_id, log_path, "任务已取消", status="cancelled", progress=100, event="done")
+                    await self._write_log(task_id, log_path, "Task cancelled.", status="cancelled", progress=100, event="done")
                     return
                 if return_code != 0:
-                    await self._write_log(task_id, log_path, f"参数提取失败 (退出码: {return_code})", status="failed", progress=100, event="done")
+                    await self._write_log(
+                        task_id,
+                        log_path,
+                        f"Extraction failed (exit code: {return_code}).",
+                        status="failed",
+                        progress=100,
+                        event="done",
+                    )
                     return
                 processed = ["EPFL"]
             else:
@@ -701,7 +722,7 @@ class TrainService:
                     ensure_exists(binary_path, file_ok=True)
                     cmd = [
                         *runner,
-                        str(config["test_script"]),
+                        str(extract_script),
                         "--model",
                         str(model_path),
                         "--binary",
@@ -711,58 +732,69 @@ class TrainService:
                         "--dataset",
                         "MERL",
                     ]
-                    if request.project_variant == "decoupled":
+                    if self._supports_sparse_samples(model):
                         cmd.extend(["--sparse_samples", str(request.sparse_samples)])
                     return_code = await self._run_command(
                         task_id,
                         log_path,
                         cmd,
-                        cwd=Path(config["dir"]),
+                        cwd=self._working_dir_for(model),
                         env=env,
                         progress=min(95, int(index / total * 100)),
-                        start_message=f"[{index + 1}/{total}] 启动参数提取: {material}",
-                        use_shell=use_shell,
+                        start_message=f"[{index + 1}/{total}] Extract parameters: {material}",
                         cancel_event=cancel_event,
                     )
                     if return_code == -1:
-                        await self._write_log(task_id, log_path, "任务已取消", status="cancelled", progress=100, event="done")
+                        await self._write_log(task_id, log_path, "Task cancelled.", status="cancelled", progress=100, event="done")
                         return
                     if return_code != 0:
-                        await self._write_log(task_id, log_path, f"参数提取失败: {material} (退出码: {return_code})", status="failed", progress=100, event="done")
+                        await self._write_log(
+                            task_id,
+                            log_path,
+                            f"Extraction failed for {material} (exit code: {return_code}).",
+                            status="failed",
+                            progress=100,
+                            event="done",
+                        )
                         return
                     processed.append(material)
+
             await self._write_log(
                 task_id,
                 log_path,
-                f"{config['label']} 参数提取完成",
+                f"{model.label} extraction completed.",
                 status="success",
                 progress=100,
                 event="done",
-                result_payload={"output_dir": str(output_dir), "project_variant": request.project_variant, "processed": processed},
+                result_payload={"output_dir": str(output_dir), "model_key": model.key, "processed": processed},
             )
         except Exception as exc:
-            await self._write_log(task_id, log_path, f"参数提取异常: {exc}", status="failed", progress=100, event="done")
+            await self._write_log(task_id, log_path, f"Extraction task failed: {exc}", status="failed", progress=100, event="done")
         finally:
             self._cancel_events.pop(task_id, None)
 
     async def _run_hyper_decode(
         self,
         task_id: str,
+        model: TrainModelItem,
         request: HyperDecodeRequest,
         log_path: Path,
         cancel_event: asyncio.Event,
     ) -> None:
         try:
-            config = self._project_config(request.project_variant)
             pt_dir = Path(request.pt_dir).resolve()
             output_dir = Path(request.output_dir).resolve()
             ensure_exists(pt_dir)
             if not request.selected_pts:
-                raise ValueError("未选择 .pt 文件")
+                raise ValueError("未选择 .pt 文件。")
             output_dir.mkdir(parents=True, exist_ok=True)
-            env = self._make_hyper_env(request.project_variant)
+
+            decode_script = self._resolve_project_path(model.runtime["decode_script"], must_exist=True)
+            env = self._make_env(model)
             env["CUDA_VISIBLE_DEVICES"] = request.cuda_device
-            runner, use_shell = self._python_runner(request.conda_env or self._default_conda_env(request.project_variant))
+            conda_env = request.conda_env.strip() or model.runtime.get("conda_env", "").strip()
+            runner, _ = self._python_runner(conda_env)
+
             total = len(request.selected_pts)
             processed: list[str] = []
             for index, pt_name in enumerate(request.selected_pts):
@@ -770,7 +802,7 @@ class TrainService:
                 ensure_exists(pt_path, file_ok=True)
                 cmd = [
                     *runner,
-                    str(config["pt_to_fullbin_script"]),
+                    str(decode_script),
                     str(pt_path),
                     str(output_dir),
                     "--dataset",
@@ -782,31 +814,38 @@ class TrainService:
                     task_id,
                     log_path,
                     cmd,
-                    cwd=Path(config["dir"]),
+                    cwd=self._working_dir_for(model),
                     env=env,
                     progress=min(95, int(index / total * 100)),
-                    start_message=f"[{index + 1}/{total}] 启动 fullbin 解码: {pt_name}",
-                    use_shell=use_shell,
+                    start_message=f"[{index + 1}/{total}] Decode fullbin: {pt_name}",
                     cancel_event=cancel_event,
                 )
                 if return_code == -1:
-                    await self._write_log(task_id, log_path, "任务已取消", status="cancelled", progress=100, event="done")
+                    await self._write_log(task_id, log_path, "Task cancelled.", status="cancelled", progress=100, event="done")
                     return
                 if return_code != 0:
-                    await self._write_log(task_id, log_path, f"fullbin 解码失败: {pt_name} (退出码: {return_code})", status="failed", progress=100, event="done")
+                    await self._write_log(
+                        task_id,
+                        log_path,
+                        f"Decode failed for {pt_name} (exit code: {return_code}).",
+                        status="failed",
+                        progress=100,
+                        event="done",
+                    )
                     return
                 processed.append(pt_name)
+
             await self._write_log(
                 task_id,
                 log_path,
-                f"{config['label']} fullbin 解码完成",
+                f"{model.label} decode completed.",
                 status="success",
                 progress=100,
                 event="done",
-                result_payload={"output_dir": str(output_dir), "project_variant": request.project_variant, "processed": processed},
+                result_payload={"output_dir": str(output_dir), "model_key": model.key, "processed": processed},
             )
         except Exception as exc:
-            await self._write_log(task_id, log_path, f"fullbin 解码异常: {exc}", status="failed", progress=100, event="done")
+            await self._write_log(task_id, log_path, f"Decode task failed: {exc}", status="failed", progress=100, event="done")
         finally:
             self._cancel_events.pop(task_id, None)
 
