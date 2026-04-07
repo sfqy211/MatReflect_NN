@@ -16,6 +16,11 @@ function formatDisplayName(name: string) {
 
 export function GalleryPreview({ items, isLoading }: GalleryPreviewProps) {
   const [selectedImage, setSelectedImage] = useState<string | null>(null)
+  const [zoomLevel, setZoomLevel] = useState<number>(3)
+
+  const gridColumns = zoomLevel === 1 ? 'repeat(auto-fill, minmax(80px, 1fr))' 
+                    : zoomLevel === 2 ? 'repeat(auto-fill, minmax(120px, 1fr))' 
+                    : 'repeat(auto-fill, minmax(180px, 1fr))';
 
   return (
     <section className="gallery-panel">
@@ -28,18 +33,30 @@ export function GalleryPreview({ items, isLoading }: GalleryPreviewProps) {
           <img src={selectedImage} alt="Detailed preview" className="fullscreen-modal__image" />
         </div>
       )}
-      <div className="gallery-header">
+      <div className="gallery-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div className="panel-head">
           <h2>输出画廊预览</h2>
         </div>
-        <span className="gallery-count">{items.length} visible</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <input 
+            type="range" 
+            min="1" 
+            max="3" 
+            step="1" 
+            value={zoomLevel} 
+            onChange={e => setZoomLevel(Number(e.target.value))} 
+            style={{ width: '80px', accentColor: 'var(--accent)' }}
+            title="缩放网格"
+          />
+          <span className="gallery-count">{items.length} visible</span>
+        </div>
       </div>
       {isLoading ? <p className="muted">正在读取渲染输出...</p> : null}
       {!isLoading && items.length === 0 ? (
         <FeedbackPanel title="暂无图片" message="任务完成后，最新输出会出现在这里。" tone="empty" compact />
       ) : null}
       {items.length > 0 ? (
-        <div className="gallery-grid">
+        <div className="gallery-grid" style={{ display: 'grid', gridTemplateColumns: gridColumns, gap: '8px' }}>
           {items.map((item, index) => (
             <article key={item.path} className="gallery-item">
               <div className="gallery-item__thumb">

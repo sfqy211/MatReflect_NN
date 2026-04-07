@@ -17,6 +17,7 @@ import { BACKEND_ORIGIN } from '../lib/api'
 import type { RenderMode, RenderReconstructModel, RenderSourceModel, TaskEvent, TrainProjectVariant } from '../types/api'
 import { FeedbackPanel } from './FeedbackPanel'
 import { GalleryPreview } from './GalleryPreview'
+import { TerminalDrawer } from './TerminalDrawer'
 
 
 type WorkflowMode = 'render' | 'reconstruct'
@@ -443,46 +444,16 @@ export function RenderWorkbench() {
         <section className="render-section render-section--wide">
           <GalleryPreview items={outputsQuery.data?.items ?? []} isLoading={outputsQuery.isLoading} />
         </section>
-
-        <aside className="render-section">
-          <div className="detail-board__lead">
-            <h3>任务状态 / 日志</h3>
-          </div>
-
-          <div className="task-summary">
-            <div className="settings-row">
-              <span>Task ID</span>
-              <strong>{activeTaskId ?? '-'}</strong>
-            </div>
-            <div className="settings-row">
-              <span>Status</span>
-              <strong>{currentStatus}</strong>
-            </div>
-            <div className="settings-row">
-              <span>Progress</span>
-              <strong>{progressValue}%</strong>
-            </div>
-          </div>
-
-          <div className="progress-bar">
-            <div className="progress-bar__fill" style={{ width: `${progressValue}%` }} />
-          </div>
-
-          <div className="log-panel">
-            {logs.length > 0 ? (
-              logs.map((line, index) => (
-                <div key={`${index}-${line.slice(0, 16)}`} className="log-line">
-                  {line}
-                </div>
-              ))
-            ) : (
-              <FeedbackPanel title="等待任务日志" message="启动任务后，这里会持续显示执行输出。" tone="empty" compact />
-            )}
-          </div>
-
-          {mutationError instanceof Error ? <FeedbackPanel title="操作提交失败" message={mutationError.message} tone="error" compact /> : null}
-        </aside>
       </div>
+      <TerminalDrawer 
+        taskId={activeTaskId} 
+        status={currentStatus} 
+        progress={progressValue} 
+        logs={logs} 
+        error={mutationError}
+        onStop={stopRender}
+        taskStateMessage={taskRecord?.status === 'failed' ? taskRecord.message : null}
+      />
     </section>
   )
 }

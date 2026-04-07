@@ -27,6 +27,7 @@ import type {
   TrainRunSummary,
 } from '../types/api'
 import { FeedbackPanel } from './FeedbackPanel'
+import { TerminalDrawer } from './TerminalDrawer'
 
 
 const TEST_SET_20 = [
@@ -1032,55 +1033,16 @@ export function ModelsWorkbench() {
             ) : null}
           </>
         ) : null}
-
-        <section className="models-section models-section--wide">
-          <div className="detail-board__lead">
-            <h3>任务状态 / 日志</h3>
-          </div>
-          <div className="task-summary">
-            <div className="settings-row">
-              <span>Task ID</span>
-              <strong>{activeTaskId ?? '-'}</strong>
-            </div>
-            <div className="settings-row">
-              <span>Status</span>
-              <strong>{currentStatus}</strong>
-            </div>
-            <div className="settings-row">
-              <span>Progress</span>
-              <strong>{progressValue}%</strong>
-            </div>
-          </div>
-          <div className="progress-bar">
-            <div className="progress-bar__fill" style={{ width: `${progressValue}%` }} />
-          </div>
-          {taskStateMessage ? (
-            <FeedbackPanel
-              title={taskRecord?.status === 'failed' ? '任务失败' : '任务已取消'}
-              message={taskStateMessage}
-              tone={taskRecord?.status === 'failed' ? 'error' : 'info'}
-              compact
-            />
-          ) : null}
-          <div className="render-actions">
-            <button type="button" className="theme-toggle render-actions--danger" onClick={() => void stopTask()} disabled={!activeTaskId}>
-              停止任务
-            </button>
-          </div>
-          <div className="log-panel">
-            {logs.length > 0 ? (
-              logs.map((line, index) => (
-                <div key={`${index}-${line.slice(0, 16)}`} className="log-line">
-                  {line}
-                </div>
-              ))
-            ) : (
-              <FeedbackPanel title="等待任务日志" message="启动训练、提取或解码后，这里会持续显示执行输出。" tone="empty" compact />
-            )}
-          </div>
-          {taskError instanceof Error ? <FeedbackPanel title="操作提交失败" message={taskError.message} tone="error" compact /> : null}
-        </section>
       </div>
+      <TerminalDrawer 
+        taskId={activeTaskId} 
+        status={currentStatus} 
+        progress={progressValue} 
+        logs={logs} 
+        error={taskError}
+        onStop={() => void stopTask()}
+        taskStateMessage={taskStateMessage}
+      />
     </section>
   )
 }
