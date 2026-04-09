@@ -1,3 +1,5 @@
+import mimetypes
+
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import PlainTextResponse
@@ -8,6 +10,13 @@ from backend.core.config import API_PREFIX, MEDIA_OUTPUTS_PREFIX, OUTPUTS_ROOT, 
 from backend.core.websocket import websocket_hub
 from backend.services.task_manager import task_manager
 
+
+# Windows may inherit an incorrect .js MIME type from the registry, which breaks
+# module script execution in WebView2 and production browsers.
+mimetypes.add_type("text/javascript", ".js")
+mimetypes.add_type("text/javascript", ".mjs")
+mimetypes.add_type("application/json", ".json")
+mimetypes.add_type("application/wasm", ".wasm")
 
 app = FastAPI(title="MatReflect_NN Backend", version="0.1.0")
 FRONTEND_DIST = PROJECT_ROOT / "frontend" / "dist"

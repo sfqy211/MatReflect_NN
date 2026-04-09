@@ -1,4 +1,22 @@
-const API_BASE = import.meta.env.VITE_API_BASE ?? 'http://127.0.0.1:8000/api/v1'
+function resolveApiBase() {
+  const configured = import.meta.env.VITE_API_BASE?.trim()
+  if (configured) {
+    if (configured.startsWith('http://') || configured.startsWith('https://')) {
+      return configured.replace(/\/$/, '')
+    }
+    if (typeof window !== 'undefined') {
+      return new URL(configured, window.location.origin).toString().replace(/\/$/, '')
+    }
+  }
+
+  if (typeof window !== 'undefined') {
+    return new URL('/api/v1', window.location.origin).toString().replace(/\/$/, '')
+  }
+
+  return 'http://127.0.0.1:8000/api/v1'
+}
+
+const API_BASE = resolveApiBase()
 export const BACKEND_ORIGIN = new URL(API_BASE).origin
 
 export function toBackendUrl(path: string | null | undefined): string | undefined {
