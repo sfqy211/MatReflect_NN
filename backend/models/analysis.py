@@ -15,6 +15,12 @@ class AnalysisImagesResponse(BaseModel):
     items: list[FileListItem] = Field(default_factory=list)
 
 
+class AnalysisSource(BaseModel):
+    image_set: AnalysisImageSet | None = None
+    directory: str = ""
+    label: str = ""
+
+
 class MetricSummary(BaseModel):
     psnr: float
     ssim: float
@@ -36,11 +42,19 @@ class EvaluationRequest(BaseModel):
     gt_set: AnalysisImageSet = "brdfs"
     method1_set: AnalysisImageSet = "fullbin"
     method2_set: AnalysisImageSet = "npy"
+    gt_dir: str = ""
+    method1_dir: str = ""
+    method2_dir: str = ""
+    gt_label: str = "GT / BRDF"
+    method1_label: str = "FullBin"
+    method2_label: str = "NPY"
     selected_materials: list[str] = Field(default_factory=list)
 
 
 class GridRequest(BaseModel):
     image_set: AnalysisImageSet = "brdfs"
+    source_dir: str = ""
+    output_dir: str = ""
     output_name: str = "merged_grid.png"
     show_names: bool = True
     cell_width: int = Field(default=256, ge=64, le=1024)
@@ -49,7 +63,8 @@ class GridRequest(BaseModel):
 
 
 class ComparisonColumn(BaseModel):
-    image_set: AnalysisImageSet
+    image_set: AnalysisImageSet | None = None
+    directory: str = ""
     label: str
 
 
@@ -58,6 +73,7 @@ class ComparisonRequest(BaseModel):
     selected_materials: list[str] = Field(default_factory=list)
     show_label: bool = True
     show_filename: bool = True
+    output_dir: str = ""
     output_name: str = "merged_comparison.png"
 
 
@@ -65,3 +81,13 @@ class GeneratedImageResponse(BaseModel):
     item: FileListItem
     processed_count: int
     skipped: list[str] = Field(default_factory=list)
+
+
+class DeleteImageRequest(BaseModel):
+    image_path: str
+    delete_matching_exr: bool = True
+
+
+class DeleteImageResponse(BaseModel):
+    deleted: list[str] = Field(default_factory=list)
+    missing: list[str] = Field(default_factory=list)

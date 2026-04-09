@@ -84,3 +84,12 @@ class TaskEvent(BaseModel):
     progress: int
     message: str = ""
     result_payload: dict[str, Any] = Field(default_factory=dict)
+
+
+class TaskStartResponse(BaseModel):
+    task_id: str
+    status: TaskStatus
+
+
+class TaskStopRequest(BaseModel):
+    task_id: str

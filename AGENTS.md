@@ -2,10 +2,10 @@
 
 ## 1. 项目定位
 
-`MatReflect_NN` 是一个运行在 Windows 本机上的材质研究工作台。当前采用双入口结构：
+`MatReflect_NN` 是一个运行在 Windows 本机上的材质研究工作台。当前采用“V2 主入口 + V1 迁移期保留代码”的结构：
 
 - V2：`React + FastAPI` 工作台，默认入口
-- V1：`Streamlit` 旧版工作流，兼容兜底
+- V1：`Streamlit` 旧版工作流，仅用于迁移核对，不再作为公开推荐入口
 
 它把以下链路串起来：
 
@@ -22,10 +22,10 @@
 - 默认入口：
   - 开发模式：`scripts/start_v2_dev.ps1`
   - 生产模式：`scripts/start_v2_prod.ps1`
-- V1 兜底入口：`app.py`，通过 `streamlit run app.py` 启动。
+- V1 旧入口：`app.py`，仓库内仍保留，但不作为默认运行方式。
 - 项目大量依赖 Conda 多环境隔离。
 - README 中当前约定的关键环境：
-  - `matreflect`：V2 backend、V1 Streamlit、渲染、分析。
+- `matreflect`：V2 backend、V1 旧入口、渲染、分析。
   - `mitsuba-build`：Mitsuba 编译，Python 2.7 + SCons。
   - `nbrdf-train`：Neural-BRDF 训练。
   - `hyperbrdf`：HyperBRDF 训练与推理。
@@ -38,8 +38,8 @@
 
 - `frontend/`：V2 React 前端，当前默认 UI。
 - `backend/`：V2 FastAPI 后端、任务接口、WebSocket、静态托管。
-- `app.py`：V1 Streamlit 入口。
-- `pages/`：V1 Streamlit 多页面入口。
+- `app.py`：V1 Streamlit 旧入口。
+- `pages/`：V1 Streamlit 旧多页面入口。
 - `pages/_modules/`：V1 页面逻辑与旧 action。
 - `scripts/`：启动脚本与本地批处理脚本。
 - `scene/`：Mitsuba 场景 XML、环境贴图、OBJ 资源。
@@ -96,7 +96,7 @@
 - `backend/core/`
 - `scripts/start_v2_*.ps1`
 
-只有在任务明确落在 V1 兼容层时，再优先改这里：
+只有在任务明确落在 V1 兼容层或需要核对旧实现时，再优先改这里：
 
 - `pages/_modules/render_tool_actions.py`
 - `pages/_modules/render_tool_page.py`
@@ -173,7 +173,15 @@
 - 在 `matreflect` 环境下运行：
   - V2 开发：`scripts/start_v2_dev.ps1`
   - V2 生产：`scripts/start_v2_prod.ps1`
-  - V1 兜底：`streamlit run app.py`
+  - V1 旧入口：仅在迁移核对场景下按需使用
+
+### 8.1.1 编译辅助改动
+
+- 先验证：
+  - V2 设置页是否能读取到 `compile_defaults`
+  - 是否能在设置页启动 Mitsuba 编译任务
+  - WebSocket 日志是否持续推送
+  - 停止编译后任务状态是否变为 `cancelled`
 
 ### 8.2 渲染改动
 
@@ -211,7 +219,9 @@
 - V2 前端入口：`frontend/src/App.tsx`
 - V2 后端入口：`backend/main.py`
 - V1 主应用：`app.py`
+- V2 设置页容器：`frontend/src/components/WorkspaceCanvas.tsx`
 - V2 渲染逻辑：`backend/api/v1/render.py`、`backend/services/`
+- V2 系统与编译逻辑：`backend/api/v1/system.py`、`backend/services/system_service.py`
 - V2 训练编排：`backend/services/train_service.py`
 - V2 分析页：`frontend/src/components/AnalysisWorkbench.tsx`
 - V1 渲染逻辑：`pages/_modules/render_tool_actions.py`
@@ -219,4 +229,4 @@
 - V1 分析页：`pages/_modules/analysis_page.py`
 - HyperBRDF 基线训练：`HyperBRDF/main.py`
 - V2 启动脚本：`scripts/start_v2_dev.ps1`
-- V1 启动脚本：`scripts/start_matreflect.ps1`
+- V1 旧启动脚本：`scripts/start_matreflect.ps1`

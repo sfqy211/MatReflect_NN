@@ -2,10 +2,10 @@
 
 ## 🌟 项目简介
 
-**MatReflect\_NN** 是一个集成传统物理渲染（Mitsuba）与现代深度学习技术（Neural-BRDF / HyperBRDF）的研究平台。本项目当前同时保留：
+**MatReflect\_NN** 是一个集成传统物理渲染（Mitsuba）与现代深度学习技术（Neural-BRDF / HyperBRDF）的研究平台。当前使用方式为：
 
-- V2：React + FastAPI 工作台，作为默认入口
-- V1：Streamlit 旧版工作流，作为兼容兜底
+- V2：React + FastAPI 工作台，作为默认且推荐入口
+- V1：仓库内保留的过渡期旧代码，仅用于迁移核对，不再作为公开入口
 
 项目目标仍然是探索高效的材质双向反射分布函数（BRDF）压缩与表达方法，并提供覆盖数据生成、模型训练、权重转换、渲染评估与结果分析的完整工具链。
 
@@ -13,7 +13,7 @@
 
 ## 🏗️ 架构概览
 
-本项目当前采用 **V2 主工作台 + V1 兼容兜底** 的双入口结构，并继续使用 **多环境隔离 (Multi-Environment)** 策略，以解决不同工具组件之间复杂的依赖冲突（如 Python 2.7 编译环境、TensorFlow 2.4 与 PyTorch 1.8 的共存问题）。
+本项目当前采用 **V2 主工作台 + 多环境隔离 (Multi-Environment)** 结构，以解决不同工具组件之间复杂的依赖冲突（如 Python 2.7 编译环境、TensorFlow 2.4 与 PyTorch 1.8 的共存问题）。仓库中仍保留部分 V1 代码用于迁移期核对，但不再作为日常入口。
 
 ### 核心模块
 
@@ -23,7 +23,6 @@
 | **🎨 Mitsuba Render Tool** | 批量渲染 MERL 材质、EXR 转 PNG、Mitsuba 源码编译、实时日志监控。                                                | `matreflect` (渲染/转换)`mitsuba-build` (编译)            |
 | **🧠 Model Training**      | **Neural-BRDF**: 基于 MLP 的单材质过拟合训练 (PyTorch/Keras)。**HyperBRDF**: 基于 HyperNetwork 的多材质泛化重建。 | `nbrdf-train` (Neural-BRDF) `hyperbrdf` (HyperBRDF) |
 | **📊 Data Analysis**       | 渲染结果可视化对比、PSNR/SSIM/Delta E 量化评估、拼图生成。                                                     | `matreflect`                                        |
-| **🖥️ Legacy Terminal**    | V1 Streamlit 中保留的网页终端，支持直接在宿主机 Shell 环境中运行命令，支持实时日志流与目录切换。                                 | 宿主 Shell (自动继承)                                     |
 
 ***
 
@@ -31,9 +30,9 @@
 
 由于集成了多个异构系统，本项目**强烈建议**使用 Conda 进行环境管理。当前建议准备 **5 个** 关键环境，其中训练相关环境必须彼此隔离。
 
-### 1. 主环境: `matreflect` (V2 Backend / V1 UI / Analysis)
+### 1. 主环境: `matreflect` (V2 Backend / Analysis / Render)
 
-这是当前默认工作环境，用于运行 V2 backend、V1 Streamlit 兜底入口，以及分析和渲染集成能力。
+这是当前默认工作环境，用于运行 V2 backend，以及分析和渲染集成能力。
 
 ```bash
 # 1. 创建环境 (Python 3.9)
@@ -108,15 +107,7 @@ scripts\start_v2_prod.ps1
 - `V2_CUTOVER_GUIDE.md`
 - `V1_V2_COMPARISON.md`
 
-### 启动 V1 兜底界面
-
-如需旧版终端或尚未迁移的历史操作面板，再启动 Streamlit：
-
-```bash
-cd D:\AHEU\GP\MatReflect_NN
-conda activate matreflect
-streamlit run app.py
-```
+当前文档不再提供 V1 / Streamlit 启动方式。历史代码仍保留在仓库中用于迁移核对，但默认使用流程统一以 V2 为准。Mitsuba 编译辅助现已迁入 V2 设置页。
 
 ### 功能使用流程
 
@@ -144,13 +135,12 @@ streamlit run app.py
 MatReflect_NN/
 ├── frontend/               # V2 React 前端
 ├── backend/                # V2 FastAPI 后端
-├── app.py                  # V1 Streamlit 入口
+├── app.py                  # V1 旧入口（迁移期保留）
 ├── requirements.txt        # 主环境依赖列表
-├── pages/                  # V1 功能页面
+├── pages/                  # V1 旧页面代码（迁移期保留）
 │   ├── 1_Mitsuba_Render_Tool.py
 │   ├── 2_Model_Training.py
 │   ├── 3_Data_Analysis.py
-│   ├── 4_Terminal.py
 │   └── _modules/           # V1 页面共享逻辑与后端 Action
 ├── data/                   # 数据存放区
 │   ├── inputs/             # 输入数据 (brdfs, fullbin, npy)
@@ -166,10 +156,7 @@ MatReflect_NN/
 A: 本项目整合了不同时期的研究代码。Mitsuba 0.6 需要 Python 2.7；Neural-BRDF 基于 TensorFlow 2.4；HyperBRDF 基于 PyTorch 1.8。为了保证代码的原始复现性与稳定性，使用独立环境是最安全的策略。
 
 **Q: 现在默认该用哪个入口？**
-A: 默认使用 V2，即 `scripts\start_v2_dev.ps1` 或 `scripts\start_v2_prod.ps1`。只有在需要旧版网页终端或尚未迁移的历史入口时，再使用 `streamlit run app.py`。
-
-**Q: 可以在网页终端里切换环境吗？**
-A: 可以，但这是 V1 Streamlit 里的 legacy 功能。网页终端直接运行在宿主机 Shell 中，您可以输入 `conda activate <env_name>` 来切换环境，或者直接指定环境的 Python 路径来运行脚本。
+A: 默认使用 V2，即 `scripts\start_v2_dev.ps1` 或 `scripts\start_v2_prod.ps1`。仓库中的 V1 代码仅作为迁移期保留内容，不再作为推荐入口。
 
 **Q: 渲染器未检测到怎么办？**
 A: 请先在 V2 的“设置”页检查后端状态与路径信息，确认 `mitsuba.exe` 是否可被检测到，或者将其添加到系统环境变量中。默认路径检测位置为项目目录下的 `mitsuba/dist/mitsuba.exe`。

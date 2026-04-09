@@ -94,6 +94,14 @@ class NeuralKerasTrainRequest(BaseModel):
     npy_output_dir: str
 
 
+class NeuralH5ConvertRequest(BaseModel):
+    model_key: TrainModelKey = "neural-keras"
+    h5_dir: str
+    selected_h5_files: list[str] = Field(default_factory=list)
+    npy_output_dir: str
+    conda_env: str = ""
+
+
 class HyperTrainRunRequest(BaseModel):
     model_key: TrainModelKey = "hyperbrdf"
     merl_dir: str

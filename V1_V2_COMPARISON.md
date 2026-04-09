@@ -1,61 +1,89 @@
-# V1 / V2 对照与切换记录
+# V1 / V2 对照与当前结论
 
-## 当前结论
+## 1. 当前结论
 
-V2 现在作为默认工作台入口，V1 Streamlit 保留为兼容兜底，不删除。
+截至本轮验证，V2 已完成对 V1 核心能力的替代，可以进入 V1 退役准备阶段。
 
-原因：
+当前建议定义为：
 
-- V2 已覆盖本轮重构目标内的 3 个核心模块：渲染、分析、网络模型管理
-- V2 已具备开发 / 生产两种启动方式
-- V2 已补齐基础错误边界、空状态和任务失败提示
-- 旧版网页终端和部分历史操作路径仍可作为回退方案保留
+- V2：唯一推荐入口。
+- V1：历史兼容层，下一阶段可删除。
 
-## 模块对照
+## 2. 模块对照
 
 | 能力 | V1 Streamlit | V2 Workspace | 当前状态 |
 | --- | --- | --- | --- |
-| 渲染可视化 | 已有 | 已迁移 | V2 可作为主入口 |
-| 材质表达结果分析 | 已有 | 已迁移 | V2 可作为主入口 |
-| 网络模型管理 | 已有 | 已迁移 | V2 可作为主入口 |
-| 设置 / 系统信息 | 侧边栏混合承载 | 已迁移到设置页 | V2 可作为主入口 |
-| 网页终端 | 已有 | 未迁移 | V1 保留 |
-| Mitsuba 编译面板 | 已有 | 未迁移 | V1 保留 |
+| 渲染可视化 | `pages/_modules/render_tool_page.py` | [RenderWorkbench.tsx](/d:/AHEU/GP/MatReflect_NN/frontend/src/components/RenderWorkbench.tsx) | 已迁移并完成闭环验证 |
+| 材质表达结果分析 | `pages/_modules/analysis_page.py` | [AnalysisWorkbench.tsx](/d:/AHEU/GP/MatReflect_NN/frontend/src/components/AnalysisWorkbench.tsx) | 已迁移并补齐 V1 缺口 |
+| 网络模型管理 | `pages/_modules/training_page.py` | [ModelsWorkbench.tsx](/d:/AHEU/GP/MatReflect_NN/frontend/src/components/ModelsWorkbench.tsx) | 已迁移并补齐 V1 缺口 |
+| 设置 / 编译辅助 | V1 内嵌在旧页面逻辑中 | [WorkspaceCanvas.tsx](/d:/AHEU/GP/MatReflect_NN/frontend/src/components/WorkspaceCanvas.tsx) | 已迁入 V2 设置页 |
+| 网页终端 | `pages/4_Terminal.py` | 不再保留 | 已删除 |
 
-## Phase 5 验收记录
+## 3. 本轮完成的关键补齐
 
-### 1. 统一启动脚本
+### 3.1 模型管理
 
-- 开发模式：`scripts/start_v2_dev.ps1`
-- 开发模式批处理入口：`scripts/start_v2_dev.cmd`
-- 生产模式：`scripts/start_v2_prod.ps1`
-- 生产模式批处理入口：`scripts/start_v2_prod.cmd`
+- 修复自定义模型注册失败问题。
+- 补齐独立 `H5 -> NPY` 转换入口。
+- 修复训练/转换任务的 Conda 环境解析，避免错误退回当前 Python。
 
-### 2. 开发 / 生产启动方式
+### 3.2 分析模块
 
-- 开发模式：后端 `uvicorn --reload` + 前端 `vite`
-- 生产模式：先构建 `frontend/dist`，再由 FastAPI 直接托管静态页面
+- 补齐自定义预览目录。
+- 补齐图片删除及对应 EXR 清理。
+- 补齐自定义评估目录与标签。
+- 补齐自定义拼图目录、列标签、输出目录。
 
-### 3. 前端韧性补齐
+### 3.3 环境兼容
 
-- 全局错误边界：`frontend/src/components/ErrorBoundary.tsx`
-- 统一反馈卡片：`frontend/src/components/FeedbackPanel.tsx`
-- 渲染 / 分析 / 模型页已接入空状态与错误提示
-- 任务失败 / 取消状态已展示任务消息
+- 修复 `Neural-BRDF` 在当前环境中的 Keras JSON 反序列化兼容问题。
 
-### 4. 构建与检查
+## 4. 已验证结果
 
-- `frontend`: `npm run build` 通过
-- `backend` 与训练相关 Python 文件：`py_compile` 通过
+### 4.1 静态验证
 
-## 切换策略
+- `frontend/npm run build` 通过。
+- 相关 Python 文件 `py_compile` 通过。
 
-1. 默认使用 V2：
-   - 开发时运行 `scripts/start_v2_dev.ps1`
-   - 生产时运行 `scripts/start_v2_prod.ps1`
-2. V1 保留：
-   - `app.py` 和 `pages/` 暂不删除
-   - 如需旧版网页终端或历史编译入口，继续使用 V1
-3. 删除 V1 前仍需满足：
-   - 旧终端相关能力完成迁移，或明确废弃
-   - 至少一轮完整真实实验流程在 V2 下复验通过
+### 4.2 API / 工作流验证
+
+已完成以下实测：
+
+1. 渲染
+   - `binary -> png/exr` 成功。
+
+2. HyperBRDF 解码
+   - `pt -> fullbin` 成功。
+
+3. 分析
+   - 图片查询成功。
+   - 量化评估成功。
+   - 网格拼图成功。
+   - 对比拼图成功。
+   - 图片删除成功。
+
+4. 模型管理
+   - 自定义模型新增成功。
+   - 自定义模型删除成功。
+   - 独立 `H5 -> NPY` 转换成功。
+
+## 5. 是否还需要保留 V1 作为功能兜底
+
+从核心功能角度看，不再需要。
+
+如果保留 V1，唯一价值只剩：
+
+- 历史参考代码
+- 回看旧 UI 行为
+
+这不再属于“功能迁移未完成”，而属于“是否要保留历史代码”的工程决策。
+
+## 6. 下一步建议
+
+下一步不再是继续补迁移，而是直接执行 V1 退役：
+
+1. 删除 `app.py` 与 `pages/`
+2. 删除 `pages/_modules/`
+3. 删除 `scripts/start_matreflect.*`
+4. 清理 README 与快速开始文档中的 V1 描述
+5. 最后再做一轮仅针对 V2 的回归检查

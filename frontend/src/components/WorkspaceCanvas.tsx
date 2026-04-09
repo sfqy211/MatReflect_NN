@@ -1,9 +1,16 @@
 import { useEffect, useMemo, useState } from 'react'
 
+import { useQueryClient } from '@tanstack/react-query'
+
+import { BACKEND_ORIGIN } from '../lib/api'
 import type { FileListItem, ModuleKey, SystemSummary } from '../types/api'
+import type { TaskEvent } from '../types/api'
+import { useStartSystemCompile, useStopSystemCompile, useSystemCompileTaskDetail } from '../features/system/useSystemSummary'
 import { AnalysisWorkbench } from './AnalysisWorkbench'
+import { FeedbackPanel } from './FeedbackPanel'
 import { ModelsWorkbench } from './ModelsWorkbench'
 import { RenderWorkbench } from './RenderWorkbench'
+import { TerminalDrawer } from './TerminalDrawer'
 
 type WorkspaceCanvasProps = {
   activeModule: ModuleKey
@@ -107,7 +114,99 @@ function SettingsCanvas({
   systemLoading,
   galleryCount,
 }: Pick<WorkspaceCanvasProps, 'system' | 'systemError' | 'systemLoading' | 'galleryCount'>) {
+  const queryClient = useQueryClient()
   const pathKeys = system?.available_path_keys ?? []
+  const compileDefaults = system?.compile_defaults
+  const [compileCmd, setCompileCmd] = useState('')
+  const [compileCondaEnv, setCompileCondaEnv] = useState('')
+  const [compileLabel, setCompileLabel] = useState('')
+  const [vcvarsallPath, setVcvarsallPath] = useState('')
+  const [activeTaskId, setActiveTaskId] = useState<string | null>(null)
+  const [liveLogs, setLiveLogs] = useState<string[]>([])
+
+  const compileTaskQuery = useSystemCompileTaskDetail(activeTaskId)
+  const startCompileMutation = useStartSystemCompile()
+  const stopCompileMutation = useStopSystemCompile()
+  const taskDetail = compileTaskQuery.data
+  const taskRecord = taskDetail?.record
+
+  useEffect(() => {
+    if (!compileDefaults) {
+      return
+    }
+    setCompileCmd((current) => current || compileDefaults.compile_cmd)
+    setCompileCondaEnv((current) => current || compileDefaults.conda_env)
+    setCompileLabel((current) => current || compileDefaults.preset_label)
+    setVcvarsallPath((current) => current || compileDefaults.vcvarsall_path)
+  }, [
+    compileDefaults?.compile_cmd,
+    compileDefaults?.conda_env,
+    compileDefaults?.preset_label,
+    compileDefaults?.vcvarsall_path,
+  ])
+
+  useEffect(() => {
+    if (!taskDetail) {
+      return
+    }
+    setLiveLogs(taskDetail.logs.slice(-160))
+  }, [taskDetail?.record.task_id, taskDetail?.logs])
+
+  useEffect(() => {
+    if (!activeTaskId) {
+      return
+    }
+    const wsProtocol = BACKEND_ORIGIN.startsWith('https') ? 'wss' : 'ws'
+    const socket = new WebSocket(`${wsProtocol}://${new URL(BACKEND_ORIGIN).host}/ws/tasks/${activeTaskId}`)
+
+    socket.onmessage = (event) => {
+      const payload = JSON.parse(event.data) as TaskEvent
+      if (payload.message) {
+        setLiveLogs((current) => {
+          if (current[current.length - 1] === payload.message) {
+            return current
+          }
+          return [...current, payload.message].slice(-160)
+        })
+      }
+      queryClient.invalidateQueries({ queryKey: ['system-compile-task', activeTaskId] })
+    }
+
+    return () => socket.close()
+  }, [activeTaskId, queryClient])
+
+  const compileError =
+    startCompileMutation.error instanceof Error
+      ? startCompileMutation.error
+      : stopCompileMutation.error instanceof Error
+        ? stopCompileMutation.error
+        : null
+  const logs = liveLogs.length > 0 ? liveLogs : taskDetail?.logs ?? []
+  const compileStatus =
+    taskRecord?.status ?? (startCompileMutation.isPending || stopCompileMutation.isPending ? 'pending' : 'idle')
+  const compileProgress = taskRecord?.progress ?? 0
+
+  const startCompile = async () => {
+    if (!compileCmd.trim() || !compileCondaEnv.trim()) {
+      return
+    }
+    setLiveLogs([])
+    const response = await startCompileMutation.mutateAsync({
+      compile_cmd: compileCmd.trim(),
+      conda_env: compileCondaEnv.trim(),
+      compile_label: compileLabel.trim() || compileDefaults?.preset_label || '自定义编译',
+      vcvarsall_path: vcvarsallPath.trim(),
+    })
+    setActiveTaskId(response.task_id)
+  }
+
+  const stopCompile = async () => {
+    if (!activeTaskId) {
+      return
+    }
+    await stopCompileMutation.mutateAsync(activeTaskId)
+    queryClient.invalidateQueries({ queryKey: ['system-compile-task', activeTaskId] })
+  }
 
   return (
     <section className="workspace-canvas">
@@ -165,6 +264,71 @@ function SettingsCanvas({
               </span>
             ))}
           </div>
+        </section>
+
+        <section className="settings-card settings-card--wide">
+          <div className="detail-board__lead">
+            <h3>Mitsuba 编译辅助</h3>
+          </div>
+          <p className="muted">
+            该入口已从 V1 迁移到 V2。用于调用 Visual Studio 工具链、激活 `mitsuba-build` 环境并执行 SCons 编译。
+          </p>
+          <div className="render-form-grid" style={{ marginTop: 12 }}>
+            <label className="field">
+              <span>预设名称</span>
+              <input value={compileLabel} onChange={(event) => setCompileLabel(event.target.value)} placeholder="默认 SCons 并行编译" />
+            </label>
+            <label className="field">
+              <span>Conda 环境</span>
+              <input value={compileCondaEnv} onChange={(event) => setCompileCondaEnv(event.target.value)} placeholder="mitsuba-build" />
+            </label>
+            <label className="field">
+              <span>编译命令</span>
+              <input value={compileCmd} onChange={(event) => setCompileCmd(event.target.value)} placeholder="scons --parallelize" />
+            </label>
+            <label className="field">
+              <span>vcvarsall</span>
+              <input
+                value={vcvarsallPath}
+                onChange={(event) => setVcvarsallPath(event.target.value)}
+                placeholder="可填写 vcvarsall.bat 或 .lnk；留空则自动检测"
+              />
+            </label>
+          </div>
+          <div className="settings-list">
+            <SettingRow label="编译工作目录" value={compileDefaults ? summarizePath(compileDefaults.work_dir) : '等待后端摘要返回'} />
+            <SettingRow label="依赖 bin" value={compileDefaults ? summarizePath(compileDefaults.dep_bin) : '-'} />
+            <SettingRow label="依赖 lib" value={compileDefaults ? summarizePath(compileDefaults.dep_lib) : '-'} />
+            <SettingRow label="当前任务" value={activeTaskId ?? '暂无'} />
+          </div>
+          <div className="render-actions" style={{ marginTop: 12, marginBottom: 0 }}>
+            <button
+              type="button"
+              className="theme-toggle render-actions--primary"
+              disabled={startCompileMutation.isPending || !compileCmd.trim() || !compileCondaEnv.trim()}
+              onClick={() => void startCompile()}
+            >
+              启动编译
+            </button>
+            <button
+              type="button"
+              className="theme-toggle render-actions--danger"
+              disabled={!activeTaskId || !['pending', 'running'].includes(compileStatus)}
+              onClick={() => void stopCompile()}
+            >
+              停止编译
+            </button>
+          </div>
+          {compileError ? <FeedbackPanel title="编译任务提交失败" message={compileError.message} tone="error" compact /> : null}
+          <TerminalDrawer
+            taskId={activeTaskId}
+            status={compileStatus}
+            progress={compileProgress}
+            logs={logs}
+            error={compileError}
+            onStop={!['pending', 'running'].includes(compileStatus) ? undefined : () => void stopCompile()}
+            taskStateMessage={taskRecord?.message ?? null}
+          />
         </section>
       </div>
     </section>

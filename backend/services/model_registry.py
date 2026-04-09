@@ -10,6 +10,13 @@ from backend.models.train import TrainModelCreateRequest, TrainModelItem
 
 MODEL_REGISTRY_PATH = PROJECT_ROOT / "backend" / "config" / "model_registry.json"
 MODEL_KEY_PATTERN = re.compile(r"^[a-z0-9][a-z0-9_-]{1,63}$")
+PATH_RUNTIME_FIELDS = {
+    "working_dir",
+    "train_script",
+    "extract_script",
+    "decode_script",
+    "convert_script",
+}
 
 
 def _builtin_models() -> list[TrainModelItem]:
@@ -199,8 +206,9 @@ class ModelRegistryService:
             if not item.default_paths.get("extract_dir", "").strip():
                 raise ValueError("支持参数提取或解码的超网络模型必须提供 default_paths.extract_dir。")
 
-        for path_value in item.runtime.values():
-            self._resolve_project_path(path_value)
+        for field, path_value in item.runtime.items():
+            if field in PATH_RUNTIME_FIELDS and path_value:
+                self._resolve_project_path(path_value)
         for path_value in item.default_paths.values():
             if path_value:
                 self._resolve_project_path(path_value, must_exist=False)

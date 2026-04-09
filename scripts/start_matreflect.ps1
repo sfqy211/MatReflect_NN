@@ -10,4 +10,5 @@ if (!(Test-Path $CondaHook)) {
 & $CondaHook
 conda activate $EnvName
 Set-Location $ProjectDir
+Write-Host "Legacy V1 launcher: web terminal has been removed. Use V2 by default; keep this entry only for migration checks or legacy compile-helper workflows." -ForegroundColor Yellow
 streamlit run app.py

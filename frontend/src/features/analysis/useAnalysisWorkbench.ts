@@ -5,6 +5,8 @@ import type {
   AnalysisImageSet,
   AnalysisImagesResponse,
   ComparisonRequest,
+  DeleteImageRequest,
+  DeleteImageResponse,
   EvaluationRequest,
   EvaluationResponse,
   GeneratedImageResponse,
@@ -12,13 +14,20 @@ import type {
 } from '../../types/api'
 
 
-export function useAnalysisImages(imageSet: AnalysisImageSet, search: string) {
+export function useAnalysisImages(imageSet: AnalysisImageSet, search: string, directory = '') {
   return useQuery({
-    queryKey: ['analysis-images', imageSet, search],
+    queryKey: ['analysis-images', imageSet, search, directory],
     queryFn: () =>
       apiGet<AnalysisImagesResponse>(
-        `/analysis/images?image_set=${imageSet}&page=1&page_size=48&search=${encodeURIComponent(search)}`,
+        `/analysis/images?image_set=${imageSet}&page=1&page_size=48&search=${encodeURIComponent(search)}&directory=${encodeURIComponent(directory)}`,
       ),
+  })
+}
+
+
+export function useDeleteAnalysisImage() {
+  return useMutation({
+    mutationFn: (payload: DeleteImageRequest) => apiPost<DeleteImageResponse>('/analysis/delete-image', payload),
   })
 }
 

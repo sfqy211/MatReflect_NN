@@ -1,11 +1,10 @@
 from datetime import datetime
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 
-from backend.core.config import PROJECT_ROOT
-from backend.core.paths import SAFE_PATHS, get_mitsuba_paths
-from backend.models.common import HealthResponse, SystemSummaryResponse
-from backend.services.task_manager import task_manager
+from backend.models.common import HealthResponse, TaskDetailResponse, TaskStartResponse, TaskStopRequest
+from backend.models.system import SystemCompileRequest, SystemSummaryResponse
+from backend.services.system_service import system_service
 
 
 router = APIRouter(tags=["system"])
@@ -18,20 +17,32 @@ def health() -> HealthResponse:
 
 @router.get("/system/summary", response_model=SystemSummaryResponse)
 def system_summary() -> SystemSummaryResponse:
-    paths = get_mitsuba_paths()
-    return SystemSummaryResponse(
-        project_root=str(PROJECT_ROOT.resolve()),
-        mitsuba_dir=str(paths["mitsuba_dir"]),
-        mitsuba_exe=str(paths["mitsuba_exe"]),
-        mtsutil_exe=str(paths["mtsutil_exe"]),
-        mitsuba_exists=paths["mitsuba_exe"].exists(),
-        mtsutil_exists=paths["mtsutil_exe"].exists(),
-        available_modules=["render", "analysis", "models"],
-        available_path_keys=sorted(SAFE_PATHS.keys()),
-    )
+    return system_service.get_summary()
 
 
-@router.post("/system/demo-task")
-async def demo_task() -> dict:
-    record = await task_manager.start_demo_task()
-    return {"task_id": record.task_id, "status": record.status}
+@router.post("/system/compile", response_model=TaskStartResponse)
+async def system_compile(request: SystemCompileRequest) -> TaskStartResponse:
+    try:
+        record = await system_service.start_compile(request)
+    except (ValueError, FileNotFoundError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return TaskStartResponse(task_id=record.task_id, status=record.status)
+
+
+@router.post("/system/compile/stop", response_model=TaskStartResponse)
+async def system_compile_stop(request: TaskStopRequest) -> TaskStartResponse:
+    stopped = await system_service.stop_task(request.task_id)
+    if not stopped:
+        raise HTTPException(status_code=404, detail=f"Unknown task_id: {request.task_id}")
+    detail = system_service.get_task_detail(request.task_id)
+    if detail is None:
+        raise HTTPException(status_code=404, detail=f"Unknown task_id: {request.task_id}")
+    return TaskStartResponse(task_id=detail.record.task_id, status=detail.record.status)
+
+
+@router.get("/system/compile/tasks/{task_id}", response_model=TaskDetailResponse)
+def system_compile_task_detail(task_id: str) -> TaskDetailResponse:
+    detail = system_service.get_task_detail(task_id)
+    if detail is None:
+        raise HTTPException(status_code=404, detail=f"Unknown task_id: {task_id}")
+    return detail

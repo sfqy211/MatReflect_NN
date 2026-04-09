@@ -39,6 +39,7 @@ with col_theme:
         st.rerun()
 
 st.markdown("<hr style='margin-top: 0.5rem; margin-bottom: 1.5rem; border-color: var(--line);' />", unsafe_allow_html=True)
+st.info("当前为 V1 遗留工作台。网页终端已移除，日常使用请优先启动 V2；仅在迁移核对或历史编译辅助场景下使用此入口。")
 
 # --- Main Workspace Layout ---
 left_col, right_col = st.columns([1.2, 3.8], gap="large")

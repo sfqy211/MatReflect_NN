@@ -6,11 +6,11 @@ import os
 import re
 import shutil
 import subprocess
-import sys
 import xml.etree.ElementTree as ET
 from datetime import datetime
 from pathlib import Path
 
+from backend.core.conda import build_python_runner
 from backend.core.config import LOGS_ROOT, OUTPUTS_ROOT, PROJECT_ROOT, RUNTIME_ROOT
 from backend.core.paths import get_mitsuba_paths
 from backend.models.common import FileListItem, TaskDetailResponse
@@ -312,10 +312,7 @@ class RenderService:
         return env
 
     def _python_runner(self, conda_env: str | None = None) -> tuple[list[str], bool]:
-        conda = shutil.which("conda")
-        if conda and conda_env:
-            return [conda, "run", "--no-capture-output", "-n", conda_env, "python"], True
-        return [sys.executable], False
+        return build_python_runner(conda_env)
 
     def list_scenes(self, render_mode: RenderMode = "brdfs") -> RenderScenesResponse:
         default_scene = get_default_scene_path(render_mode)

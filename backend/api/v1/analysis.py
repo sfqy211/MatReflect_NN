@@ -4,6 +4,8 @@ from backend.models.analysis import (
     AnalysisImageSet,
     AnalysisImagesResponse,
     ComparisonRequest,
+    DeleteImageRequest,
+    DeleteImageResponse,
     EvaluationRequest,
     EvaluationResponse,
     GeneratedImageResponse,
@@ -21,8 +23,20 @@ def analysis_images(
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=24, ge=1, le=200),
     search: str = "",
+    directory: str = "",
 ) -> AnalysisImagesResponse:
-    return analysis_service.list_images(image_set, page=page, page_size=page_size, search=search)
+    try:
+        return analysis_service.list_images(image_set, page=page, page_size=page_size, search=search, directory=directory)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post("/analysis/delete-image", response_model=DeleteImageResponse)
+def analysis_delete_image(request: DeleteImageRequest) -> DeleteImageResponse:
+    try:
+        return analysis_service.delete_image(request)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.post("/analysis/evaluate", response_model=EvaluationResponse)

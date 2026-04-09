@@ -9,6 +9,7 @@ import {
   useStartHyperDecode,
   useStartHyperExtract,
   useStartHyperRun,
+  useStartNeuralH5Convert,
   useStartNeuralKeras,
   useStartNeuralPytorch,
   useStopTrainTask,
@@ -111,8 +112,10 @@ export function ModelsWorkbench() {
   const [draft, setDraft] = useState<TrainModelCreateRequest>(() => buildDraft('hyper-family'))
   const [showCreateForm, setShowCreateForm] = useState(false)
   const [search, setSearch] = useState('')
+  const [h5Search, setH5Search] = useState('')
   const [ptSearch, setPtSearch] = useState('')
   const [selectedMaterials, setSelectedMaterials] = useState<string[]>([])
+  const [selectedH5Files, setSelectedH5Files] = useState<string[]>([])
   const [selectedPts, setSelectedPts] = useState<string[]>([])
   const [dataset, setDataset] = useState<'MERL' | 'EPFL'>('MERL')
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null)
@@ -147,6 +150,7 @@ export function ModelsWorkbench() {
     [activeModelKey, modelQuery.data?.items],
   )
   const runsQuery = useTrainRuns(activeModel?.supports_runs ? activeModel.key : null, Boolean(activeModel?.supports_runs))
+  const h5FilesQuery = useWorkspaceFiles(kerasH5Dir, ['.h5'], h5Search, activeModel?.adapter === 'neural-keras')
   const ptFilesQuery = useWorkspaceFiles(ptDir, ['.pt'], ptSearch, Boolean(activeModel?.supports_decode))
   const taskDetailQuery = useTrainTaskDetail(activeTaskId)
 
@@ -154,12 +158,14 @@ export function ModelsWorkbench() {
   const deleteTrainModel = useDeleteTrainModel()
   const startNeuralPytorch = useStartNeuralPytorch()
   const startNeuralKeras = useStartNeuralKeras()
+  const startNeuralH5Convert = useStartNeuralH5Convert()
   const startHyperRun = useStartHyperRun()
   const startHyperExtract = useStartHyperExtract()
   const startHyperDecode = useStartHyperDecode()
   const stopTrainTask = useStopTrainTask()
 
   const materialItems = materialsQuery.data?.items ?? []
+  const h5Items = h5FilesQuery.data?.items ?? []
   const ptItems = ptFilesQuery.data?.items ?? []
   const runs = activeModel?.supports_runs ? runsQuery.data?.items ?? [] : []
   const taskDetail = taskDetailQuery.data
@@ -194,6 +200,11 @@ export function ModelsWorkbench() {
     const available = new Set(materialItems.map((item) => item.name))
     setSelectedMaterials((current) => current.filter((name) => available.has(name)))
   }, [materialItems])
+
+  useEffect(() => {
+    const available = new Set(h5Items.map((item) => item.name))
+    setSelectedH5Files((current) => current.filter((name) => available.has(name)))
+  }, [h5Items])
 
   useEffect(() => {
     const available = new Set(ptItems.map((item) => item.name))
@@ -240,10 +251,11 @@ export function ModelsWorkbench() {
       `适配器: ${activeModel?.adapter ?? '-'}`,
       `固定材质库: ${materialItems.length}`,
       `已选材质: ${selectedMaterials.length}`,
+      `H5 文件: ${h5Items.length}`,
       `运行记录: ${runs.length}`,
       `PT 文件: ${ptItems.length}`,
     ],
-    [activeModel?.adapter, activeModel?.label, materialItems.length, ptItems.length, runs.length, selectedMaterials.length],
+    [activeModel?.adapter, activeModel?.label, h5Items.length, materialItems.length, ptItems.length, runs.length, selectedMaterials.length],
   )
 
   const logs = liveLogs.length > 0 ? liveLogs : taskDetail?.logs ?? []
@@ -254,6 +266,7 @@ export function ModelsWorkbench() {
     deleteTrainModel.error ??
     startNeuralPytorch.error ??
     startNeuralKeras.error ??
+    startNeuralH5Convert.error ??
     startHyperRun.error ??
     startHyperExtract.error ??
     startHyperDecode.error ??
@@ -292,6 +305,23 @@ export function ModelsWorkbench() {
           const start = Math.min(lastSelectedIndex, currentIndex)
           const end = Math.max(lastSelectedIndex, currentIndex)
           const rangeNames = ptItems.slice(start, end + 1).map((item) => item.name)
+          return Array.from(new Set([...current, ...rangeNames]))
+        }
+      }
+      return current.includes(name) ? current.filter((item) => item !== name) : [...current, name]
+    })
+  }
+
+  const toggleH5 = (name: string, event?: MouseEvent) => {
+    setSelectedH5Files((current) => {
+      const currentIndex = h5Items.findIndex((item) => item.name === name)
+      if (event?.shiftKey && current.length > 0 && currentIndex !== -1) {
+        const lastSelectedName = current[current.length - 1]
+        const lastSelectedIndex = h5Items.findIndex((item) => item.name === lastSelectedName)
+        if (lastSelectedIndex !== -1) {
+          const start = Math.min(lastSelectedIndex, currentIndex)
+          const end = Math.max(lastSelectedIndex, currentIndex)
+          const rangeNames = h5Items.slice(start, end + 1).map((item) => item.name)
           return Array.from(new Set([...current, ...rangeNames]))
         }
       }
@@ -433,6 +463,21 @@ export function ModelsWorkbench() {
     setActiveTaskId(response.task_id)
   }
 
+  const startH5Convert = async () => {
+    if (!activeModel || activeModel.adapter !== 'neural-keras') {
+      return
+    }
+    setLiveLogs([])
+    const response = await startNeuralH5Convert.mutateAsync({
+      model_key: activeModel.key,
+      h5_dir: kerasH5Dir,
+      selected_h5_files: selectedH5Files,
+      npy_output_dir: kerasNpyDir,
+      conda_env: condaEnv,
+    })
+    setActiveTaskId(response.task_id)
+  }
+
   const stopTask = async () => {
     if (!activeTaskId) {
       return
@@ -512,6 +557,71 @@ export function ModelsWorkbench() {
             ))}
           </div>
         </section>
+
+        {activeModel?.adapter === 'neural-keras' ? (
+          <section className="models-section">
+            <div className="detail-board__lead">
+              <h3>H5 -&gt; NPY 转换</h3>
+            </div>
+            <div className="render-form-grid">
+              <label className="field">
+                <span>H5 目录</span>
+                <input value={kerasH5Dir} onChange={(event) => setKerasH5Dir(event.target.value)} />
+              </label>
+              <label className="field">
+                <span>NPY 输出目录</span>
+                <input value={kerasNpyDir} onChange={(event) => setKerasNpyDir(event.target.value)} />
+              </label>
+              <label className="field">
+                <span>Conda 环境</span>
+                <input value={condaEnv} onChange={(event) => setCondaEnv(event.target.value)} />
+              </label>
+            </div>
+            <div className="file-toolbar">
+              <input
+                type="search"
+                className="search-input"
+                value={h5Search}
+                onChange={(event) => setH5Search(event.target.value)}
+                placeholder="搜索 .h5 文件"
+              />
+              <div className="file-toolbar__actions">
+                <button type="button" className="theme-toggle" onClick={() => setSelectedH5Files(h5Items.map((item) => item.name))}>
+                  全选
+                </button>
+                <button type="button" className="theme-toggle" onClick={() => setSelectedH5Files([])}>
+                  清空
+                </button>
+              </div>
+            </div>
+            <div className="file-list">
+              {h5FilesQuery.error instanceof Error ? (
+                <FeedbackPanel title="H5 列表读取失败" message={h5FilesQuery.error.message} tone="error" compact />
+              ) : null}
+              {h5Items.map((item) => (
+                <label
+                  key={item.path}
+                  className="file-item"
+                  onClick={(event) => {
+                    event.preventDefault()
+                    toggleH5(item.name, event)
+                  }}
+                >
+                  <input type="checkbox" checked={selectedH5Files.includes(item.name)} readOnly />
+                  <span>{item.name}</span>
+                </label>
+              ))}
+              {!h5FilesQuery.error && h5Items.length === 0 ? (
+                <FeedbackPanel title="当前没有可转换的 H5 文件" message="请先完成 Keras 训练，或检查 H5 目录是否正确。" tone="empty" compact />
+              ) : null}
+            </div>
+            <div className="render-actions">
+              <button type="button" className="theme-toggle render-actions--primary" onClick={() => void startH5Convert()} disabled={selectedH5Files.length === 0}>
+                执行 H5 -&gt; NPY 转换
+              </button>
+            </div>
+          </section>
+        ) : null}
 
         <section className="models-section">
           <div className="detail-board__lead">

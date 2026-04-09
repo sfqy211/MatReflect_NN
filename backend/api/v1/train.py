@@ -6,6 +6,7 @@ from backend.models.train import (
     HyperDecodeRequest,
     HyperExtractRequest,
     HyperTrainRunRequest,
+    NeuralH5ConvertRequest,
     NeuralKerasTrainRequest,
     NeuralPytorchTrainRequest,
     TrainModelCreateRequest,
@@ -100,6 +101,15 @@ async def train_neural_pytorch(request: NeuralPytorchTrainRequest) -> TrainTaskS
 async def train_neural_keras(request: NeuralKerasTrainRequest) -> TrainTaskStartResponse:
     try:
         record = await train_service.start_neural_keras(request)
+    except (KeyError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return TrainTaskStartResponse(task_id=record.task_id, status=record.status)
+
+
+@router.post("/train/neural/keras/convert", response_model=TrainTaskStartResponse)
+async def train_neural_keras_convert(request: NeuralH5ConvertRequest) -> TrainTaskStartResponse:
+    try:
+        record = await train_service.start_neural_h5_convert(request)
     except (KeyError, ValueError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return TrainTaskStartResponse(task_id=record.task_id, status=record.status)

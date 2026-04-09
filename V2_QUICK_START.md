@@ -1,18 +1,18 @@
-# V2 Quick Start
+# V2 快速开始
 
-## Backend
+## 后端启动
 
 ```powershell
 pip install -r backend/requirements.txt
 python -m uvicorn backend.main:app --reload
 ```
 
-Backend default:
+后端默认地址：
 
-- API: `http://127.0.0.1:8000/api/v1`
-- Docs: `http://127.0.0.1:8000/docs`
+- API：`http://127.0.0.1:8000/api/v1`
+- 文档：`http://127.0.0.1:8000/docs`
 
-## Frontend
+## 前端启动
 
 ```powershell
 cd frontend
@@ -20,47 +20,45 @@ npm install
 npm run dev
 ```
 
-Frontend default:
+前端默认地址：
 
-- App: `http://127.0.0.1:5173`
+- 应用：`http://127.0.0.1:5173`
 
-## Unified Launchers
+## 统一启动脚本
 
-Recommended entrypoints:
+推荐直接使用以下入口：
 
 ```powershell
 scripts\start_v2_dev.ps1
 scripts\start_v2_prod.ps1
 ```
 
-Notes:
+说明：
 
-- `start_v2_dev.ps1` starts backend and Vite dev server in separate PowerShell windows
-- `start_v2_prod.ps1` builds `frontend/dist` and serves V2 from the FastAPI root URL
+- `start_v2_dev.ps1`：分别启动后端与 Vite 开发服务器
+- `start_v2_prod.ps1`：先构建 `frontend/dist`，再由 FastAPI 直接托管 V2 页面
 
-## Optional env
+## 可选环境变量
 
-If backend is not running on the default address, create `frontend/.env.local`:
+如果后端不是运行在默认地址，可创建 `frontend/.env.local`：
 
 ```bash
 VITE_API_BASE=http://127.0.0.1:8000/api/v1
 ```
 
-## Training envs
+## 训练环境
 
-- `HyperBRDF` uses conda env `hyperbrdf`
-- `Neural-BRDF` training can continue to use the existing Python environment or its dedicated env
+- `HyperBRDF` 使用 Conda 环境 `hyperbrdf`
+- `Neural-BRDF` 可继续使用现有环境，或使用其独立训练环境
 
-Notes:
+## 当前范围
 
-
-## Current scope
-
-- New V2 workspace supports light / dark theme switching.
-- Core module entries are in place:
-  - Render
-  - Analysis
-  - Models
-- Settings page is also available for theme and system information.
-- Backend summary and file-list APIs are already wired.
-- V2 is now the primary entry; V1 Streamlit remains only as a fallback for legacy panels.
+- 新版 V2 工作台支持浅色 / 深色主题切换
+- 核心模块入口已具备：
+  - 渲染可视化
+  - 材质结果分析
+  - 网络模型管理
+- 设置页已提供主题切换、系统信息查看与 Mitsuba 编译辅助入口
+- 后端摘要与文件列表 API 已接通
+- V2 是当前唯一推荐的日常入口
+- V1 遗留代码可能仍存在于仓库中，但不属于正常启动路径

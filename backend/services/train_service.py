@@ -5,17 +5,18 @@ import json
 import os
 import shutil
 import subprocess
-import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from backend.core.conda import build_python_runner
 from backend.core.config import LOGS_ROOT, PROJECT_ROOT
 from backend.models.common import TaskDetailResponse
 from backend.models.train import (
     HyperDecodeRequest,
     HyperExtractRequest,
     HyperTrainRunRequest,
+    NeuralH5ConvertRequest,
     NeuralKerasTrainRequest,
     NeuralPytorchTrainRequest,
     TrainModelCreateRequest,
@@ -146,6 +147,15 @@ class TrainService:
         cancel_event = asyncio.Event()
         self._cancel_events[record.task_id] = cancel_event
         asyncio.create_task(self._run_neural_keras(record.task_id, model, request, log_path, cancel_event))
+        return record
+
+    async def start_neural_h5_convert(self, request: NeuralH5ConvertRequest):
+        model = self._require_model_adapter(request.model_key, "neural-keras")
+        log_path = LOGS_ROOT / f"train_neural_h5_convert_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.log"
+        record = task_manager.create("train_neural_h5_convert", f"{model.label} h5 conversion queued", log_path=str(log_path))
+        cancel_event = asyncio.Event()
+        self._cancel_events[record.task_id] = cancel_event
+        asyncio.create_task(self._run_neural_h5_convert(record.task_id, model, request, log_path, cancel_event))
         return record
 
     async def start_hyper_run(self, request: HyperTrainRunRequest):
@@ -302,10 +312,7 @@ class TrainService:
         return env
 
     def _python_runner(self, conda_env: str | None = None) -> tuple[list[str], bool]:
-        conda = shutil.which("conda")
-        if conda and conda_env:
-            return [conda, "run", "--no-capture-output", "-n", conda_env, "python"], False
-        return [sys.executable], False
+        return build_python_runner(conda_env)
 
     def _resolve_project_path(self, path_value: str, *, must_exist: bool) -> Path:
         raw_path = Path(path_value)
@@ -531,6 +538,77 @@ class TrainService:
             )
         except Exception as exc:
             await self._write_log(task_id, log_path, f"Training task failed: {exc}", status="failed", progress=100, event="done")
+        finally:
+            self._cancel_events.pop(task_id, None)
+
+    async def _run_neural_h5_convert(
+        self,
+        task_id: str,
+        model: TrainModelItem,
+        request: NeuralH5ConvertRequest,
+        log_path: Path,
+        cancel_event: asyncio.Event,
+    ) -> None:
+        try:
+            h5_dir = Path(request.h5_dir).resolve()
+            npy_output_dir = Path(request.npy_output_dir).resolve()
+            ensure_exists(h5_dir)
+            if not request.selected_h5_files:
+                raise ValueError("No .h5 files selected.")
+            npy_output_dir.mkdir(parents=True, exist_ok=True)
+
+            convert_script = self._resolve_project_path(model.runtime["convert_script"], must_exist=True)
+            env = self._make_env(model, include_script_parent=str(convert_script.parent.relative_to(PROJECT_ROOT)))
+            conda_env = request.conda_env.strip() or model.runtime.get("conda_env", "").strip()
+            runner, _ = self._python_runner(conda_env)
+
+            h5_paths: list[str] = []
+            for file_name in request.selected_h5_files:
+                h5_path = h5_dir / file_name
+                ensure_exists(h5_path, file_ok=True)
+                h5_paths.append(str(h5_path))
+
+            convert_cmd = [*runner, str(convert_script), *h5_paths, "--destdir", str(npy_output_dir)]
+            convert_return = await self._run_command(
+                task_id,
+                log_path,
+                convert_cmd,
+                cwd=self._working_dir_for(model),
+                env=env,
+                progress=25,
+                start_message=f"Start {model.label} h5 -> npy conversion.",
+                cancel_event=cancel_event,
+            )
+            if convert_return == -1:
+                await self._write_log(task_id, log_path, "Task cancelled.", status="cancelled", progress=100, event="done")
+                return
+            if convert_return != 0:
+                await self._write_log(
+                    task_id,
+                    log_path,
+                    f"h5 -> npy conversion failed (exit code: {convert_return}).",
+                    status="failed",
+                    progress=100,
+                    event="done",
+                )
+                return
+
+            await self._write_log(
+                task_id,
+                log_path,
+                f"{model.label} h5 conversion completed.",
+                status="success",
+                progress=100,
+                event="done",
+                result_payload={
+                    "h5_dir": str(h5_dir),
+                    "npy_output_dir": str(npy_output_dir),
+                    "count": len(h5_paths),
+                    "model_key": model.key,
+                },
+            )
+        except Exception as exc:
+            await self._write_log(task_id, log_path, f"Conversion task failed: {exc}", status="failed", progress=100, event="done")
         finally:
             self._cancel_events.pop(task_id, None)
 

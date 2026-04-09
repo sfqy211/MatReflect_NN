@@ -6,6 +6,7 @@ import type {
   HyperDecodeRequest,
   HyperExtractRequest,
   HyperTrainRunRequest,
+  NeuralH5ConvertRequest,
   NeuralKerasTrainRequest,
   NeuralPytorchTrainRequest,
   TaskDetailResponse,
@@ -109,6 +110,14 @@ export function useStartNeuralKeras() {
   return useMutation({
     mutationFn: (payload: NeuralKerasTrainRequest) =>
       apiPost<TaskStartResponse>('/train/neural/keras', payload),
+  })
+}
+
+
+export function useStartNeuralH5Convert() {
+  return useMutation({
+    mutationFn: (payload: NeuralH5ConvertRequest) =>
+      apiPost<TaskStartResponse>('/train/neural/keras/convert', payload),
   })
 }
 

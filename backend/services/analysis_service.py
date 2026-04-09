@@ -10,11 +10,14 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 from skimage import color, metrics
 
-from backend.core.config import OUTPUTS_ROOT
+from backend.core.config import OUTPUTS_ROOT, PROJECT_ROOT
 from backend.models.analysis import (
     AnalysisImageSet,
     AnalysisImagesResponse,
+    ComparisonColumn,
     ComparisonRequest,
+    DeleteImageRequest,
+    DeleteImageResponse,
     EvaluationPairResult,
     EvaluationRequest,
     EvaluationResponse,
@@ -23,7 +26,16 @@ from backend.models.analysis import (
     MetricSummary,
 )
 from backend.models.common import FileListItem
-from backend.services.file_service import build_preview_url
+from backend.services.file_service import build_preview_url, resolve_workspace_path
+
+
+DEFAULT_SET_LABELS: dict[AnalysisImageSet, str] = {
+    "brdfs": "GT / BRDF",
+    "fullbin": "FullBin",
+    "npy": "NPY",
+    "grids": "Grids",
+    "comparisons": "Comparisons",
+}
 
 
 def normalize_material_name(file_name: str) -> str:
@@ -74,34 +86,108 @@ class AnalysisService:
     def _dir_for(self, image_set: AnalysisImageSet) -> Path:
         return self._set_dirs[image_set]
 
-    def _list_pngs(self, image_set: AnalysisImageSet) -> list[Path]:
-        target_dir = self._dir_for(image_set)
+    def _resolve_directory(self, image_set: AnalysisImageSet | None = None, directory: str = "") -> Path:
+        if directory.strip():
+            return resolve_workspace_path(directory.strip())
+        if image_set is None:
+            raise ValueError("Missing image_set or directory.")
+        return self._dir_for(image_set)
+
+    def _resolve_workspace_path(self, path_value: str) -> Path:
+        raw_path = Path(path_value)
+        candidate = raw_path if raw_path.is_absolute() else PROJECT_ROOT / raw_path
+        resolved = candidate.resolve(strict=False)
+        project_root = PROJECT_ROOT.resolve()
+        try:
+            resolved.relative_to(project_root)
+        except ValueError as exc:
+            raise ValueError(f"Path must stay inside project root: {path_value}") from exc
+        return resolved
+
+    def _list_pngs_from_dir(self, target_dir: Path) -> list[Path]:
+        target_dir.mkdir(parents=True, exist_ok=True)
         return sorted(target_dir.glob("*.png"), key=lambda path: path.stat().st_mtime, reverse=True)
 
-    def _material_index(self, image_set: AnalysisImageSet) -> dict[str, Path]:
+    def _material_index_from_dir(self, target_dir: Path) -> dict[str, Path]:
         index: dict[str, Path] = {}
-        for path in self._list_pngs(image_set):
+        for path in self._list_pngs_from_dir(target_dir):
             material = normalize_material_name(path.name)
             index.setdefault(material, path)
         return index
 
-    def list_images(self, image_set: AnalysisImageSet, page: int = 1, page_size: int = 24, search: str = "") -> AnalysisImagesResponse:
-        entries = self._list_pngs(image_set)
+    def _column_label(self, column: ComparisonColumn) -> str:
+        if column.label.strip():
+            return column.label.strip()
+        if column.image_set:
+            return DEFAULT_SET_LABELS[column.image_set]
+        if column.directory.strip():
+            return Path(column.directory).name or "Custom"
+        return "Column"
+
+    def _comparison_title(self, label_a: str, label_b: str) -> str:
+        return f"{label_a} vs {label_b}"
+
+    def _load_rgb(self, image_path: Path) -> np.ndarray | None:
+        image = cv2.imread(str(image_path))
+        if image is None:
+            return None
+        return cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+
+    def list_images(
+        self,
+        image_set: AnalysisImageSet,
+        page: int = 1,
+        page_size: int = 24,
+        search: str = "",
+        directory: str = "",
+    ) -> AnalysisImagesResponse:
+        resolved_dir = self._resolve_directory(image_set, directory)
+        entries = self._list_pngs_from_dir(resolved_dir)
         if search:
             entries = [entry for entry in entries if search.lower() in entry.name.lower()]
         total = len(entries)
         paged = entries[(page - 1) * page_size : page * page_size]
         return AnalysisImagesResponse(
             image_set=image_set,
-            resolved_path=str(self._dir_for(image_set).resolve()),
+            resolved_path=str(resolved_dir.resolve()),
             total=total,
             items=[build_file_item(path) for path in paged],
         )
 
+    def delete_image(self, request: DeleteImageRequest) -> DeleteImageResponse:
+        image_path = self._resolve_workspace_path(request.image_path)
+        if image_path.suffix.lower() not in {".png", ".jpg", ".jpeg"}:
+            raise ValueError("Only image files can be deleted from analysis preview.")
+
+        deleted: list[str] = []
+        missing: list[str] = []
+
+        if image_path.exists():
+            image_path.unlink()
+            deleted.append(str(image_path))
+        else:
+            missing.append(str(image_path))
+
+        if request.delete_matching_exr:
+            exr_dir = image_path.parent.parent / "exr" if image_path.parent.name.lower() == "png" else image_path.parent
+            exr_path = exr_dir / f"{image_path.stem}.exr"
+            exr_path = self._resolve_workspace_path(str(exr_path))
+            if exr_path.exists():
+                exr_path.unlink()
+                deleted.append(str(exr_path))
+            else:
+                missing.append(str(exr_path))
+
+        return DeleteImageResponse(deleted=deleted, missing=missing)
+
     def evaluate(self, request: EvaluationRequest) -> EvaluationResponse:
-        gt_index = self._material_index(request.gt_set)
-        method1_index = self._material_index(request.method1_set)
-        method2_index = self._material_index(request.method2_set)
+        gt_dir = self._resolve_directory(request.gt_set, request.gt_dir)
+        method1_dir = self._resolve_directory(request.method1_set, request.method1_dir)
+        method2_dir = self._resolve_directory(request.method2_set, request.method2_dir)
+
+        gt_index = self._material_index_from_dir(gt_dir)
+        method1_index = self._material_index_from_dir(method1_dir)
+        method2_index = self._material_index_from_dir(method2_dir)
 
         materials = request.selected_materials or sorted(gt_index.keys())
         metrics_gt_m1 = np.zeros(3, dtype=np.float64)
@@ -118,21 +204,18 @@ class AnalysisService:
                 skipped.append(material)
                 continue
 
-            img_gt = cv2.imread(str(gt_path))
-            img_m1 = cv2.imread(str(method1_path))
-            img_m2 = cv2.imread(str(method2_path))
-            if img_gt is None or img_m1 is None or img_m2 is None:
+            img_gt_rgb = self._load_rgb(gt_path)
+            img_m1_rgb = self._load_rgb(method1_path)
+            img_m2_rgb = self._load_rgb(method2_path)
+            if img_gt_rgb is None or img_m1_rgb is None or img_m2_rgb is None:
                 skipped.append(material)
                 continue
 
-            if img_gt.shape != img_m1.shape:
-                img_m1 = cv2.resize(img_m1, (img_gt.shape[1], img_gt.shape[0]))
-            if img_gt.shape != img_m2.shape:
-                img_m2 = cv2.resize(img_m2, (img_gt.shape[1], img_gt.shape[0]))
+            if img_gt_rgb.shape != img_m1_rgb.shape:
+                img_m1_rgb = cv2.resize(img_m1_rgb, (img_gt_rgb.shape[1], img_gt_rgb.shape[0]))
+            if img_gt_rgb.shape != img_m2_rgb.shape:
+                img_m2_rgb = cv2.resize(img_m2_rgb, (img_gt_rgb.shape[1], img_gt_rgb.shape[0]))
 
-            img_gt_rgb = cv2.cvtColor(img_gt, cv2.COLOR_BGR2RGB)
-            img_m1_rgb = cv2.cvtColor(img_m1, cv2.COLOR_BGR2RGB)
-            img_m2_rgb = cv2.cvtColor(img_m2, cv2.COLOR_BGR2RGB)
             metrics_gt_m1 += calc_single_pair(img_gt_rgb, img_m1_rgb)
             metrics_gt_m2 += calc_single_pair(img_gt_rgb, img_m2_rgb)
             metrics_m1_m2 += calc_single_pair(img_m1_rgb, img_m2_rgb)
@@ -145,28 +228,33 @@ class AnalysisService:
             averaged = values / processed
             return MetricSummary(psnr=float(averaged[0]), ssim=float(averaged[1]), delta_e=float(averaged[2]))
 
+        gt_label = request.gt_label.strip() or DEFAULT_SET_LABELS[request.gt_set]
+        method1_label = request.method1_label.strip() or DEFAULT_SET_LABELS[request.method1_set]
+        method2_label = request.method2_label.strip() or DEFAULT_SET_LABELS[request.method2_set]
+
         return EvaluationResponse(
             processed_count=processed,
             skipped=skipped,
             comparisons=[
-                EvaluationPairResult(label="GT vs FullBin", metrics=summary(metrics_gt_m1)),
-                EvaluationPairResult(label="GT vs NPY", metrics=summary(metrics_gt_m2)),
-                EvaluationPairResult(label="FullBin vs NPY", metrics=summary(metrics_m1_m2)),
+                EvaluationPairResult(label=self._comparison_title(gt_label, method1_label), metrics=summary(metrics_gt_m1)),
+                EvaluationPairResult(label=self._comparison_title(gt_label, method2_label), metrics=summary(metrics_gt_m2)),
+                EvaluationPairResult(label=self._comparison_title(method1_label, method2_label), metrics=summary(metrics_m1_m2)),
             ],
         )
 
     def generate_grid(self, request: GridRequest) -> GeneratedImageResponse:
-        source_index = self._material_index(request.image_set)
+        source_dir = self._resolve_directory(request.image_set, request.source_dir)
+        source_index = self._material_index_from_dir(source_dir)
         selected = request.selected_materials or list(source_index.keys())
         files = [source_index[material] for material in selected if material in source_index]
         if not files:
-            raise ValueError("未找到可用于网格拼图的图片")
+            raise ValueError("No images available for grid generation.")
 
         cols = math.ceil(math.sqrt(len(files)))
         rows = math.ceil(len(files) / cols)
         text_height = 30 if request.show_names else 0
         with Image.open(files[0]) as sample:
-          aspect = sample.height / sample.width
+            aspect = sample.height / sample.width
         cell_height = int(request.cell_width * aspect)
         width = cols * request.cell_width + (cols + 1) * request.padding
         height = rows * (cell_height + text_height) + (rows + 1) * request.padding
@@ -195,23 +283,27 @@ class AnalysisService:
                     text_y = y + cell_height + 5
                     draw.text((text_x, text_y), name_text, fill=(0, 0, 0), font=font)
 
-        output_path = self._dir_for("grids") / request.output_name
+        output_dir = self._resolve_directory("grids", request.output_dir)
+        output_path = output_dir / request.output_name
         grid_img.save(output_path)
         return GeneratedImageResponse(item=build_file_item(output_path), processed_count=len(files))
 
     def generate_comparison(self, request: ComparisonRequest) -> GeneratedImageResponse:
-        valid_columns = [column for column in request.columns if self._dir_for(column.image_set).exists()]
+        valid_columns: list[tuple[str, Path]] = []
+        for column in request.columns:
+            resolved_dir = self._resolve_directory(column.image_set, column.directory)
+            valid_columns.append((self._column_label(column), resolved_dir))
         if not valid_columns:
-            raise ValueError("没有有效的对比列配置")
+            raise ValueError("No valid comparison columns configured.")
 
-        indexes = {column.label: self._material_index(column.image_set) for column in valid_columns}
+        indexes = {label: self._material_index_from_dir(directory) for label, directory in valid_columns}
         if request.selected_materials:
             materials = request.selected_materials
         else:
             common = set.intersection(*(set(index.keys()) for index in indexes.values())) if indexes else set()
             materials = sorted(common)
         if not materials:
-            raise ValueError("未找到可用于对比拼图的材质")
+            raise ValueError("No materials available for comparison generation.")
 
         try:
             font = ImageFont.truetype("arial.ttf", 20)
@@ -228,8 +320,8 @@ class AnalysisService:
 
         for material in materials:
             current_paths: list[Path] = []
-            for column in valid_columns:
-                match = indexes[column.label].get(material)
+            for label, _directory in valid_columns:
+                match = indexes[label].get(material)
                 if not match:
                     current_paths = []
                     break
@@ -261,7 +353,7 @@ class AnalysisService:
             processed_rows.append(row_img)
 
         if not processed_rows:
-            raise ValueError("未能生成任何对比拼图")
+            raise ValueError("No comparison rows were generated.")
 
         total_width = processed_rows[0].width
         merged_height = sum(image.height for image in processed_rows) + header_height
@@ -273,12 +365,12 @@ class AnalysisService:
             draw = ImageDraw.Draw(header)
             sample_width = processed_rows[0].width - name_width - padding * (len(valid_columns) + 1)
             col_width = sample_width // len(valid_columns) if valid_columns else 0
-            for idx, column in enumerate(valid_columns):
-                bbox = draw.textbbox((0, 0), column.label, font=title_font)
+            for idx, (label, _directory) in enumerate(valid_columns):
+                bbox = draw.textbbox((0, 0), label, font=title_font)
                 text_w = bbox[2] - bbox[0]
                 text_x = name_width + padding + idx * (col_width + padding) + (col_width - text_w) / 2
                 text_y = (header_height - (bbox[3] - bbox[1])) / 2
-                draw.text((text_x, text_y), column.label, fill=(0, 0, 0), font=title_font)
+                draw.text((text_x, text_y), label, fill=(0, 0, 0), font=title_font)
             merged.paste(header, (0, 0))
             current_y += header_height
 
@@ -286,7 +378,8 @@ class AnalysisService:
             merged.paste(row, (0, current_y))
             current_y += row.height
 
-        output_path = self._dir_for("comparisons") / request.output_name
+        output_dir = self._resolve_directory("comparisons", request.output_dir)
+        output_path = output_dir / request.output_name
         merged.save(output_path)
         return GeneratedImageResponse(item=build_file_item(output_path), processed_count=len(processed_rows), skipped=skipped)
 

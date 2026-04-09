@@ -9,6 +9,24 @@ export type SystemSummary = {
   mtsutil_exists: boolean
   available_modules: string[]
   available_path_keys: string[]
+  compile_defaults: SystemCompileDefaults
+}
+
+export type SystemCompileDefaults = {
+  preset_label: string
+  compile_cmd: string
+  conda_env: string
+  vcvarsall_path: string
+  work_dir: string
+  dep_bin: string
+  dep_lib: string
+}
+
+export type SystemCompileRequest = {
+  compile_cmd: string
+  conda_env: string
+  compile_label: string
+  vcvarsall_path: string
 }
 
 export type FileListItem = {
@@ -131,6 +149,16 @@ export type AnalysisImagesResponse = {
   items: FileListItem[]
 }
 
+export type DeleteImageRequest = {
+  image_path: string
+  delete_matching_exr: boolean
+}
+
+export type DeleteImageResponse = {
+  deleted: string[]
+  missing: string[]
+}
+
 export type MetricSummary = {
   psnr: number
   ssim: number
@@ -152,11 +180,19 @@ export type EvaluationRequest = {
   gt_set: AnalysisImageSet
   method1_set: AnalysisImageSet
   method2_set: AnalysisImageSet
+  gt_dir: string
+  method1_dir: string
+  method2_dir: string
+  gt_label: string
+  method1_label: string
+  method2_label: string
   selected_materials: string[]
 }
 
 export type GridRequest = {
   image_set: AnalysisImageSet
+  source_dir: string
+  output_dir: string
   output_name: string
   show_names: boolean
   cell_width: number
@@ -165,7 +201,8 @@ export type GridRequest = {
 }
 
 export type ComparisonColumn = {
-  image_set: AnalysisImageSet
+  image_set?: AnalysisImageSet | null
+  directory: string
   label: string
 }
 
@@ -174,6 +211,7 @@ export type ComparisonRequest = {
   selected_materials: string[]
   show_label: boolean
   show_filename: boolean
+  output_dir: string
   output_name: string
 }
 
@@ -267,6 +305,14 @@ export type NeuralKerasTrainRequest = {
   cuda_device: string
   h5_output_dir: string
   npy_output_dir: string
+}
+
+export type NeuralH5ConvertRequest = {
+  model_key: string
+  h5_dir: string
+  selected_h5_files: string[]
+  npy_output_dir: string
+  conda_env: string
 }
 
 export type HyperTrainRunRequest = {
