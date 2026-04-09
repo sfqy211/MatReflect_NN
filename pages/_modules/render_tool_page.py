@@ -51,7 +51,8 @@ def render_page(left_panel, main_panel):
     actions.ensure_mitsuba_state(st.session_state.root_dir)
     if not st.session_state.scene_path:
         st.session_state.scene_path = actions.get_default_scene_path(
-            st.session_state.root_dir
+            st.session_state.root_dir,
+            st.session_state.get("render_mode", "brdfs"),
         )
 
     root_dir = st.session_state.root_dir
@@ -78,8 +79,10 @@ def render_page(left_panel, main_panel):
             key="render_model_selector",
         )
         render_mode = render_mode_map[selected_model]
-        # sync state
+        previous_render_mode = st.session_state.get("render_mode")
         st.session_state.render_mode = render_mode
+        if previous_render_mode != render_mode:
+            actions.on_render_mode_change()
         if "input_dir" not in st.session_state:
             st.session_state.input_dir = str(input_dir_map.get("brdfs", ""))
         if "output_dir" not in st.session_state:

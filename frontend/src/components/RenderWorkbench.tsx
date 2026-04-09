@@ -97,7 +97,7 @@ export function RenderWorkbench() {
   const projectVariant = needsCheckpoint ? (sourceModel as TrainProjectVariant) : null
   const isReconstructMode = canReconstruct && workflowMode === 'reconstruct'
 
-  const scenesQuery = useRenderScenes()
+  const scenesQuery = useRenderScenes(renderMode)
   const renderInputsQuery = useRenderInputs(renderMode, search)
   const materialsQuery = useMaterialsDirectory(search)
   const runsQuery = useTrainRuns(projectVariant)
@@ -122,10 +122,10 @@ export function RenderWorkbench() {
   const taskRecord = taskDetail?.record
 
   useEffect(() => {
-    if (!scenePath && scenesQuery.data?.default_scene) {
+    if (scenesQuery.data?.default_scene) {
       setScenePath(scenesQuery.data.default_scene)
     }
-  }, [scenePath, scenesQuery.data])
+  }, [renderMode, scenesQuery.data?.default_scene])
 
   useEffect(() => {
     if (sourceModel === 'gt') {

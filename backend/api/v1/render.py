@@ -18,8 +18,8 @@ router = APIRouter(tags=["render"])
 
 
 @router.get("/render/scenes", response_model=RenderScenesResponse)
-def render_scenes() -> RenderScenesResponse:
-    return render_service.list_scenes()
+def render_scenes(render_mode: RenderMode = Query(default="brdfs")) -> RenderScenesResponse:
+    return render_service.list_scenes(render_mode)
 
 
 @router.get("/render/files", response_model=RenderFilesResponse)

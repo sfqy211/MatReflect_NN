@@ -109,13 +109,26 @@ def list_scene_xmls() -> list[Path]:
     return results
 
 
-def get_default_scene_path() -> Path | None:
-    preferred = PROJECT_ROOT / "scene" / "old_xml" / "scene_merl.xml"
-    if preferred.exists():
-        return preferred
-    fallback = PROJECT_ROOT / "scene" / "scene_merl.xml"
-    if fallback.exists():
-        return fallback
+def get_default_scene_path(render_mode: RenderMode = "brdfs") -> Path | None:
+    preferred_candidates: list[Path] = []
+    if render_mode == "fullbin":
+        preferred_candidates.append(PROJECT_ROOT / "scene" / "dj_xml" / "hyperbrdf_ref.xml")
+        preferred_candidates.append(PROJECT_ROOT / "scene" / "dj_xml" / "scene_universal.xml")
+    else:
+        preferred_candidates.append(PROJECT_ROOT / "scene" / "dj_xml" / "scene_universal.xml")
+        if render_mode == "npy":
+            preferred_candidates.append(PROJECT_ROOT / "scene" / "dj_xml" / "scene_test_nbrdf_npy.xml")
+        else:
+            preferred_candidates.append(PROJECT_ROOT / "scene" / "dj_xml" / "scene_test_merl_accelerated.xml")
+    preferred_candidates.extend(
+        [
+            PROJECT_ROOT / "scene" / "old_xml" / "scene_merl.xml",
+            PROJECT_ROOT / "scene" / "scene_merl.xml",
+        ]
+    )
+    for candidate in preferred_candidates:
+        if candidate.exists():
+            return candidate
     candidates = list_scene_xmls()
     return candidates[0] if candidates else None
 
@@ -304,8 +317,8 @@ class RenderService:
             return [conda, "run", "--no-capture-output", "-n", conda_env, "python"], True
         return [sys.executable], False
 
-    def list_scenes(self) -> RenderScenesResponse:
-        default_scene = get_default_scene_path()
+    def list_scenes(self, render_mode: RenderMode = "brdfs") -> RenderScenesResponse:
+        default_scene = get_default_scene_path(render_mode)
         return RenderScenesResponse(
             default_scene=default_scene.as_posix() if default_scene else None,
             items=[

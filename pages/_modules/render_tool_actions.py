@@ -303,15 +303,29 @@ def list_scene_xmls(root_dir):
             results.extend(sorted(scene_dir.glob("*.xml")))
     return [str(p) for p in results]
 
-def get_default_scene_path(root_dir):
+def get_default_scene_path(root_dir, render_mode="brdfs"):
     base_dir = Path(root_dir)
-    preferred = base_dir / "scene" / "old_xml" / "scene_merl.xml"
-    if preferred.exists():
-        return str(preferred)
-    fallback = base_dir / "scene" / "scene_merl.xml"
-    if fallback.exists():
-        return str(fallback)
+    preferred_candidates = []
+    if render_mode == "fullbin":
+        preferred_candidates.extend([
+            base_dir / "scene" / "dj_xml" / "hyperbrdf_ref.xml",
+            base_dir / "scene" / "dj_xml" / "scene_universal.xml",
+        ])
+    else:
+        preferred_candidates.append(base_dir / "scene" / "dj_xml" / "scene_universal.xml")
+        if render_mode == "npy":
+            preferred_candidates.append(base_dir / "scene" / "dj_xml" / "scene_test_nbrdf_npy.xml")
+        else:
+            preferred_candidates.append(base_dir / "scene" / "dj_xml" / "scene_test_merl_accelerated.xml")
+    preferred_candidates.extend([
+        base_dir / "scene" / "old_xml" / "scene_merl.xml",
+        base_dir / "scene" / "scene_merl.xml",
+    ])
+    for candidate in preferred_candidates:
+        if candidate.exists():
+            return str(candidate)
     candidates = list_scene_xmls(root_dir)
+    fallback = base_dir / "scene" / "scene_merl.xml"
     return candidates[0] if candidates else str(fallback)
 
 def log(msg, placeholder=None):
@@ -1231,6 +1245,7 @@ def on_render_mode_change():
     st.session_state.input_dir = str(input_dir_map.get(mode, ""))
     st.session_state.output_dir = str(output_dir_map.get(mode, ""))
     st.session_state.render_selected = []
+    st.session_state.scene_path = get_default_scene_path(st.session_state.root_dir, mode)
 
 def on_preview_dir_type_change():
     base_dir, _, output_dir_map = get_paths()

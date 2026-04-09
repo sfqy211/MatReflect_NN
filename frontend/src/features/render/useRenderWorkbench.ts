@@ -13,10 +13,10 @@ import type {
 } from '../../types/api'
 
 
-export function useRenderScenes() {
+export function useRenderScenes(renderMode: RenderMode) {
   return useQuery({
-    queryKey: ['render-scenes'],
-    queryFn: () => apiGet<RenderScenesResponse>('/render/scenes'),
+    queryKey: ['render-scenes', renderMode],
+    queryFn: () => apiGet<RenderScenesResponse>(`/render/scenes?render_mode=${renderMode}`),
     staleTime: 60_000,
   })
 }
