@@ -1,15 +1,29 @@
 from pathlib import Path
 
 from .config import PROJECT_ROOT
+from .system_settings import load_system_settings
 
 
 def get_mitsuba_paths():
-    local_dir = PROJECT_ROOT / "mitsuba" / "dist"
-    mitsuba_dir = local_dir if local_dir.exists() else Path(r"d:\mitsuba\dist")
+    settings = load_system_settings()
+    mitsuba_exe = Path(settings.mitsuba_exe).expanduser()
+    mtsutil_exe = Path(settings.mtsutil_exe).expanduser()
+    if mitsuba_exe.is_absolute():
+        mitsuba_dir = mitsuba_exe.parent
+    else:
+        mitsuba_dir = (PROJECT_ROOT / mitsuba_exe).resolve().parent
+        mitsuba_exe = mitsuba_dir / mitsuba_exe.name
+    if not mitsuba_dir.exists():
+        local_dir = PROJECT_ROOT / "mitsuba" / "dist"
+        mitsuba_dir = local_dir if local_dir.exists() else Path(r"d:\mitsuba\dist")
+        mitsuba_exe = mitsuba_dir / "mitsuba.exe"
+        mtsutil_exe = mitsuba_dir / "mtsutil.exe"
+    elif not mtsutil_exe.is_absolute():
+        mtsutil_exe = (PROJECT_ROOT / mtsutil_exe).resolve()
     return {
         "mitsuba_dir": mitsuba_dir,
-        "mitsuba_exe": mitsuba_dir / "mitsuba.exe",
-        "mtsutil_exe": mitsuba_dir / "mtsutil.exe",
+        "mitsuba_exe": mitsuba_exe,
+        "mtsutil_exe": mtsutil_exe,
     }
 
 

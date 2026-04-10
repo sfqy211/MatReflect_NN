@@ -8,14 +8,24 @@ import shutil
 import subprocess
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Optional, Union
+from typing import Any, List, Optional, Tuple, Union
 
 from backend.core.config import LOGS_ROOT, PROJECT_ROOT
 from backend.core.paths import SAFE_PATHS, get_mitsuba_paths
 from backend.core.runtime_logging import log_task_message
+from backend.core.system_settings import build_default_system_settings, load_system_settings, save_system_settings
 from backend.core.threaded_subprocess import process_is_running, run_process_streaming, terminate_process
 from backend.models.common import TaskDetailResponse
-from backend.models.system import SystemCompileDefaults, SystemCompileRequest, SystemSummaryResponse
+from backend.models.system import (
+    SystemCompileDefaults,
+    SystemCompileRequest,
+    SystemDependencyCheck,
+    SystemDependencySetting,
+    SystemSettings,
+    SystemSettingsRequest,
+    SystemSettingsResponse,
+    SystemSummaryResponse,
+)
 from backend.services.task_manager import task_manager
 
 
@@ -50,7 +60,7 @@ def build_serial_compile_command(compile_cmd: str) -> Optional[str]:
     return serial_cmd
 
 
-def has_manifest_access_denied(log_lines: list[str]) -> bool:
+def has_manifest_access_denied(log_lines: List[str]) -> bool:
     joined = "\n".join(log_lines).lower()
     patterns = [
         "mt.exe : general error c101008d",
@@ -67,28 +77,132 @@ class SystemService:
         self._processes: dict[str, Any] = {}
         self._cancel_events: dict[str, asyncio.Event] = {}
 
-    def _compile_work_dir(self) -> Path:
-        mitsuba_root = PROJECT_ROOT / "mitsuba"
-        if (mitsuba_root / "SConstruct").exists():
-            return mitsuba_root
-        return PROJECT_ROOT
+    def _resolve_path(self, path_value: str, base_dir: Optional[Path] = None) -> Path:
+        raw_path = Path(path_value).expanduser()
+        if raw_path.is_absolute():
+            return raw_path.resolve(strict=False)
+        anchor = base_dir or PROJECT_ROOT
+        return (anchor / raw_path).resolve(strict=False)
 
-    def get_compile_defaults(self) -> SystemCompileDefaults:
-        work_dir = self._compile_work_dir()
-        return SystemCompileDefaults(
-            preset_label="Default SCons Parallel Build",
-            compile_cmd="scons --parallelize",
-            conda_env="mitsuba-build",
-            vcvarsall_path=DEFAULT_VCVARSALL_PATH,
-            work_dir=str(work_dir.resolve()),
-            dep_bin=str((work_dir / "dependencies" / "bin").resolve()),
-            dep_lib=str((work_dir / "dependencies" / "lib").resolve()),
+    def _dependency_paths(self, settings: SystemSettings) -> List[Path]:
+        project_root = self._resolve_path(settings.project_root)
+        return [self._resolve_path(dependency.path, project_root) for dependency in settings.dependencies if dependency.path.strip()]
+
+    def _check_path(self, key: str, label: str, path_value: str, *, expect: str, base_dir: Optional[Path]) -> SystemDependencyCheck:
+        if not path_value.strip():
+            return SystemDependencyCheck(
+                id=key,
+                label=label,
+                path="",
+                exists=False,
+                is_dir=False,
+                is_file=False,
+                status="warning",
+                message="未配置",
+            )
+        resolved = self._resolve_path(path_value, base_dir)
+        exists = resolved.exists()
+        is_dir = resolved.is_dir()
+        is_file = resolved.is_file()
+        if not exists:
+            status = "missing"
+            message = "路径不存在"
+        elif expect == "dir" and not is_dir:
+            status = "invalid"
+            message = "应为目录"
+        elif expect == "file" and not is_file:
+            status = "invalid"
+            message = "应为文件"
+        else:
+            status = "ok"
+            message = "正常"
+        return SystemDependencyCheck(
+            id=key,
+            label=label,
+            path=str(resolved),
+            exists=exists,
+            is_dir=is_dir,
+            is_file=is_file,
+            status=status,
+            message=message,
         )
 
+    def _build_checks(self, settings: SystemSettings) -> List[SystemDependencyCheck]:
+        project_root = self._resolve_path(settings.project_root)
+        checks = [
+            self._check_path("project_root", "项目路径", settings.project_root, expect="dir", base_dir=PROJECT_ROOT),
+            self._check_path("mitsuba_exe", "Mitsuba EXE", settings.mitsuba_exe, expect="file", base_dir=project_root),
+            self._check_path("mtsutil_exe", "mtsutil EXE", settings.mtsutil_exe, expect="file", base_dir=project_root),
+            self._check_path("work_dir", "编译工作目录", settings.work_dir, expect="dir", base_dir=project_root),
+        ]
+        if settings.vcvarsall_path.strip():
+            checks.append(self._check_path("vcvarsall_path", "vcvarsall", settings.vcvarsall_path, expect="file", base_dir=project_root))
+        else:
+            checks.append(
+                SystemDependencyCheck(
+                    id="vcvarsall_path",
+                    label="vcvarsall",
+                    path="",
+                    exists=False,
+                    is_dir=False,
+                    is_file=False,
+                    status="warning",
+                    message="留空时将在编译时自动探测",
+                )
+            )
+        for dependency in settings.dependencies:
+            checks.append(self._check_path(dependency.id, dependency.label, dependency.path, expect="dir", base_dir=project_root))
+        return checks
+
+    def _coerce_settings_request(self, request: SystemSettingsRequest) -> SystemSettings:
+        defaults = build_default_system_settings()
+        dependencies = [SystemDependencySetting.model_validate(item.model_dump()) for item in request.dependencies if item.path.strip()]
+        return SystemSettings(
+            project_root=request.project_root.strip() or defaults.project_root,
+            mitsuba_exe=request.mitsuba_exe.strip() or defaults.mitsuba_exe,
+            mtsutil_exe=request.mtsutil_exe.strip() or defaults.mtsutil_exe,
+            preset_label=request.preset_label.strip() or defaults.preset_label,
+            conda_env=request.conda_env.strip() or defaults.conda_env,
+            compile_cmd=request.compile_cmd.strip() or defaults.compile_cmd,
+            vcvarsall_path=request.vcvarsall_path.strip(),
+            work_dir=request.work_dir.strip() or defaults.work_dir,
+            dependencies=dependencies or defaults.dependencies,
+        )
+
+    def _compile_defaults_from_settings(self, settings: SystemSettings) -> SystemCompileDefaults:
+        dependency_paths = [str(path) for path in self._dependency_paths(settings)]
+        dep_bin = next((dependency.path for dependency in settings.dependencies if "bin" in dependency.label.lower() or dependency.id == "dep-bin"), "")
+        dep_lib = next((dependency.path for dependency in settings.dependencies if "lib" in dependency.label.lower() or dependency.id == "dep-lib"), "")
+        return SystemCompileDefaults(
+            preset_label=settings.preset_label,
+            compile_cmd=settings.compile_cmd,
+            conda_env=settings.conda_env,
+            vcvarsall_path=settings.vcvarsall_path,
+            work_dir=settings.work_dir,
+            dep_bin=dep_bin,
+            dep_lib=dep_lib,
+            dependency_paths=dependency_paths,
+        )
+
+    def get_settings_response(self) -> SystemSettingsResponse:
+        settings = load_system_settings()
+        return SystemSettingsResponse(settings=settings, checks=self._build_checks(settings))
+
+    def save_settings(self, request: SystemSettingsRequest) -> SystemSettingsResponse:
+        settings = self._coerce_settings_request(request)
+        saved = save_system_settings(settings)
+        return SystemSettingsResponse(settings=saved, checks=self._build_checks(saved))
+
+    def check_settings(self, request: SystemSettingsRequest) -> SystemSettingsResponse:
+        settings = self._coerce_settings_request(request)
+        return SystemSettingsResponse(settings=settings, checks=self._build_checks(settings))
+
     def get_summary(self) -> SystemSummaryResponse:
+        settings = load_system_settings()
         paths = get_mitsuba_paths()
+        checks = self._build_checks(settings)
         return SystemSummaryResponse(
-            project_root=str(PROJECT_ROOT.resolve()),
+            project_root=settings.project_root,
             mitsuba_dir=str(paths["mitsuba_dir"]),
             mitsuba_exe=str(paths["mitsuba_exe"]),
             mtsutil_exe=str(paths["mtsutil_exe"]),
@@ -96,7 +210,9 @@ class SystemService:
             mtsutil_exists=paths["mtsutil_exe"].exists(),
             available_modules=["render", "analysis", "models", "settings"],
             available_path_keys=sorted(SAFE_PATHS.keys()),
-            compile_defaults=self.get_compile_defaults(),
+            compile_defaults=self._compile_defaults_from_settings(settings),
+            settings=settings,
+            checks=checks,
         )
 
     def get_task_detail(self, task_id: str, limit: int = 240) -> Optional[TaskDetailResponse]:
@@ -242,14 +358,14 @@ class SystemService:
         vcvarsall: str,
         conda_cmd: str,
         conda_env: str,
-        dep_bin: Path,
-        dep_lib: Path,
+        dependency_paths: List[Path],
         work_dir: Path,
         compile_cmd: str,
         cancel_event: asyncio.Event,
-    ) -> tuple[int, list[str]]:
+    ) -> Tuple[int, List[str]]:
         bat_file = LOGS_ROOT / f"{task_id}_compile.bat"
         exit_code_file = LOGS_ROOT / f"{task_id}_compile_exit_code.txt"
+        dependency_prefix = ";".join(str(path) for path in dependency_paths)
         bat_content = f"""@echo off
 cd /d "{work_dir}"
 setlocal EnableExtensions
@@ -287,7 +403,7 @@ echo [3/4] Done (errorlevel %%errorlevel%%)
 echo [4/4] Running build command
 echo WorkDir: {work_dir}
 echo Command: {compile_cmd}
-set PATH={dep_bin};{dep_lib};%PATH%
+set PATH={dependency_prefix};%PATH%
 call {compile_cmd}
 set "BUILD_ERROR=%errorlevel%"
 echo [4/4] Done (errorlevel %BUILD_ERROR%)
@@ -336,12 +452,16 @@ exit /b %BUILD_ERROR%
         log_path: Path,
         cancel_event: asyncio.Event,
     ) -> None:
-        defaults = self.get_compile_defaults()
+        settings = load_system_settings()
+        base_dir = self._resolve_path(settings.project_root)
+        work_dir = self._resolve_path(request.work_dir.strip() or settings.work_dir, base_dir)
+        dependency_paths = [self._resolve_path(path_value, base_dir) for path_value in request.dependency_paths] or self._dependency_paths(settings)
         result_payload = {
             "compile_cmd": request.compile_cmd,
             "compile_label": request.compile_label,
             "conda_env": request.conda_env,
-            "work_dir": defaults.work_dir,
+            "work_dir": str(work_dir),
+            "dependency_paths": [str(path) for path in dependency_paths],
         }
         try:
             await self._write_log(
@@ -352,17 +472,14 @@ exit /b %BUILD_ERROR%
                 progress=5,
                 result_payload=result_payload,
             )
-            vcvarsall = self._resolve_vcvarsall(request.vcvarsall_path)
-            work_dir = Path(defaults.work_dir)
-            dep_bin = Path(defaults.dep_bin)
-            dep_lib = Path(defaults.dep_lib)
+            vcvarsall = self._resolve_vcvarsall(request.vcvarsall_path or settings.vcvarsall_path)
             conda_cmd = os.environ.get("CONDA_EXE") or shutil.which("conda") or "conda"
 
             await self._write_log(task_id, log_path, f"vcvarsall path: {vcvarsall}", progress=10, result_payload=result_payload)
             await self._write_log(task_id, log_path, f"Compile working directory: {work_dir}", progress=11, result_payload=result_payload)
             await self._write_log(task_id, log_path, f"Compile command: {request.compile_cmd}", progress=12, result_payload=result_payload)
             await self._write_log(task_id, log_path, f"Conda executable: {conda_cmd}", progress=13, result_payload=result_payload)
-            await self._write_log(task_id, log_path, "Starting compile task", progress=14, result_payload=result_payload)
+            await self._write_log(task_id, log_path, f"Dependency paths: {', '.join(str(path) for path in dependency_paths) if dependency_paths else '(none)'}", progress=14, result_payload=result_payload)
 
             final_exit_code, output_lines = await self._run_compile_attempt(
                 task_id,
@@ -370,8 +487,7 @@ exit /b %BUILD_ERROR%
                 vcvarsall=vcvarsall,
                 conda_cmd=conda_cmd,
                 conda_env=request.conda_env,
-                dep_bin=dep_bin,
-                dep_lib=dep_lib,
+                dependency_paths=dependency_paths,
                 work_dir=work_dir,
                 compile_cmd=request.compile_cmd,
                 cancel_event=cancel_event,
@@ -390,8 +506,7 @@ exit /b %BUILD_ERROR%
                         vcvarsall=vcvarsall,
                         conda_cmd=conda_cmd,
                         conda_env=request.conda_env,
-                        dep_bin=dep_bin,
-                        dep_lib=dep_lib,
+                        dependency_paths=dependency_paths,
                         work_dir=work_dir,
                         compile_cmd=serial_cmd,
                         cancel_event=cancel_event,

@@ -2,11 +2,17 @@ import { useEffect, useMemo, useState } from 'react'
 
 import { useQueryClient } from '@tanstack/react-query'
 
+import type { AnalysisSubView, ModelsSubView } from '../App'
 import { BACKEND_ORIGIN } from '../lib/api'
 import { parseAssetName } from '../lib/fileNames'
-import type { FileListItem, ModuleKey, SystemSummary } from '../types/api'
-import type { TaskEvent } from '../types/api'
-import { useStartSystemCompile, useStopSystemCompile, useSystemCompileTaskDetail } from '../features/system/useSystemSummary'
+import type { FileListItem, ModuleKey, SystemDependencySetting, SystemSummary, TaskEvent } from '../types/api'
+import {
+  useCheckSystemSettings,
+  useSaveSystemSettings,
+  useStartSystemCompile,
+  useStopSystemCompile,
+  useSystemCompileTaskDetail,
+} from '../features/system/useSystemSummary'
 import { AnalysisWorkbench } from './AnalysisWorkbench'
 import { FeedbackPanel } from './FeedbackPanel'
 import { ModelsWorkbench } from './ModelsWorkbench'
@@ -16,7 +22,6 @@ import { Badge } from './ui/Badge'
 import { Button } from './ui/Button'
 import { Card } from './ui/Card'
 import { Field } from './ui/Field'
-import type { AnalysisSubView, ModelsSubView } from '../App'
 
 type WorkspaceCanvasProps = {
   activeModule: ModuleKey
@@ -73,7 +78,7 @@ const moduleMeta: Record<Exclude<ModuleKey, 'settings'>, ModuleMeta> = {
       },
       {
         key: 'slider',
-        label: '图像滑块检视',
+        label: '图像滑块检查',
         settings: ['Before / after pair', 'Region zoom', 'Linked cursor', 'Channel emphasis'],
       },
       {
@@ -126,33 +131,41 @@ function SettingsCanvas({
 }: Pick<WorkspaceCanvasProps, 'system' | 'systemError' | 'systemLoading' | 'galleryCount'>) {
   const queryClient = useQueryClient()
   const compileDefaults = system?.compile_defaults
+  const savedSettings = system?.settings
+  const [projectRoot, setProjectRoot] = useState('')
+  const [mitsubaExe, setMitsubaExe] = useState('')
+  const [mtsutilExe, setMtsutilExe] = useState('')
   const [compileCmd, setCompileCmd] = useState('')
   const [compileCondaEnv, setCompileCondaEnv] = useState('')
   const [compileLabel, setCompileLabel] = useState('')
   const [vcvarsallPath, setVcvarsallPath] = useState('')
+  const [compileWorkDir, setCompileWorkDir] = useState('')
+  const [dependencies, setDependencies] = useState<SystemDependencySetting[]>([])
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null)
   const [liveLogs, setLiveLogs] = useState<string[]>([])
 
   const compileTaskQuery = useSystemCompileTaskDetail(activeTaskId)
   const startCompileMutation = useStartSystemCompile()
   const stopCompileMutation = useStopSystemCompile()
+  const saveSettingsMutation = useSaveSystemSettings()
+  const checkSettingsMutation = useCheckSystemSettings()
   const taskDetail = compileTaskQuery.data
   const taskRecord = taskDetail?.record
 
   useEffect(() => {
-    if (!compileDefaults) {
+    if (!savedSettings || projectRoot || dependencies.length > 0) {
       return
     }
-    setCompileCmd((current) => current || compileDefaults.compile_cmd)
-    setCompileCondaEnv((current) => current || compileDefaults.conda_env)
-    setCompileLabel((current) => current || compileDefaults.preset_label)
-    setVcvarsallPath((current) => current || compileDefaults.vcvarsall_path)
-  }, [
-    compileDefaults?.compile_cmd,
-    compileDefaults?.conda_env,
-    compileDefaults?.preset_label,
-    compileDefaults?.vcvarsall_path,
-  ])
+    setProjectRoot(savedSettings.project_root)
+    setMitsubaExe(savedSettings.mitsuba_exe)
+    setMtsutilExe(savedSettings.mtsutil_exe)
+    setCompileCmd(savedSettings.compile_cmd)
+    setCompileCondaEnv(savedSettings.conda_env)
+    setCompileLabel(savedSettings.preset_label)
+    setVcvarsallPath(savedSettings.vcvarsall_path)
+    setCompileWorkDir(savedSettings.work_dir)
+    setDependencies(savedSettings.dependencies)
+  }, [dependencies.length, projectRoot, savedSettings])
 
   useEffect(() => {
     if (!taskDetail) {
@@ -189,14 +202,68 @@ function SettingsCanvas({
       ? startCompileMutation.error
       : stopCompileMutation.error instanceof Error
         ? stopCompileMutation.error
-        : null
+        : saveSettingsMutation.error instanceof Error
+          ? saveSettingsMutation.error
+          : checkSettingsMutation.error instanceof Error
+            ? checkSettingsMutation.error
+            : null
   const logs = liveLogs.length > 0 ? liveLogs : taskDetail?.logs ?? []
   const compileStatus =
     taskRecord?.status ?? (startCompileMutation.isPending || stopCompileMutation.isPending ? 'pending' : 'idle')
   const compileProgress = taskRecord?.progress ?? 0
+  const dependencyChecks = saveSettingsMutation.data?.checks ?? checkSettingsMutation.data?.checks ?? system?.checks ?? []
+  const dependencyOkCount = dependencyChecks.filter((check) => check.status === 'ok').length
+  const dependencyTotalCount = dependencyChecks.length
+  const settingsSavedState = savedSettings ? '已加载' : '未加载'
+  const currentCompileProfile = compileLabel.trim() || compileDefaults?.preset_label || '-'
+
+  const settingsPayload = {
+    project_root: projectRoot.trim(),
+    mitsuba_exe: mitsubaExe.trim(),
+    mtsutil_exe: mtsutilExe.trim(),
+    preset_label: compileLabel.trim(),
+    conda_env: compileCondaEnv.trim(),
+    compile_cmd: compileCmd.trim(),
+    vcvarsall_path: vcvarsallPath.trim(),
+    work_dir: compileWorkDir.trim(),
+    dependencies: dependencies
+      .map((dependency) => ({
+        id: dependency.id,
+        label: dependency.label.trim(),
+        path: dependency.path.trim(),
+      }))
+      .filter((dependency) => dependency.label || dependency.path),
+  }
+
+  const resetFromSavedSettings = () => {
+    if (!savedSettings) {
+      return
+    }
+    setProjectRoot(savedSettings.project_root)
+    setMitsubaExe(savedSettings.mitsuba_exe)
+    setMtsutilExe(savedSettings.mtsutil_exe)
+    setCompileCmd(savedSettings.compile_cmd)
+    setCompileCondaEnv(savedSettings.conda_env)
+    setCompileLabel(savedSettings.preset_label)
+    setVcvarsallPath(savedSettings.vcvarsall_path)
+    setCompileWorkDir(savedSettings.work_dir)
+    setDependencies(savedSettings.dependencies)
+  }
+
+  const updateDependency = (id: string, patch: Partial<SystemDependencySetting>) => {
+    setDependencies((current) => current.map((dependency) => (dependency.id === id ? { ...dependency, ...patch } : dependency)))
+  }
+
+  const addDependency = () => {
+    setDependencies((current) => [...current, { id: `dep-${Date.now()}-${current.length}`, label: '', path: '' }])
+  }
+
+  const removeDependency = (id: string) => {
+    setDependencies((current) => current.filter((dependency) => dependency.id !== id))
+  }
 
   const startCompile = async () => {
-    if (!compileCmd.trim() || !compileCondaEnv.trim()) {
+    if (!compileCmd.trim() || !compileCondaEnv.trim() || !compileWorkDir.trim()) {
       return
     }
     setLiveLogs([])
@@ -205,6 +272,8 @@ function SettingsCanvas({
       conda_env: compileCondaEnv.trim(),
       compile_label: compileLabel.trim() || compileDefaults?.preset_label || '自定义编译',
       vcvarsall_path: vcvarsallPath.trim(),
+      work_dir: compileWorkDir.trim(),
+      dependency_paths: settingsPayload.dependencies.map((dependency) => dependency.path),
     })
     setActiveTaskId(response.task_id)
   }
@@ -217,10 +286,28 @@ function SettingsCanvas({
     queryClient.invalidateQueries({ queryKey: ['system-compile-task', activeTaskId] })
   }
 
+  const saveSettings = async () => {
+    const response = await saveSettingsMutation.mutateAsync(settingsPayload)
+    setProjectRoot(response.settings.project_root)
+    setMitsubaExe(response.settings.mitsuba_exe)
+    setMtsutilExe(response.settings.mtsutil_exe)
+    setCompileCmd(response.settings.compile_cmd)
+    setCompileCondaEnv(response.settings.conda_env)
+    setCompileLabel(response.settings.preset_label)
+    setVcvarsallPath(response.settings.vcvarsall_path)
+    setCompileWorkDir(response.settings.work_dir)
+    setDependencies(response.settings.dependencies)
+    await queryClient.invalidateQueries({ queryKey: ['system-summary'] })
+  }
+
+  const checkSettings = async () => {
+    await checkSettingsMutation.mutateAsync(settingsPayload)
+  }
+
   return (
     <section className="workspace-canvas" style={{ overflowY: 'auto' }}>
       <div className="settings-grid">
-        <Card variant="settings">
+        <Card variant="settings" className="settings-card--wide">
           <div className="detail-board__lead">
             <h3>系统状态</h3>
           </div>
@@ -229,19 +316,28 @@ function SettingsCanvas({
           <div className="settings-list" style={{ marginTop: 0 }}>
             <SettingRow label="Backend" value={systemError ? 'Error' : systemLoading ? 'Syncing' : 'Online'} />
             <SettingRow label="Mitsuba" value={system?.mitsuba_exists ? 'Ready' : 'Pending'} />
+            <SettingRow label="mtsutil" value={system?.mtsutil_exists ? 'Ready' : 'Pending'} />
             <SettingRow label="输出索引" value={String(galleryCount)} />
-            <SettingRow label="模块数" value={String(system?.available_modules.length ?? 4)} />
+            <SettingRow label="依赖检查" value={dependencyTotalCount > 0 ? `${dependencyOkCount} / ${dependencyTotalCount}` : '未检查'} />
+            <SettingRow label="设置状态" value={settingsSavedState} />
+            <SettingRow label="当前编译预设" value={currentCompileProfile} />
           </div>
         </Card>
 
         <Card variant="settings" className="settings-card--wide">
           <div className="detail-board__lead">
-            <h3>项目路径</h3>
+            <h3>核心路径</h3>
           </div>
-          <div className="mono-value">{system ? summarizePath(system.project_root) : '等待后端摘要返回'}</div>
-          <div className="settings-list" style={{ marginTop: 0 }}>
-            <SettingRow label="Mitsuba EXE" value={system ? summarizePath(system.mitsuba_exe) : '-'} />
-            <SettingRow label="mtsutil EXE" value={system ? summarizePath(system.mtsutil_exe) : '-'} />
+          <div className="render-form-grid" style={{ marginTop: 12 }}>
+            <Field label="项目路径">
+              <input value={projectRoot} onChange={(event) => setProjectRoot(event.target.value)} placeholder="D:\\AHEU\\GP\\MatReflect_NN" />
+            </Field>
+            <Field label="Mitsuba EXE">
+              <input value={mitsubaExe} onChange={(event) => setMitsubaExe(event.target.value)} placeholder="D:\\AHEU\\GP\\MatReflect_NN\\mitsuba\\dist\\mitsuba.exe" />
+            </Field>
+            <Field label="mtsutil EXE">
+              <input value={mtsutilExe} onChange={(event) => setMtsutilExe(event.target.value)} placeholder="D:\\AHEU\\GP\\MatReflect_NN\\mitsuba\\dist\\mtsutil.exe" />
+            </Field>
           </div>
         </Card>
 
@@ -249,12 +345,10 @@ function SettingsCanvas({
           <div className="detail-board__lead">
             <h3>Mitsuba 编译辅助</h3>
           </div>
-          <p className="muted">
-            该入口已从 V1 迁移到 V2。用于调用 Visual Studio 工具链、激活 `mitsuba-build` 环境并执行 SCons 编译。
-          </p>
+          <p className="muted">该入口已从 V1 迁移到 V2。用于调用 Visual Studio 工具链、激活 `mitsuba-build` 环境并执行 SCons 编译。</p>
           <div className="render-form-grid" style={{ marginTop: 12 }}>
             <Field label="预设名称">
-              <input value={compileLabel} onChange={(event) => setCompileLabel(event.target.value)} placeholder="默认 SCons 并行编译" />
+              <input value={compileLabel} onChange={(event) => setCompileLabel(event.target.value)} placeholder="Default SCons Parallel Build" />
             </Field>
             <Field label="Conda 环境">
               <input value={compileCondaEnv} onChange={(event) => setCompileCondaEnv(event.target.value)} placeholder="mitsuba-build" />
@@ -263,24 +357,56 @@ function SettingsCanvas({
               <input value={compileCmd} onChange={(event) => setCompileCmd(event.target.value)} placeholder="scons --parallelize" />
             </Field>
             <Field label="vcvarsall">
-              <input
-                value={vcvarsallPath}
-                onChange={(event) => setVcvarsallPath(event.target.value)}
-                placeholder="可填写 vcvarsall.bat 或 .lnk；留空则自动检测"
-              />
+              <input value={vcvarsallPath} onChange={(event) => setVcvarsallPath(event.target.value)} placeholder="可填 vcvarsall.bat 或 .lnk；留空时自动探测" />
+            </Field>
+            <Field label="编译工作目录">
+              <input value={compileWorkDir} onChange={(event) => setCompileWorkDir(event.target.value)} placeholder="D:\\AHEU\\GP\\MatReflect_NN\\mitsuba" />
             </Field>
           </div>
-          <div className="settings-list" style={{ marginTop: 0 }}>
-            <SettingRow label="编译工作目录" value={compileDefaults ? summarizePath(compileDefaults.work_dir) : '等待后端摘要返回'} />
-            <SettingRow label="依赖 bin" value={compileDefaults ? summarizePath(compileDefaults.dep_bin) : '-'} />
-            <SettingRow label="依赖 lib" value={compileDefaults ? summarizePath(compileDefaults.dep_lib) : '-'} />
-            <SettingRow label="当前任务" value={activeTaskId ?? '暂无'} />
+
+          <div className="detail-board__lead" style={{ marginTop: 18 }}>
+            <h3>依赖路径</h3>
           </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: 12 }}>
+            {dependencies.map((dependency) => (
+              <div key={dependency.id} style={{ display: 'grid', gridTemplateColumns: '180px minmax(0, 1fr) 96px', gap: '10px', alignItems: 'end' }}>
+                <Field label="名称">
+                  <input value={dependency.label} onChange={(event) => updateDependency(dependency.id, { label: event.target.value })} placeholder="依赖名称" />
+                </Field>
+                <Field label="路径">
+                  <input value={dependency.path} onChange={(event) => updateDependency(dependency.id, { path: event.target.value })} placeholder="D:\\...\\dependencies\\bin" />
+                </Field>
+                <Button type="button" onClick={() => removeDependency(dependency.id)}>
+                  删除
+                </Button>
+              </div>
+            ))}
+            <div className="render-actions" style={{ marginTop: 0 }}>
+              <Button type="button" onClick={() => addDependency()}>
+                添加依赖
+              </Button>
+            </div>
+          </div>
+
+          <div className="settings-list" style={{ marginTop: 16 }}>
+            <SettingRow label="当前任务" value={activeTaskId ?? '暂无'} />
+            <SettingRow label="已保存依赖数" value={String(savedSettings?.dependencies.length ?? dependencies.length)} />
+          </div>
+
           <div className="render-actions" style={{ marginTop: 12, marginBottom: 0 }}>
+            <Button type="button" disabled={checkSettingsMutation.isPending} onClick={() => void checkSettings()}>
+              检查依赖
+            </Button>
+            <Button type="button" disabled={saveSettingsMutation.isPending} onClick={() => void saveSettings()}>
+              保存设置
+            </Button>
+            <Button type="button" disabled={!savedSettings} onClick={() => resetFromSavedSettings()}>
+              恢复已保存
+            </Button>
             <Button
               type="button"
               variant="primary"
-              disabled={startCompileMutation.isPending || !compileCmd.trim() || !compileCondaEnv.trim()}
+              disabled={startCompileMutation.isPending || !compileCmd.trim() || !compileCondaEnv.trim() || !compileWorkDir.trim()}
               onClick={() => void startCompile()}
             >
               启动编译
@@ -294,7 +420,14 @@ function SettingsCanvas({
               停止编译
             </Button>
           </div>
-          {compileError ? <FeedbackPanel title="编译任务提交失败" message={compileError.message} tone="error" compact /> : null}
+          {compileError ? <FeedbackPanel title="系统设置或编译操作失败" message={compileError.message} tone="error" compact /> : null}
+          {dependencyChecks.length > 0 ? (
+            <div className="settings-list" style={{ marginTop: 16 }}>
+              {dependencyChecks.map((check) => (
+                <SettingRow key={check.id} label={`${check.label} [${check.status}]`} value={check.path ? `${summarizePath(check.path)} | ${check.message}` : check.message} />
+              ))}
+            </div>
+          ) : null}
           <TerminalDrawer
             taskId={activeTaskId}
             status={compileStatus}
@@ -335,14 +468,7 @@ export function WorkspaceCanvas({
   }
 
   if (activeModule === 'settings') {
-    return (
-      <SettingsCanvas
-        system={system}
-        systemError={systemError}
-        systemLoading={systemLoading}
-        galleryCount={galleryCount}
-      />
-    )
+    return <SettingsCanvas system={system} systemError={systemError} systemLoading={systemLoading} galleryCount={galleryCount} />
   }
 
   return <ModulePlaceholder activeModule={activeModule} galleryItems={galleryItems} />

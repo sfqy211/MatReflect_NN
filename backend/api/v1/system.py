@@ -3,7 +3,7 @@ from datetime import datetime
 from fastapi import APIRouter, HTTPException
 
 from backend.models.common import HealthResponse, TaskDetailResponse, TaskStartResponse, TaskStopRequest
-from backend.models.system import SystemCompileRequest, SystemSummaryResponse
+from backend.models.system import SystemCompileRequest, SystemSettingsRequest, SystemSettingsResponse, SystemSummaryResponse
 from backend.services.system_service import system_service
 
 
@@ -18,6 +18,27 @@ def health() -> HealthResponse:
 @router.get("/system/summary", response_model=SystemSummaryResponse)
 def system_summary() -> SystemSummaryResponse:
     return system_service.get_summary()
+
+
+@router.get("/system/settings", response_model=SystemSettingsResponse)
+def system_settings() -> SystemSettingsResponse:
+    return system_service.get_settings_response()
+
+
+@router.post("/system/settings", response_model=SystemSettingsResponse)
+def system_settings_save(request: SystemSettingsRequest) -> SystemSettingsResponse:
+    try:
+        return system_service.save_settings(request)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post("/system/settings/check", response_model=SystemSettingsResponse)
+def system_settings_check(request: SystemSettingsRequest) -> SystemSettingsResponse:
+    try:
+        return system_service.check_settings(request)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.post("/system/compile", response_model=TaskStartResponse)

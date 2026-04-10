@@ -1,7 +1,15 @@
 import { useMutation, useQuery } from '@tanstack/react-query'
 
 import { apiGet, apiPost } from '../../lib/api'
-import type { FileListResponse, SystemCompileRequest, SystemSummary, TaskDetailResponse, TaskStartResponse } from '../../types/api'
+import type {
+  FileListResponse,
+  SystemCompileRequest,
+  SystemSettingsRequest,
+  SystemSettingsResponse,
+  SystemSummary,
+  TaskDetailResponse,
+  TaskStartResponse,
+} from '../../types/api'
 
 export function useSystemSummary() {
   return useQuery({
@@ -46,5 +54,17 @@ export function useStartSystemCompile() {
 export function useStopSystemCompile() {
   return useMutation({
     mutationFn: (taskId: string) => apiPost<TaskStartResponse>('/system/compile/stop', { task_id: taskId }),
+  })
+}
+
+export function useSaveSystemSettings() {
+  return useMutation({
+    mutationFn: (payload: SystemSettingsRequest) => apiPost<SystemSettingsResponse>('/system/settings', payload),
+  })
+}
+
+export function useCheckSystemSettings() {
+  return useMutation({
+    mutationFn: (payload: SystemSettingsRequest) => apiPost<SystemSettingsResponse>('/system/settings/check', payload),
   })
 }

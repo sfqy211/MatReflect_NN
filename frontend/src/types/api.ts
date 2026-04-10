@@ -10,6 +10,8 @@ export type SystemSummary = {
   available_modules: string[]
   available_path_keys: string[]
   compile_defaults: SystemCompileDefaults
+  settings: SystemSettings
+  checks: SystemDependencyCheck[]
 }
 
 export type SystemCompileDefaults = {
@@ -20,6 +22,43 @@ export type SystemCompileDefaults = {
   work_dir: string
   dep_bin: string
   dep_lib: string
+  dependency_paths: string[]
+}
+
+export type SystemDependencySetting = {
+  id: string
+  label: string
+  path: string
+}
+
+export type SystemDependencyCheck = {
+  id: string
+  label: string
+  path: string
+  exists: boolean
+  is_dir: boolean
+  is_file: boolean
+  status: string
+  message: string
+}
+
+export type SystemSettings = {
+  project_root: string
+  mitsuba_exe: string
+  mtsutil_exe: string
+  preset_label: string
+  conda_env: string
+  compile_cmd: string
+  vcvarsall_path: string
+  work_dir: string
+  dependencies: SystemDependencySetting[]
+}
+
+export type SystemSettingsRequest = SystemSettings
+
+export type SystemSettingsResponse = {
+  settings: SystemSettings
+  checks: SystemDependencyCheck[]
 }
 
 export type SystemCompileRequest = {
@@ -27,6 +66,8 @@ export type SystemCompileRequest = {
   conda_env: string
   compile_label: string
   vcvarsall_path: string
+  work_dir: string
+  dependency_paths: string[]
 }
 
 export type FileListItem = {
