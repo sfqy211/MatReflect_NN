@@ -6,7 +6,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-$projectRoot = "D:\AHEU\GP\MatReflect_NN"
+$projectRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $sceneDir = Join-Path $projectRoot "scene\dj_xml"
 $outputRoot = Join-Path $projectRoot "data\outputs\example_mitsuba_smoke"
 

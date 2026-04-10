@@ -359,13 +359,13 @@ function SettingsCanvas({
           </div>
           <div className="render-form-grid" style={{ marginTop: 12 }}>
             <Field label="项目路径">
-              <input value={projectRoot} onChange={(event) => setProjectRoot(event.target.value)} placeholder="D:\\AHEU\\GP\\MatReflect_NN" />
+              <input value={projectRoot} onChange={(event) => setProjectRoot(event.target.value)} placeholder="." />
             </Field>
             <Field label="Mitsuba EXE">
-              <input value={mitsubaExe} onChange={(event) => setMitsubaExe(event.target.value)} placeholder="D:\\AHEU\\GP\\MatReflect_NN\\mitsuba\\dist\\mitsuba.exe" />
+              <input value={mitsubaExe} onChange={(event) => setMitsubaExe(event.target.value)} placeholder="mitsuba\\dist\\mitsuba.exe" />
             </Field>
             <Field label="mtsutil EXE">
-              <input value={mtsutilExe} onChange={(event) => setMtsutilExe(event.target.value)} placeholder="D:\\AHEU\\GP\\MatReflect_NN\\mitsuba\\dist\\mtsutil.exe" />
+              <input value={mtsutilExe} onChange={(event) => setMtsutilExe(event.target.value)} placeholder="mitsuba\\dist\\mtsutil.exe" />
             </Field>
           </div>
         </Card>
@@ -389,7 +389,7 @@ function SettingsCanvas({
               <input value={vcvarsallPath} onChange={(event) => setVcvarsallPath(event.target.value)} placeholder="可填 vcvarsall.bat 或 .lnk；留空时自动探测" />
             </Field>
             <Field label="编译工作目录">
-              <input value={compileWorkDir} onChange={(event) => setCompileWorkDir(event.target.value)} placeholder="D:\\AHEU\\GP\\MatReflect_NN\\mitsuba" />
+              <input value={compileWorkDir} onChange={(event) => setCompileWorkDir(event.target.value)} placeholder="mitsuba" />
             </Field>
           </div>
 
@@ -403,7 +403,7 @@ function SettingsCanvas({
                   <input value={dependency.label} onChange={(event) => updateDependency(dependency.id, { label: event.target.value })} placeholder="依赖名称" />
                 </Field>
                 <Field label="路径">
-                  <input value={dependency.path} onChange={(event) => updateDependency(dependency.id, { path: event.target.value })} placeholder="D:\\...\\dependencies\\bin" />
+                  <input value={dependency.path} onChange={(event) => updateDependency(dependency.id, { path: event.target.value })} placeholder="mitsuba\\dependencies\\bin" />
                 </Field>
                 <Button type="button" onClick={() => removeDependency(dependency.id)}>
                   删除

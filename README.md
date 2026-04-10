@@ -145,9 +145,9 @@ MatReflect_NN/
 
 ## 相关文档
 
-- [AGENTS.md](/d:/AHEU/GP/MatReflect_NN/AGENTS.md)
-- [MODEL_PLUGIN_DEVELOPMENT_SPEC.md](/d:/AHEU/GP/MatReflect_NN/MODEL_PLUGIN_DEVELOPMENT_SPEC.md)
-- [desktop/README.md](/d:/AHEU/GP/MatReflect_NN/desktop/README.md)
+- [AGENTS.md](AGENTS.md)
+- [MODEL_PLUGIN_DEVELOPMENT_SPEC.md](MODEL_PLUGIN_DEVELOPMENT_SPEC.md)
+- [desktop/README.md](desktop/README.md)
 
 ## 常见问题
 
@@ -170,4 +170,31 @@ MatReflect_NN/
 
 不是。
 
-当前版本已经移除“自建模型动态注册”功能。新增模型的标准方式是开发者直接修改代码接入，详见 [MODEL_PLUGIN_DEVELOPMENT_SPEC.md](/d:/AHEU/GP/MatReflect_NN/MODEL_PLUGIN_DEVELOPMENT_SPEC.md)。
+当前版本已经移除“自建模型动态注册”功能。新增模型的标准方式是开发者直接修改代码接入，详见 [MODEL_PLUGIN_DEVELOPMENT_SPEC.md](MODEL_PLUGIN_DEVELOPMENT_SPEC.md)。
+
+### 为什么项目里仍然会看到绝对路径？
+
+已安全改成相对路径的部分：
+
+- `scripts/start_v2_dev.ps1`
+- `scripts/start_v2_prod.ps1`
+- `scripts/start_v2_desktop.ps1`
+- `scripts/build_v2_desktop.ps1`
+- 设置页中的路径输入占位示例
+
+仍然可能保留绝对路径的部分：
+
+- `backend/runtime/system_settings.json`
+  - 这是用户本机保存的运行时设置，记录当前机器上的实际 Mitsuba、工作目录、依赖路径与 `vcvarsall` 路径。
+- `backend/runtime/tasks/*.json` 与 `backend/runtime/logs/*`
+  - 这是历史任务记录和日志，天然会写入当时运行机器上的绝对路径。
+- `scripts/test_example_mitsuba_variants.ps1` 中的 Mitsuba 变体 `Exe`
+  - 这是本地实验脚本，用来指向不同外部 Mitsuba 构建目录；这些路径本身就是机器相关的，无法统一改成项目内相对路径。
+- Visual Studio 的 `vcvarsall.bat`
+  - 这类路径通常位于系统安装目录，属于外部依赖路径，不属于项目工作区。
+
+处理建议：
+
+- 项目源码和正式启动脚本优先使用相对路径或动态推导路径。
+- 运行时设置、历史任务日志、系统级依赖路径允许保留绝对路径。
+- 如果迁移到新机器，优先在设置页重新保存一次系统设置，而不是手改历史任务文件。

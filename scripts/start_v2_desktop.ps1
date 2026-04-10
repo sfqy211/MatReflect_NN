@@ -1,7 +1,7 @@
 param(
-    [string]$ProjectDir = "D:\AHEU\GP\MatReflect_NN",
+    [string]$ProjectDir = "",
     [string]$BackendEnv = "matreflect",
-    [string]$CondaBat = "C:\Users\sfqy\miniconda3\condabin\conda.bat",
+    [string]$CondaBat = "",
     [string]$WindowTitle = "MatReflect_NN Desktop",
     [int]$Width = 1600,
     [int]$Height = 1000
@@ -9,8 +9,22 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-if (!(Test-Path $CondaBat)) {
-    $CondaBat = "$env:USERPROFILE\miniconda3\condabin\conda.bat"
+if (-not $ProjectDir) {
+    $ProjectDir = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+}
+
+if ($CondaBat -and !(Test-Path $CondaBat)) {
+    $CondaBat = ""
+}
+
+if (-not $CondaBat) {
+    $condaCandidates = @(
+        (Join-Path $env:USERPROFILE "miniconda3\condabin\conda.bat"),
+        (Join-Path $env:USERPROFILE "anaconda3\condabin\conda.bat"),
+        (Join-Path $env:USERPROFILE "miniforge3\condabin\conda.bat"),
+        (Join-Path $env:USERPROFILE "mambaforge\condabin\conda.bat")
+    )
+    $CondaBat = $condaCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1
 }
 
 if (!(Test-Path $CondaBat)) {
