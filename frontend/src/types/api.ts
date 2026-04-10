@@ -150,7 +150,7 @@ export type AnalysisImagesResponse = {
 }
 
 export type DeleteImageRequest = {
-  image_path: string
+  image_paths: string[]
   delete_matching_exr: boolean
 }
 

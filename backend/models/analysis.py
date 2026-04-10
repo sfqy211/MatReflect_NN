@@ -84,7 +84,7 @@ class GeneratedImageResponse(BaseModel):
 
 
 class DeleteImageRequest(BaseModel):
-    image_path: str
+    image_paths: list[str]
     delete_matching_exr: bool = True
 
 

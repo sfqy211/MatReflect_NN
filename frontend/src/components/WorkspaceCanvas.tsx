@@ -11,9 +11,14 @@ import { FeedbackPanel } from './FeedbackPanel'
 import { ModelsWorkbench } from './ModelsWorkbench'
 import { RenderWorkbench } from './RenderWorkbench'
 import { TerminalDrawer } from './TerminalDrawer'
+import type { AnalysisSubView, ModelsSubView } from '../App'
 
 type WorkspaceCanvasProps = {
   activeModule: ModuleKey
+  activeAnalysisSubView: AnalysisSubView
+  onAnalysisSubViewChange: (view: AnalysisSubView) => void
+  activeModelsSubView: ModelsSubView
+  onModelsSubViewChange: (view: ModelsSubView) => void
   galleryItems: FileListItem[]
   galleryCount: number
   system?: SystemSummary
@@ -115,7 +120,6 @@ function SettingsCanvas({
   galleryCount,
 }: Pick<WorkspaceCanvasProps, 'system' | 'systemError' | 'systemLoading' | 'galleryCount'>) {
   const queryClient = useQueryClient()
-  const pathKeys = system?.available_path_keys ?? []
   const compileDefaults = system?.compile_defaults
   const [compileCmd, setCompileCmd] = useState('')
   const [compileCondaEnv, setCompileCondaEnv] = useState('')
@@ -209,13 +213,7 @@ function SettingsCanvas({
   }
 
   return (
-    <section className="workspace-canvas">
-      <div className="workspace-hero">
-        <div>
-          <h2>设置与系统状态</h2>
-        </div>
-      </div>
-
+    <section className="workspace-canvas" style={{ overflowY: 'auto' }}>
       <div className="settings-grid">
         <section className="settings-card">
           <div className="detail-board__lead">
@@ -223,7 +221,7 @@ function SettingsCanvas({
           </div>
           {systemLoading ? <p className="muted">正在读取后端摘要...</p> : null}
           {systemError ? <p className="error-text">{systemError}</p> : null}
-          <div className="settings-list">
+          <div className="settings-list" style={{ marginTop: 0 }}>
             <SettingRow label="Backend" value={systemError ? 'Error' : systemLoading ? 'Syncing' : 'Online'} />
             <SettingRow label="Mitsuba" value={system?.mitsuba_exists ? 'Ready' : 'Pending'} />
             <SettingRow label="输出索引" value={String(galleryCount)} />
@@ -236,33 +234,9 @@ function SettingsCanvas({
             <h3>项目路径</h3>
           </div>
           <div className="mono-value">{system ? summarizePath(system.project_root) : '等待后端摘要返回'}</div>
-          <div className="settings-list">
+          <div className="settings-list" style={{ marginTop: 0 }}>
             <SettingRow label="Mitsuba EXE" value={system ? summarizePath(system.mitsuba_exe) : '-'} />
             <SettingRow label="mtsutil EXE" value={system ? summarizePath(system.mtsutil_exe) : '-'} />
-          </div>
-        </section>
-
-        <section className="settings-card settings-card--wide">
-          <div className="detail-board__lead">
-            <h3>路径索引与能力</h3>
-          </div>
-          <div className="tag-cloud">
-            {pathKeys.length > 0 ? (
-              pathKeys.map((pathKey) => (
-                <span key={pathKey} className="tag-chip">
-                  {pathKey}
-                </span>
-              ))
-            ) : (
-              <span className="detail-pill">等待路径索引</span>
-            )}
-          </div>
-          <div className="tag-cloud">
-            {(system?.available_modules ?? ['render', 'analysis', 'models', 'settings']).map((module) => (
-              <span key={module} className="detail-pill">
-                {module}
-              </span>
-            ))}
           </div>
         </section>
 
@@ -295,7 +269,7 @@ function SettingsCanvas({
               />
             </label>
           </div>
-          <div className="settings-list">
+          <div className="settings-list" style={{ marginTop: 0 }}>
             <SettingRow label="编译工作目录" value={compileDefaults ? summarizePath(compileDefaults.work_dir) : '等待后端摘要返回'} />
             <SettingRow label="依赖 bin" value={compileDefaults ? summarizePath(compileDefaults.dep_bin) : '-'} />
             <SettingRow label="依赖 lib" value={compileDefaults ? summarizePath(compileDefaults.dep_lib) : '-'} />
@@ -337,6 +311,10 @@ function SettingsCanvas({
 
 export function WorkspaceCanvas({
   activeModule,
+  activeAnalysisSubView,
+  onAnalysisSubViewChange,
+  activeModelsSubView,
+  onModelsSubViewChange,
   galleryItems,
   galleryCount,
   system,
@@ -348,11 +326,11 @@ export function WorkspaceCanvas({
   }
 
   if (activeModule === 'analysis') {
-    return <AnalysisWorkbench />
+    return <AnalysisWorkbench activeSubView={activeAnalysisSubView} onSubViewChange={onAnalysisSubViewChange} />
   }
 
   if (activeModule === 'models') {
-    return <ModelsWorkbench />
+    return <ModelsWorkbench activeSubView={activeModelsSubView} onSubViewChange={onModelsSubViewChange} />
   }
 
   if (activeModule === 'settings') {

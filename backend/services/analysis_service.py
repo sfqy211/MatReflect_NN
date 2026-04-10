@@ -156,28 +156,32 @@ class AnalysisService:
         )
 
     def delete_image(self, request: DeleteImageRequest) -> DeleteImageResponse:
-        image_path = self._resolve_workspace_path(request.image_path)
-        if image_path.suffix.lower() not in {".png", ".jpg", ".jpeg"}:
-            raise ValueError("Only image files can be deleted from analysis preview.")
-
         deleted: list[str] = []
         missing: list[str] = []
 
-        if image_path.exists():
-            image_path.unlink()
-            deleted.append(str(image_path))
-        else:
-            missing.append(str(image_path))
+        for img_path_str in request.image_paths:
+            image_path = self._resolve_workspace_path(img_path_str)
+            if image_path.suffix.lower() not in {".png", ".jpg", ".jpeg"}:
+                continue # Skip invalid files but don't crash the whole batch
 
-        if request.delete_matching_exr:
-            exr_dir = image_path.parent.parent / "exr" if image_path.parent.name.lower() == "png" else image_path.parent
-            exr_path = exr_dir / f"{image_path.stem}.exr"
-            exr_path = self._resolve_workspace_path(str(exr_path))
-            if exr_path.exists():
-                exr_path.unlink()
-                deleted.append(str(exr_path))
+            if image_path.exists():
+                image_path.unlink()
+                deleted.append(str(image_path))
             else:
-                missing.append(str(exr_path))
+                missing.append(str(image_path))
+
+            if request.delete_matching_exr:
+                exr_dir = image_path.parent.parent / "exr" if image_path.parent.name.lower() == "png" else image_path.parent
+                exr_path = exr_dir / f"{image_path.stem}.exr"
+                try:
+                    exr_path = self._resolve_workspace_path(str(exr_path))
+                    if exr_path.exists():
+                        exr_path.unlink()
+                        deleted.append(str(exr_path))
+                    else:
+                        missing.append(str(exr_path))
+                except ValueError:
+                    pass # Ignore resolution errors for EXR in batch
 
         return DeleteImageResponse(deleted=deleted, missing=missing)
 

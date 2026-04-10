@@ -17,6 +17,7 @@ import { BACKEND_ORIGIN } from '../lib/api'
 import type { RenderMode, RenderReconstructModel, RenderSourceModel, TaskEvent, TrainProjectVariant } from '../types/api'
 import { FeedbackPanel } from './FeedbackPanel'
 import { GalleryPreview } from './GalleryPreview'
+import { MaterialSelector } from './MaterialSelector'
 import { TerminalDrawer } from './TerminalDrawer'
 
 
@@ -202,16 +203,7 @@ export function RenderWorkbench() {
     [availableFiles.length, outputsQuery.data?.total, selectedCount, sourceModel],
   )
 
-  const toggleFile = (name: string) => {
-    setSelectedFiles((current) => (current.includes(name) ? current.filter((item) => item !== name) : [...current, name]))
-  }
 
-  const applyPreset = () => {
-    const presetSelection = availableFiles
-      .filter((item) => TEST_SET_20.includes(normalizeMaterialName(item.name)))
-      .map((item) => item.name)
-    setSelectedFiles(presetSelection)
-  }
 
   const startRenderAction = async () => {
     if (!scenePath || selectedFiles.length === 0) return
@@ -270,12 +262,6 @@ export function RenderWorkbench() {
 
   return (
     <section className="workspace-canvas">
-      <div className="workspace-hero">
-        <div>
-          <h2>渲染可视化工作台</h2>
-        </div>
-      </div>
-
       <div className="detail-pill-grid">
         {summaryChips.map((chip) => (
           <span key={chip} className="detail-pill">
@@ -373,25 +359,29 @@ export function RenderWorkbench() {
             </label>
           ) : null}
 
-          <div className="file-toolbar">
-            <input
-              type="search"
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder={isReconstructMode ? '搜索待重建的 MERL 材质' : '搜索可渲染输入'}
-              className="search-input"
-            />
-            <div className="file-toolbar__actions">
-              <button type="button" className="theme-toggle" onClick={() => setSelectedFiles(availableFiles.map((item) => item.name))}>
-                全选
-              </button>
-              <button type="button" className="theme-toggle" onClick={applyPreset}>
-                预设20
-              </button>
-              <button type="button" className="theme-toggle" onClick={() => setSelectedFiles([])}>
-                清空
-              </button>
-            </div>
+          <div className="render-form-grid">
+            <label className="field">
+              <span>渲染输入文件</span>
+              <MaterialSelector
+                title={isReconstructMode ? '选择待重建材质' : '选择渲染输入'}
+                items={availableFiles}
+                selectedItems={selectedFiles}
+                onSelectionChange={setSelectedFiles}
+                error={currentListError as Error | null}
+                emptyMessage={isReconstructMode ? '请先准备 MERL .binary 材质。' : '请检查当前模型对应的渲染输入目录。'}
+                searchPlaceholder={isReconstructMode ? '搜索待重建的 MERL 材质' : '搜索可渲染输入'}
+                formatName={(name) => sourceModel === 'neural' && !isReconstructMode ? normalizeMaterialName(name) : name}
+                presets={[
+                  {
+                    label: '预设20',
+                    filter: (items) =>
+                      items
+                        .filter((item) => TEST_SET_20.includes(normalizeMaterialName(item.name)))
+                        .map((item) => item.name)
+                  }
+                ]}
+              />
+            </label>
           </div>
 
           <div className="render-actions">
@@ -411,32 +401,6 @@ export function RenderWorkbench() {
               <button type="button" className="theme-toggle" onClick={convertOutputs}>
                 转换 EXR
               </button>
-            ) : null}
-          </div>
-
-          <div className="file-list">
-            {currentListError instanceof Error ? (
-              <FeedbackPanel
-                title="输入列表读取失败"
-                message={currentListError.message}
-                tone="error"
-                actionLabel="重新加载"
-                onAction={() => {
-                  void (isReconstructMode ? materialsQuery.refetch() : renderInputsQuery.refetch())
-                }}
-                compact
-              />
-            ) : null}
-
-            {availableFiles.map((item) => (
-              <label key={item.path} className="file-item">
-                <input type="checkbox" checked={selectedFiles.includes(item.name)} onChange={() => toggleFile(item.name)} />
-                <span>{sourceModel === 'neural' && !isReconstructMode ? normalizeMaterialName(item.name) : item.name}</span>
-              </label>
-            ))}
-
-            {!currentListError && availableFiles.length === 0 ? (
-              <FeedbackPanel title="当前没有可用输入" message={isReconstructMode ? '请先准备 MERL .binary 材质。' : '请检查当前模型对应的渲染输入目录。'} tone="empty" compact />
             ) : null}
           </div>
         </section>

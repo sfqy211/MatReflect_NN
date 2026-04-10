@@ -10,8 +10,13 @@ import type { ModuleKey } from "./types/api";
 
 type ThemeMode = "dark" | "light";
 
+export type AnalysisSubView = 'preview' | 'evaluate' | 'compare' | 'grid' | 'compare-grid'
+export type ModelsSubView = string // model key or '__create__'
+
 export function App() {
   const [activeModule, setActiveModule] = useState<ModuleKey>("render");
+  const [activeAnalysisSubView, setActiveAnalysisSubView] = useState<AnalysisSubView>('preview');
+  const [activeModelsSubView, setActiveModelsSubView] = useState<ModelsSubView>('');
   const [railCollapsed, setRailCollapsed] = useState(false);
   const [theme, setTheme] = useState<ThemeMode>(() => {
     if (typeof window === "undefined") {
@@ -50,6 +55,10 @@ export function App() {
         <ModuleRail
           activeModule={activeModule}
           onChange={setActiveModule}
+          activeAnalysisSubView={activeAnalysisSubView}
+          onAnalysisSubViewChange={setActiveAnalysisSubView}
+          activeModelsSubView={activeModelsSubView}
+          onModelsSubViewChange={setActiveModelsSubView}
           collapsed={railCollapsed}
           onToggleCollapse={() => setRailCollapsed((current) => !current)}
           theme={theme}
@@ -58,6 +67,10 @@ export function App() {
         <main className="center-stack">
           <WorkspaceCanvas
             activeModule={activeModule}
+            activeAnalysisSubView={activeAnalysisSubView}
+            onAnalysisSubViewChange={setActiveAnalysisSubView}
+            activeModelsSubView={activeModelsSubView}
+            onModelsSubViewChange={setActiveModelsSubView}
             galleryItems={galleryItems}
             galleryCount={galleryCount}
             system={systemQuery.data}

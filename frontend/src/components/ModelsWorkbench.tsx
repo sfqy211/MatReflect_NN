@@ -1,4 +1,4 @@
-import { type MouseEvent, useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 
 import { useQueryClient } from '@tanstack/react-query'
 
@@ -28,6 +28,7 @@ import type {
   TrainRunSummary,
 } from '../types/api'
 import { FeedbackPanel } from './FeedbackPanel'
+import { MaterialSelector } from './MaterialSelector'
 import { TerminalDrawer } from './TerminalDrawer'
 
 
@@ -105,15 +106,15 @@ function buildDraft(adapter: TrainModelAdapter): TrainModelCreateRequest {
   }
 }
 
-export function ModelsWorkbench() {
+import type { ModelsSubView } from '../App'
+
+export function ModelsWorkbench({ activeSubView, onSubViewChange }: { activeSubView: ModelsSubView; onSubViewChange: (view: ModelsSubView) => void }) {
   const queryClient = useQueryClient()
 
-  const [activeModelKey, setActiveModelKey] = useState('')
+  const activeModelKey = activeSubView === '__create__' ? '' : activeSubView
+  const showCreateForm = activeSubView === '__create__'
+
   const [draft, setDraft] = useState<TrainModelCreateRequest>(() => buildDraft('hyper-family'))
-  const [showCreateForm, setShowCreateForm] = useState(false)
-  const [search, setSearch] = useState('')
-  const [h5Search, setH5Search] = useState('')
-  const [ptSearch, setPtSearch] = useState('')
   const [selectedMaterials, setSelectedMaterials] = useState<string[]>([])
   const [selectedH5Files, setSelectedH5Files] = useState<string[]>([])
   const [selectedPts, setSelectedPts] = useState<string[]>([])
@@ -143,15 +144,17 @@ export function ModelsWorkbench() {
   const [trainSeed, setTrainSeed] = useState(42)
   const [keepon, setKeepon] = useState(false)
 
+
+
   const modelQuery = useTrainModels()
-  const materialsQuery = useMaterialsDirectory(search)
+  const materialsQuery = useMaterialsDirectory('')
   const activeModel = useMemo(
     () => modelQuery.data?.items.find((item) => item.key === activeModelKey) ?? null,
     [activeModelKey, modelQuery.data?.items],
   )
   const runsQuery = useTrainRuns(activeModel?.supports_runs ? activeModel.key : null, Boolean(activeModel?.supports_runs))
-  const h5FilesQuery = useWorkspaceFiles(kerasH5Dir, ['.h5'], h5Search, activeModel?.adapter === 'neural-keras')
-  const ptFilesQuery = useWorkspaceFiles(ptDir, ['.pt'], ptSearch, Boolean(activeModel?.supports_decode))
+  const h5FilesQuery = useWorkspaceFiles(kerasH5Dir, ['.h5'], '', activeModel?.adapter === 'neural-keras')
+  const ptFilesQuery = useWorkspaceFiles(ptDir, ['.pt'], '', Boolean(activeModel?.supports_decode))
   const taskDetailQuery = useTrainTaskDetail(activeTaskId)
 
   const createTrainModel = useCreateTrainModel()
@@ -170,13 +173,6 @@ export function ModelsWorkbench() {
   const runs = activeModel?.supports_runs ? runsQuery.data?.items ?? [] : []
   const taskDetail = taskDetailQuery.data
   const taskRecord = taskDetail?.record
-
-  useEffect(() => {
-    const firstModel = modelQuery.data?.items[0]?.key ?? ''
-    if (!activeModelKey && firstModel) {
-      setActiveModelKey(firstModel)
-    }
-  }, [activeModelKey, modelQuery.data?.items])
 
   useEffect(() => {
     if (!activeModel) {
@@ -249,13 +245,15 @@ export function ModelsWorkbench() {
     () => [
       `当前模型: ${activeModel?.label ?? '-'}`,
       `适配器: ${activeModel?.adapter ?? '-'}`,
+      `分类: ${activeModel?.category ?? '-'}`,
+      `类型: ${activeModel?.built_in ? '内建' : '自定义'}`,
       `固定材质库: ${materialItems.length}`,
       `已选材质: ${selectedMaterials.length}`,
       `H5 文件: ${h5Items.length}`,
       `运行记录: ${runs.length}`,
       `PT 文件: ${ptItems.length}`,
     ],
-    [activeModel?.adapter, activeModel?.label, h5Items.length, materialItems.length, ptItems.length, runs.length, selectedMaterials.length],
+    [activeModel?.adapter, activeModel?.label, activeModel?.category, activeModel?.built_in, h5Items.length, materialItems.length, ptItems.length, runs.length, selectedMaterials.length],
   )
 
   const logs = liveLogs.length > 0 ? liveLogs : taskDetail?.logs ?? []
@@ -278,66 +276,10 @@ export function ModelsWorkbench() {
         ? taskRecord.message || '任务已取消。'
         : null
 
-  const toggleMaterial = (name: string, event?: MouseEvent) => {
-    setSelectedMaterials((current) => {
-      const currentIndex = materialItems.findIndex((item) => item.name === name)
-      if (event?.shiftKey && current.length > 0 && currentIndex !== -1) {
-        const lastSelectedName = current[current.length - 1]
-        const lastSelectedIndex = materialItems.findIndex((item) => item.name === lastSelectedName)
-        if (lastSelectedIndex !== -1) {
-          const start = Math.min(lastSelectedIndex, currentIndex)
-          const end = Math.max(lastSelectedIndex, currentIndex)
-          const rangeNames = materialItems.slice(start, end + 1).map((item) => item.name)
-          return Array.from(new Set([...current, ...rangeNames]))
-        }
-      }
-      return current.includes(name) ? current.filter((item) => item !== name) : [...current, name]
-    })
-  }
 
-  const togglePt = (name: string, event?: MouseEvent) => {
-    setSelectedPts((current) => {
-      const currentIndex = ptItems.findIndex((item) => item.name === name)
-      if (event?.shiftKey && current.length > 0 && currentIndex !== -1) {
-        const lastSelectedName = current[current.length - 1]
-        const lastSelectedIndex = ptItems.findIndex((item) => item.name === lastSelectedName)
-        if (lastSelectedIndex !== -1) {
-          const start = Math.min(lastSelectedIndex, currentIndex)
-          const end = Math.max(lastSelectedIndex, currentIndex)
-          const rangeNames = ptItems.slice(start, end + 1).map((item) => item.name)
-          return Array.from(new Set([...current, ...rangeNames]))
-        }
-      }
-      return current.includes(name) ? current.filter((item) => item !== name) : [...current, name]
-    })
-  }
-
-  const toggleH5 = (name: string, event?: MouseEvent) => {
-    setSelectedH5Files((current) => {
-      const currentIndex = h5Items.findIndex((item) => item.name === name)
-      if (event?.shiftKey && current.length > 0 && currentIndex !== -1) {
-        const lastSelectedName = current[current.length - 1]
-        const lastSelectedIndex = h5Items.findIndex((item) => item.name === lastSelectedName)
-        if (lastSelectedIndex !== -1) {
-          const start = Math.min(lastSelectedIndex, currentIndex)
-          const end = Math.max(lastSelectedIndex, currentIndex)
-          const rangeNames = h5Items.slice(start, end + 1).map((item) => item.name)
-          return Array.from(new Set([...current, ...rangeNames]))
-        }
-      }
-      return current.includes(name) ? current.filter((item) => item !== name) : [...current, name]
-    })
-  }
-
-  const applyPreset = () => {
-    const selected = materialItems
-      .filter((item) => TEST_SET_20.includes(normalizeBinaryName(item.name)))
-      .map((item) => item.name)
-    setSelectedMaterials(selected)
-  }
 
   const applyRun = (run: TrainRunSummary) => {
-    setActiveModelKey(run.model_key)
+    onSubViewChange(run.model_key)
     setCheckpointPath(run.checkpoint_path)
     setDataset(run.dataset === 'EPFL' ? 'EPFL' : 'MERL')
   }
@@ -361,8 +303,7 @@ export function ModelsWorkbench() {
   const submitCreateModel = async () => {
     const response = await createTrainModel.mutateAsync(draft)
     await queryClient.invalidateQueries({ queryKey: ['train-models'] })
-    setActiveModelKey(response.item.key)
-    setShowCreateForm(false)
+    onSubViewChange(response.item.key)
     setDraft(buildDraft(draft.adapter))
   }
 
@@ -377,7 +318,7 @@ export function ModelsWorkbench() {
     await queryClient.invalidateQueries({ queryKey: ['train-models'] })
     if (activeModelKey === model.key) {
       const fallback = modelQuery.data?.items.find((item) => item.key !== model.key)?.key ?? ''
-      setActiveModelKey(fallback)
+      onSubViewChange(fallback)
     }
   }
 
@@ -488,75 +429,27 @@ export function ModelsWorkbench() {
 
   return (
     <section className="workspace-canvas">
-      <div className="workspace-hero">
-        <div>
-          <h2>网络模型管理</h2>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '24px' }}>
+        <div className="detail-pill-grid" style={{ marginBottom: 0, flex: 1 }}>
+          {summaryChips.map((chip) => (
+            <span key={chip} className="detail-pill">
+              {chip}
+            </span>
+          ))}
         </div>
-      </div>
-
-      <div className="detail-pill-grid">
-        {summaryChips.map((chip) => (
-          <span key={chip} className="detail-pill">
-            {chip}
-          </span>
-        ))}
+        {activeModel && !activeModel.built_in ? (
+          <button
+            type="button"
+            className="theme-toggle render-actions--danger"
+            onClick={() => void removeModel(activeModel)}
+            style={{ marginLeft: '16px', flexShrink: 0 }}
+          >
+            删除当前模型
+          </button>
+        ) : null}
       </div>
 
       <div className="models-layout">
-        <section className="models-section">
-          <div className="detail-board__lead">
-            <h3>模型注册表</h3>
-          </div>
-          <div className="render-actions">
-            <button type="button" className="theme-toggle" onClick={() => setShowCreateForm((current) => !current)}>
-              {showCreateForm ? '收起新增表单' : '添加自研模型'}
-            </button>
-            {activeModel && !activeModel.built_in ? (
-              <button
-                type="button"
-                className="theme-toggle render-actions--danger"
-                onClick={() => void removeModel(activeModel)}
-              >
-                删除当前模型
-              </button>
-            ) : null}
-          </div>
-          {activeModel?.built_in ? (
-            <FeedbackPanel
-              title="当前模型为内建模型"
-              message="内建模型仅支持使用与兼容，不提供删除操作。切换到自定义模型后可执行删除。"
-              tone="info"
-              compact
-            />
-          ) : null}
-          <div className="runs-list">
-            {(modelQuery.data?.items ?? []).map((model) => (
-              <article
-                key={model.key}
-                className={activeModelKey === model.key ? 'run-card run-card--selected' : 'run-card'}
-              >
-                <strong>{model.label}</strong>
-                <span>{model.key}</span>
-                <div className="detail-pill-grid">
-                  <span className="detail-pill">{model.adapter}</span>
-                  <span className="detail-pill">{model.category}</span>
-                  <span className="detail-pill">{model.built_in ? '内建' : '自定义'}</span>
-                </div>
-                {model.description ? <span>{model.description}</span> : null}
-                <div className="render-actions">
-                  <button type="button" className="theme-toggle" onClick={() => setActiveModelKey(model.key)}>
-                    切换到此模型
-                  </button>
-                  {!model.built_in ? (
-                    <button type="button" className="theme-toggle render-actions--danger" onClick={() => void removeModel(model)}>
-                      删除模型
-                    </button>
-                  ) : null}
-                </div>
-              </article>
-            ))}
-          </div>
-        </section>
 
         {activeModel?.adapter === 'neural-keras' ? (
           <section className="models-section">
@@ -577,43 +470,20 @@ export function ModelsWorkbench() {
                 <input value={condaEnv} onChange={(event) => setCondaEnv(event.target.value)} />
               </label>
             </div>
-            <div className="file-toolbar">
-              <input
-                type="search"
-                className="search-input"
-                value={h5Search}
-                onChange={(event) => setH5Search(event.target.value)}
-                placeholder="搜索 .h5 文件"
-              />
-              <div className="file-toolbar__actions">
-                <button type="button" className="theme-toggle" onClick={() => setSelectedH5Files(h5Items.map((item) => item.name))}>
-                  全选
-                </button>
-                <button type="button" className="theme-toggle" onClick={() => setSelectedH5Files([])}>
-                  清空
-                </button>
-              </div>
-            </div>
-            <div className="file-list">
-              {h5FilesQuery.error instanceof Error ? (
-                <FeedbackPanel title="H5 列表读取失败" message={h5FilesQuery.error.message} tone="error" compact />
-              ) : null}
-              {h5Items.map((item) => (
-                <label
-                  key={item.path}
-                  className="file-item"
-                  onClick={(event) => {
-                    event.preventDefault()
-                    toggleH5(item.name, event)
-                  }}
-                >
-                  <input type="checkbox" checked={selectedH5Files.includes(item.name)} readOnly />
-                  <span>{item.name}</span>
-                </label>
-              ))}
-              {!h5FilesQuery.error && h5Items.length === 0 ? (
-                <FeedbackPanel title="当前没有可转换的 H5 文件" message="请先完成 Keras 训练，或检查 H5 目录是否正确。" tone="empty" compact />
-              ) : null}
+            <div className="render-form-grid" style={{ gridTemplateColumns: '1fr', marginTop: '16px' }}>
+              <label className="field">
+                <span>H5 文件选择</span>
+                <MaterialSelector
+                  title="选择 H5 文件"
+                  items={h5Items}
+                  selectedItems={selectedH5Files}
+                  onSelectionChange={setSelectedH5Files}
+                  error={h5FilesQuery.error as Error | null}
+                  emptyMessage="请先完成 Keras 训练，或检查 H5 目录是否正确。"
+                  searchPlaceholder="搜索 .h5 文件"
+                  formatName={(name) => name.replace(/\.h5$/i, '')}
+                />
+              </label>
             </div>
             <div className="render-actions">
               <button type="button" className="theme-toggle render-actions--primary" onClick={() => void startH5Convert()} disabled={selectedH5Files.length === 0}>
@@ -627,53 +497,37 @@ export function ModelsWorkbench() {
           <div className="detail-board__lead">
             <h3>固定材质选择</h3>
           </div>
-          <div className="file-toolbar">
-            <input
-              type="search"
-              className="search-input"
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="搜索 binary 材质"
-            />
-            <div className="file-toolbar__actions">
-              <button type="button" className="theme-toggle" onClick={() => setSelectedMaterials(materialItems.map((item) => item.name))}>
-                全选
-              </button>
-              <button type="button" className="theme-toggle" onClick={applyPreset}>
-                预设 20
-              </button>
-              <button type="button" className="theme-toggle" onClick={() => setSelectedMaterials([])}>
-                清空
-              </button>
-            </div>
-          </div>
-          <div className="file-list">
-            {materialsQuery.error instanceof Error ? (
-              <FeedbackPanel title="材质目录读取失败" message={materialsQuery.error.message} tone="error" compact />
-            ) : null}
-            {materialItems.map((item) => (
-              <label
-                key={item.path}
-                className="file-item"
-                onClick={(event) => {
-                  event.preventDefault()
-                  toggleMaterial(item.name, event)
-                }}
-              >
-                <input type="checkbox" checked={selectedMaterials.includes(item.name)} readOnly />
-                <span>{item.name}</span>
-              </label>
-            ))}
-            {!materialsQuery.error && materialItems.length === 0 ? (
-              <FeedbackPanel title="当前没有可训练材质" message="请检查 data/inputs/binary 下是否存在 .binary 文件。" tone="empty" compact />
-            ) : null}
+          <div className="render-form-grid" style={{ gridTemplateColumns: '1fr', marginTop: '16px' }}>
+            <label className="field">
+              <span>材质选择</span>
+              <MaterialSelector
+                title="选择固定材质"
+                items={materialItems}
+                selectedItems={selectedMaterials}
+                onSelectionChange={setSelectedMaterials}
+                error={materialsQuery.error as Error | null}
+                emptyMessage="请检查 data/inputs/binary 下是否存在 .binary 文件。"
+                searchPlaceholder="搜索 binary 材质"
+                formatName={normalizeBinaryName}
+                presets={[
+                  {
+                    label: '预设 20',
+                    filter: (items) =>
+                      items
+                        .filter((item) => TEST_SET_20.includes(normalizeBinaryName(item.name)))
+                        .map((item) => item.name)
+                  }
+                ]}
+              />
+            </label>
           </div>
         </section>
 
         {showCreateForm ? (
           <section className="models-section models-section--wide">
             <div className="detail-board__lead">
-              <h3>新增模型</h3>
+              <h3>添加自建模型</h3>
+              <p>基于现有适配器结构配置你的模型运行参数。</p>
             </div>
             <div className="render-form-grid">
               <label className="field">
@@ -877,7 +731,7 @@ export function ModelsWorkbench() {
             </div>
 
             {draft.adapter === 'hyper-family' ? (
-              <div className="render-toggle-row">
+              <div className="render-toggle-row" style={{ marginTop: '8px' }}>
                 <label className="toggle-field">
                   <input type="checkbox" checked={draft.supports_extract} onChange={(event) => updateDraft((current) => ({ ...current, supports_extract: event.target.checked }))} />
                   <span>支持参数提取</span>
@@ -890,7 +744,6 @@ export function ModelsWorkbench() {
                   <input type="checkbox" checked={draft.supports_runs} onChange={(event) => updateDraft((current) => ({ ...current, supports_runs: event.target.checked }))} />
                   <span>支持运行记录扫描</span>
                 </label>
-                  <span>支持解耦扩展参数</span>
               </div>
             ) : null}
 
@@ -989,25 +842,35 @@ export function ModelsWorkbench() {
                   <input type="number" value={trainSubset} onChange={(event) => setTrainSubset(Number(event.target.value) || 0)} />
                 </label>
               </div>
-              <div className="render-toggle-row">
+              <div className="render-toggle-row" style={{ marginTop: '8px' }}>
                 <label className="toggle-field">
                   <input type="checkbox" checked={keepon} onChange={(event) => setKeepon(event.target.checked)} />
                   <span>继续训练</span>
                 </label>
               </div>
-
+            <div className="render-actions" style={{ marginTop: '12px' }}>
+                <button
+                  type="button"
+                  className="theme-toggle render-actions--primary"
+                  onClick={() => void startTraining()}
+                  disabled={!activeModel || (activeModel.category === 'neural' && selectedMaterials.length === 0)}
+                >
+                  启动训练
+                </button>
+              </div>
             </>
-          ) : null}
-          <div className="render-actions">
-            <button
-              type="button"
-              className="theme-toggle render-actions--primary"
-              onClick={() => void startTraining()}
-              disabled={!activeModel || (activeModel.category === 'neural' && selectedMaterials.length === 0)}
-            >
-              启动训练
-            </button>
-          </div>
+          ) : (
+            <div className="render-actions" style={{ marginTop: '12px' }}>
+              <button
+                type="button"
+                className="theme-toggle render-actions--primary"
+                onClick={() => void startTraining()}
+                disabled={!activeModel || (activeModel.category === 'neural' && selectedMaterials.length === 0)}
+              >
+                启动训练
+              </button>
+            </div>
+          )}
         </section>
 
         <section className="models-section">
@@ -1096,43 +959,20 @@ export function ModelsWorkbench() {
                     <input value={cudaDevice} onChange={(event) => setCudaDevice(event.target.value)} />
                   </label>
                 </div>
-                <div className="file-toolbar">
-                  <input
-                    type="search"
-                    className="search-input"
-                    value={ptSearch}
-                    onChange={(event) => setPtSearch(event.target.value)}
-                    placeholder="搜索已提取的 .pt 文件"
-                  />
-                  <div className="file-toolbar__actions">
-                    <button type="button" className="theme-toggle" onClick={() => setSelectedPts(ptItems.map((item) => item.name))}>
-                      全选
-                    </button>
-                    <button type="button" className="theme-toggle" onClick={() => setSelectedPts([])}>
-                      清空
-                    </button>
-                  </div>
-                </div>
-                <div className="file-list">
-                  {ptFilesQuery.error instanceof Error ? (
-                    <FeedbackPanel title="PT 列表读取失败" message={ptFilesQuery.error.message} tone="error" compact />
-                  ) : null}
-                  {ptItems.map((item) => (
-                    <label
-                      key={item.path}
-                      className="file-item"
-                      onClick={(event) => {
-                        event.preventDefault()
-                        togglePt(item.name, event)
-                      }}
-                    >
-                      <input type="checkbox" checked={selectedPts.includes(item.name)} readOnly />
-                      <span>{item.name}</span>
-                    </label>
-                  ))}
-                  {!ptFilesQuery.error && ptItems.length === 0 ? (
-                    <FeedbackPanel title="当前没有可解码的 PT 文件" message="请先完成参数提取，或检查 PT 目录是否正确。" tone="empty" compact />
-                  ) : null}
+                <div className="render-form-grid" style={{ gridTemplateColumns: '1fr', marginTop: '16px' }}>
+                  <label className="field">
+                    <span>PT 文件选择</span>
+                    <MaterialSelector
+                      title="选择 PT 文件"
+                      items={ptItems}
+                      selectedItems={selectedPts}
+                      onSelectionChange={setSelectedPts}
+                      error={ptFilesQuery.error as Error | null}
+                      emptyMessage="请先完成参数提取，或检查 PT 目录是否正确。"
+                      searchPlaceholder="搜索已提取的 .pt 文件"
+                      formatName={(name) => name.replace(/\.pt$/i, '')}
+                    />
+                  </label>
                 </div>
                 <div className="render-actions">
                   <button type="button" className="theme-toggle render-actions--primary" onClick={() => void startDecode()} disabled={selectedPts.length === 0}>
