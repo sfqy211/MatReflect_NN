@@ -15,6 +15,7 @@ from backend.core.conda import build_python_runner
 from backend.core.config import LOGS_ROOT, OUTPUTS_ROOT, PROJECT_ROOT, RUNTIME_ROOT
 from backend.core.paths import get_mitsuba_paths
 from backend.core.runtime_logging import format_command, log_task_message
+from backend.core.system_settings import load_system_settings
 from backend.core.threaded_subprocess import process_is_running, run_process_streaming, terminate_process
 from backend.models.common import FileListItem, TaskDetailResponse
 from backend.models.render import (
@@ -275,18 +276,24 @@ class RenderService:
         self._processes: dict[str, Any] = {}
 
     def _input_dir(self, render_mode: RenderMode) -> Path:
-        return {
-            "brdfs": PROJECT_ROOT / "data" / "inputs" / "binary",
-            "fullbin": PROJECT_ROOT / "data" / "inputs" / "fullbin",
-            "npy": PROJECT_ROOT / "data" / "inputs" / "npy",
+        settings = load_system_settings()
+        configured = {
+            "brdfs": settings.binary_input_dir,
+            "fullbin": settings.fullbin_input_dir,
+            "npy": settings.npy_input_dir,
         }[render_mode]
+        raw_path = Path(configured).expanduser()
+        return (raw_path if raw_path.is_absolute() else Path(settings.project_root).resolve() / raw_path).resolve(strict=False)
 
     def _output_dir(self, render_mode: RenderMode) -> Path:
-        return {
-            "brdfs": OUTPUTS_ROOT / "binary",
-            "fullbin": OUTPUTS_ROOT / "fullbin",
-            "npy": OUTPUTS_ROOT / "npy",
+        settings = load_system_settings()
+        configured = {
+            "brdfs": settings.brdf_output_dir,
+            "fullbin": settings.fullbin_output_dir,
+            "npy": settings.npy_output_dir,
         }[render_mode]
+        raw_path = Path(configured).expanduser()
+        return (raw_path if raw_path.is_absolute() else Path(settings.project_root).resolve() / raw_path).resolve(strict=False)
 
     def _output_path_key(self, render_mode: RenderMode) -> str:
         return {
@@ -516,7 +523,7 @@ class RenderService:
                 return
 
             if request.model_key == "neural":
-                output_dir = Path(request.output_dir).resolve() if request.output_dir else DATA_INPUTS_NPY
+                output_dir = Path(request.output_dir).resolve() if request.output_dir else self._input_dir("npy")
                 output_dir.mkdir(parents=True, exist_ok=True)
                 env = self._make_neural_env()
                 runner, use_shell = self._python_runner("nbrdf-train")
@@ -538,7 +545,7 @@ class RenderService:
             config = self._project_config(project_variant)
             checkpoint_path = Path(request.checkpoint_path).resolve()
             ensure_exists(checkpoint_path, file_ok=True)
-            output_dir = Path(request.output_dir).resolve() if request.output_dir else DATA_INPUTS_FULLBIN
+            output_dir = Path(request.output_dir).resolve() if request.output_dir else self._input_dir("fullbin")
             output_dir.mkdir(parents=True, exist_ok=True)
             pt_dir = (RUNTIME_ROOT / "render_pipeline" / task_id / "pt").resolve()
             pt_dir.mkdir(parents=True, exist_ok=True)

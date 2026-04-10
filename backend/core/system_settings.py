@@ -31,10 +31,20 @@ def _default_virtual_envs() -> List[SystemVirtualEnvSetting]:
 def build_default_system_settings() -> SystemSettings:
     work_dir = (PROJECT_ROOT / "mitsuba").resolve()
     mitsuba_dir = (work_dir / "dist").resolve()
+    data_root = (PROJECT_ROOT / "data").resolve()
+    outputs_root = (data_root / "outputs").resolve()
     return SystemSettings(
         project_root=str(PROJECT_ROOT.resolve()),
         mitsuba_exe=str((mitsuba_dir / "mitsuba.exe").resolve()),
         mtsutil_exe=str((mitsuba_dir / "mtsutil.exe").resolve()),
+        binary_input_dir=str((data_root / "inputs" / "binary").resolve()),
+        npy_input_dir=str((data_root / "inputs" / "npy").resolve()),
+        fullbin_input_dir=str((data_root / "inputs" / "fullbin").resolve()),
+        brdf_output_dir=str((outputs_root / "binary").resolve()),
+        npy_output_dir=str((outputs_root / "npy").resolve()),
+        fullbin_output_dir=str((outputs_root / "fullbin").resolve()),
+        grids_output_dir=str((outputs_root / "grids").resolve()),
+        comparisons_output_dir=str((outputs_root / "comparisons").resolve()),
         preset_label="Default SCons Parallel Build",
         conda_env="mitsuba-build",
         compile_cmd="scons --parallelize",
@@ -89,6 +99,14 @@ def _coerce_settings(raw_data: dict) -> SystemSettings:
         project_root=str(raw_data.get("project_root") or defaults.project_root),
         mitsuba_exe=str(raw_data.get("mitsuba_exe") or defaults.mitsuba_exe),
         mtsutil_exe=str(raw_data.get("mtsutil_exe") or defaults.mtsutil_exe),
+        binary_input_dir=str(raw_data.get("binary_input_dir") or defaults.binary_input_dir),
+        npy_input_dir=str(raw_data.get("npy_input_dir") or defaults.npy_input_dir),
+        fullbin_input_dir=str(raw_data.get("fullbin_input_dir") or defaults.fullbin_input_dir),
+        brdf_output_dir=str(raw_data.get("brdf_output_dir") or defaults.brdf_output_dir),
+        npy_output_dir=str(raw_data.get("npy_output_dir") or defaults.npy_output_dir),
+        fullbin_output_dir=str(raw_data.get("fullbin_output_dir") or defaults.fullbin_output_dir),
+        grids_output_dir=str(raw_data.get("grids_output_dir") or defaults.grids_output_dir),
+        comparisons_output_dir=str(raw_data.get("comparisons_output_dir") or defaults.comparisons_output_dir),
         preset_label=str(raw_data.get("preset_label") or defaults.preset_label),
         conda_env=str(raw_data.get("conda_env") or defaults.conda_env),
         compile_cmd=str(raw_data.get("compile_cmd") or defaults.compile_cmd),

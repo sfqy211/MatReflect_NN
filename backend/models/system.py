@@ -46,6 +46,14 @@ class SystemSettings(BaseModel):
     project_root: str
     mitsuba_exe: str
     mtsutil_exe: str
+    binary_input_dir: str
+    npy_input_dir: str
+    fullbin_input_dir: str
+    brdf_output_dir: str
+    npy_output_dir: str
+    fullbin_output_dir: str
+    grids_output_dir: str
+    comparisons_output_dir: str
     preset_label: str
     conda_env: str
     compile_cmd: str
@@ -91,6 +99,14 @@ class SystemSettingsRequest(BaseModel):
     project_root: str = Field(default="", max_length=1024)
     mitsuba_exe: str = Field(default="", max_length=1024)
     mtsutil_exe: str = Field(default="", max_length=1024)
+    binary_input_dir: str = Field(default="", max_length=1024)
+    npy_input_dir: str = Field(default="", max_length=1024)
+    fullbin_input_dir: str = Field(default="", max_length=1024)
+    brdf_output_dir: str = Field(default="", max_length=1024)
+    npy_output_dir: str = Field(default="", max_length=1024)
+    fullbin_output_dir: str = Field(default="", max_length=1024)
+    grids_output_dir: str = Field(default="", max_length=1024)
+    comparisons_output_dir: str = Field(default="", max_length=1024)
     compile_cmd: str = Field(default="scons --parallelize", min_length=1, max_length=512)
     conda_env: str = Field(default="mitsuba-build", min_length=1, max_length=128)
     preset_label: str = Field(default="Default SCons Parallel Build", max_length=128)

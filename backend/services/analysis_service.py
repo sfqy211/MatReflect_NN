@@ -12,6 +12,7 @@ from PIL import Image, ImageDraw, ImageFont
 from skimage import color, metrics
 
 from backend.core.config import OUTPUTS_ROOT, PROJECT_ROOT
+from backend.core.system_settings import load_system_settings
 from backend.models.analysis import (
     AnalysisImageSet,
     AnalysisImagesResponse,
@@ -74,25 +75,38 @@ def calc_single_pair(img1: np.ndarray, img2: np.ndarray) -> np.ndarray:
 
 class AnalysisService:
     def __init__(self) -> None:
-        self._set_dirs = {
-            "brdfs": OUTPUTS_ROOT / "binary" / "png",
-            "fullbin": OUTPUTS_ROOT / "fullbin" / "png",
-            "npy": OUTPUTS_ROOT / "npy" / "png",
-            "grids": OUTPUTS_ROOT / "grids",
-            "comparisons": OUTPUTS_ROOT / "comparisons",
-        }
-        for path in self._set_dirs.values():
+        for path in self._set_dirs().values():
             path.mkdir(parents=True, exist_ok=True)
 
+    def _set_dirs(self) -> dict[AnalysisImageSet, Path]:
+        settings = load_system_settings()
+        project_root = Path(settings.project_root).resolve()
+
+        def resolve_path(path_value: str) -> Path:
+            raw_path = Path(path_value).expanduser()
+            return (raw_path if raw_path.is_absolute() else project_root / raw_path).resolve(strict=False)
+
+        return {
+            "brdfs": resolve_path(settings.brdf_output_dir) / "png",
+            "fullbin": resolve_path(settings.fullbin_output_dir) / "png",
+            "npy": resolve_path(settings.npy_output_dir) / "png",
+            "grids": resolve_path(settings.grids_output_dir),
+            "comparisons": resolve_path(settings.comparisons_output_dir),
+        }
+
     def _dir_for(self, image_set: AnalysisImageSet) -> Path:
-        return self._set_dirs[image_set]
+        return self._set_dirs()[image_set]
 
     def _resolve_directory(self, image_set: Optional[AnalysisImageSet] = None, directory: str = "") -> Path:
         if directory.strip():
-            return resolve_workspace_path(directory.strip())
+            resolved = resolve_workspace_path(directory.strip())
+            resolved.mkdir(parents=True, exist_ok=True)
+            return resolved
         if image_set is None:
             raise ValueError("Missing image_set or directory.")
-        return self._dir_for(image_set)
+        resolved = self._dir_for(image_set)
+        resolved.mkdir(parents=True, exist_ok=True)
+        return resolved
 
     def _resolve_workspace_path(self, path_value: str) -> Path:
         raw_path = Path(path_value)

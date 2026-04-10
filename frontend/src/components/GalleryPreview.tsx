@@ -47,9 +47,10 @@ export function GalleryPreview({ items, isLoading }: GalleryPreviewProps) {
         </div>
       ) : null}
 
-      <div className="gallery-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <div className="panel-head">
-          <h2>输出画廊预览</h2>
+      <div className="gallery-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <span className="eyebrow" style={{ margin: 0 }}>输出预览</span>
+          <span className="gallery-count">{sortedItems.length} 个结果</span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           <select value={sortMode} onChange={(event) => setSortMode(event.target.value as GallerySortMode)} className="select-input">
@@ -66,7 +67,6 @@ export function GalleryPreview({ items, isLoading }: GalleryPreviewProps) {
             style={{ width: '80px', accentColor: 'var(--accent)' }}
             title="缩放网格"
           />
-          <span className="gallery-count">{sortedItems.length} visible</span>
         </div>
       </div>
 
@@ -97,10 +97,14 @@ export function GalleryPreview({ items, isLoading }: GalleryPreviewProps) {
                     <span>{String(index + 1).padStart(2, '0')}</span>
                   )}
                 </div>
-                <div className="gallery-item__meta" title={item.name}>
-                  <strong style={{ wordBreak: 'break-word', fontSize: '0.9rem', lineHeight: '1.2' }}>{parsedName.materialName}</strong>
-                  {parsedName.timestampDisplay ? <span className="gallery-item__timestamp">{parsedName.timestampDisplay}</span> : null}
-                  <span>{Math.max(1, Math.round(item.size / 1024))} KB</span>
+                <div className="gallery-item__meta" title={item.name} style={{ display: 'flex', flexDirection: 'column', gap: 2, padding: '0 4px' }}>
+                  <strong style={{ wordBreak: 'break-word', fontSize: '0.85rem', lineHeight: '1.2', color: 'var(--text-strong)' }}>
+                    {parsedName.materialName}
+                  </strong>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                    {parsedName.timestampDisplay ? <span>{parsedName.timestampDisplay}</span> : <span>-</span>}
+                    <span>{Math.max(1, Math.round(item.size / 1024))} KB</span>
+                  </div>
                 </div>
               </article>
             )

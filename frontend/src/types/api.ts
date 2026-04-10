@@ -67,6 +67,14 @@ export type SystemSettings = {
   project_root: string
   mitsuba_exe: string
   mtsutil_exe: string
+  binary_input_dir: string
+  npy_input_dir: string
+  fullbin_input_dir: string
+  brdf_output_dir: string
+  npy_output_dir: string
+  fullbin_output_dir: string
+  grids_output_dir: string
+  comparisons_output_dir: string
   preset_label: string
   conda_env: string
   compile_cmd: string

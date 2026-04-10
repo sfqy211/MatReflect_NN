@@ -19,7 +19,6 @@ import { FeedbackPanel } from './FeedbackPanel'
 import { GalleryPreview } from './GalleryPreview'
 import { MaterialSelector } from './MaterialSelector'
 import { TerminalDrawer } from './TerminalDrawer'
-import { Badge } from './ui/Badge'
 import { Button } from './ui/Button'
 import { CheckboxField } from './ui/CheckboxField'
 import { Field } from './ui/Field'
@@ -49,24 +48,6 @@ const TEST_SET_20 = [
   'white-fabric',
   'yellow-paint',
 ]
-
-const MODEL_LABELS: Record<RenderSourceModel, string> = {
-  gt: 'GT / MERL 材质',
-  neural: 'Neural-BRDF',
-  hyperbrdf: 'HyperBRDF',
-}
-
-const INPUT_TYPE_LABELS: Record<RenderSourceModel, string> = {
-  gt: '.binary / merl',
-  neural: '.npy / nbrdf_npy',
-  hyperbrdf: '.fullbin / fullmerl',
-}
-
-const RECONSTRUCT_NOTES: Record<RenderSourceModel, string> = {
-  gt: 'GT 直接使用 MERL .binary，无需重建',
-  neural: 'Neural-BRDF 一键重建会将 MERL .binary 转为 Mitsuba 可读的 .npy 权重组',
-  hyperbrdf: 'HyperBRDF 一键重建会从 checkpoint 提取参数并解码为 .fullbin',
-}
 
 function getRenderMode(model: RenderSourceModel): RenderMode {
   if (model === 'gt') return 'brdfs'
@@ -103,7 +84,6 @@ export function RenderWorkbench() {
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null)
   const [liveLogs, setLiveLogs] = useState<string[]>([])
   const [outputSearch, setOutputSearch] = useState('')
-  const [outputDirectory, setOutputDirectory] = useState('')
   const [selectedOutputPaths, setSelectedOutputPaths] = useState<string[]>([])
   const [leftPaneWidth, setLeftPaneWidth] = useState(380)
   const [isDraggingSplitter, setIsDraggingSplitter] = useState(false)
@@ -119,7 +99,7 @@ export function RenderWorkbench() {
   const renderInputsQuery = useRenderInputs(renderMode, search)
   const materialsQuery = useMaterialsDirectory(search)
   const runsQuery = useTrainRuns(projectVariant)
-  const outputGalleryQuery = useAnalysisImages(analysisImageSet, outputSearch, outputDirectory)
+  const outputGalleryQuery = useAnalysisImages(analysisImageSet, outputSearch)
   const taskDetailQuery = useRenderTaskDetail(activeTaskId)
   const startRenderMutation = useStartRender()
   const startReconstructMutation = useStartReconstruct()
@@ -242,18 +222,6 @@ export function RenderWorkbench() {
     stopRenderMutation.error ??
     convertMutation.error
 
-  const summaryChips = useMemo(
-    () => [
-      `模型: ${MODEL_LABELS[sourceModel]}`,
-      `Mitsuba 输入: ${INPUT_TYPE_LABELS[sourceModel]}`,
-      `候选: ${availableFiles.length}`,
-      `已选: ${selectedCount}`,
-      `输出目录: ${outputGalleryQuery.data?.resolved_path ?? '-'}`,
-      `输出: ${outputGalleryQuery.data?.total ?? 0}`,
-      `重建说明: ${RECONSTRUCT_NOTES[sourceModel]}`,
-    ],
-    [availableFiles.length, outputGalleryQuery.data?.resolved_path, outputGalleryQuery.data?.total, selectedCount, sourceModel],
-  )
 
 
 
@@ -280,8 +248,8 @@ export function RenderWorkbench() {
     const response = await startReconstructMutation.mutateAsync({
       model_key: (sourceModel === 'neural' ? 'neural' : sourceModel) as RenderReconstructModel,
       checkpoint_path: selectedRun?.checkpoint_path ?? '',
-      merl_dir: materialsQuery.data?.resolved_path ?? 'data/inputs/binary',
-      output_dir: sourceModel === 'neural' ? 'data/inputs/npy' : 'data/inputs/fullbin',
+      merl_dir: materialsQuery.data?.resolved_path ?? '',
+      output_dir: '',
       selected_materials: selectedFiles,
       conda_env: sourceModel === 'hyperbrdf' ? 'hyperbrdf' : 'nbrdf-train',
       dataset: 'MERL',
@@ -325,19 +293,18 @@ export function RenderWorkbench() {
 
   return (
     <section className="workspace-canvas">
-      <div className="detail-pill-grid">
-        {summaryChips.map((chip) => (
-          <Badge key={chip} variant="detail">
-            {chip}
-          </Badge>
-        ))}
-      </div>
-
       <div className="render-layout">
         <div className="resizable-container render-resizable-container" ref={resizableContainerRef}>
           <section className="render-section render-resizable-pane render-resizable-pane--left" style={{ width: leftPaneWidth }}>
-            <div className="detail-board__lead">
-              <h3>工作流面板</h3>
+            <div className="render-form-grid" style={{ marginBottom: 16 }}>
+              <div className="detail-board__lead" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <span className="eyebrow">当前状态</span>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 12px', fontSize: '0.82rem', color: 'var(--text-muted)' }}>
+                  <span>就绪: <strong style={{ color: 'var(--text-strong)' }}>{availableFiles.length}</strong></span>
+                  <span>已选: <strong style={{ color: 'var(--text-strong)' }}>{selectedCount}</strong></span>
+                  <span>输出: <strong style={{ color: 'var(--text-strong)' }}>{outputGalleryQuery.data?.total ?? 0}</strong></span>
+                </div>
+              </div>
             </div>
 
           <div className="render-form-grid">
@@ -431,20 +398,8 @@ export function RenderWorkbench() {
             </Field>
           </div>
 
-          <div className="detail-board__lead" style={{ marginTop: 16 }}>
-            <h3>输出预览管理</h3>
-          </div>
-
-          <div className="render-form-grid">
-            <Field label="输出目录">
-              <input
-                type="text"
-                value={outputDirectory}
-                onChange={(event) => setOutputDirectory(event.target.value)}
-                placeholder={outputGalleryQuery.data?.resolved_path ?? '留空使用默认输出目录'}
-              />
-            </Field>
-
+          <div className="render-form-grid" style={{ marginTop: 24, borderTop: '1px solid var(--border)', paddingTop: 20 }}>
+            <span className="eyebrow" style={{ marginBottom: 4 }}>输出图片过滤与管理</span>
             <Field label="输出搜索">
               <input
                 type="text"
@@ -468,11 +423,19 @@ export function RenderWorkbench() {
                   setSelectedOutputPaths(selectedPaths)
                 }}
                 error={outputGalleryQuery.error as Error | null}
-                emptyMessage="当前输出目录下没有图片"
+                emptyMessage="当前默认输出目录下没有图片，请检查设置页中的输出路径。"
                 searchPlaceholder="搜索待删除图片"
               />
             </Field>
           </div>
+
+          {deleteImageMutation.data ? (
+            <p className="muted" style={{ marginBottom: 16 }}>
+              已删除 {deleteImageMutation.data.deleted.length} 个文件
+              {deleteImageMutation.data.missing.length > 0 ? `，未找到 ${deleteImageMutation.data.missing.length} 个文件` : ''}
+            </p>
+          ) : null}
+          {deleteImageMutation.error instanceof Error ? <FeedbackPanel title="输出删除失败" message={deleteImageMutation.error.message} tone="error" compact /> : null}
 
           <div className="render-actions">
             {isReconstructMode ? (
@@ -493,17 +456,9 @@ export function RenderWorkbench() {
               </Button>
             ) : null}
             <Button type="button" variant="danger" onClick={deleteOutputs} disabled={selectedOutputPaths.length === 0 || deleteImageMutation.isPending}>
-              删除选中输出
+              删除选中
             </Button>
           </div>
-
-          {deleteImageMutation.data ? (
-            <p className="muted">
-              已删除 {deleteImageMutation.data.deleted.length} 个文件
-              {deleteImageMutation.data.missing.length > 0 ? `，未找到 ${deleteImageMutation.data.missing.length} 个文件` : ''}
-            </p>
-          ) : null}
-          {deleteImageMutation.error instanceof Error ? <FeedbackPanel title="输出删除失败" message={deleteImageMutation.error.message} tone="error" compact /> : null}
           </section>
 
           <div

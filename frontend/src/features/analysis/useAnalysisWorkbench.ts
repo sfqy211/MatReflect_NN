@@ -19,7 +19,7 @@ export function useAnalysisImages(imageSet: AnalysisImageSet, search: string, di
     queryKey: ['analysis-images', imageSet, search, directory],
     queryFn: () =>
       apiGet<AnalysisImagesResponse>(
-        `/analysis/images?image_set=${imageSet}&page=1&page_size=48&search=${encodeURIComponent(search)}&directory=${encodeURIComponent(directory)}`,
+        `/analysis/images?image_set=${imageSet}&page=1&page_size=200&search=${encodeURIComponent(search)}&directory=${encodeURIComponent(directory)}`,
       ),
   })
 }
