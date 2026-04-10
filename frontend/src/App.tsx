@@ -12,7 +12,7 @@ import type { ModuleKey } from "./types/api";
 type ThemeMode = "dark" | "light";
 
 export type AnalysisSubView = 'preview' | 'evaluate' | 'compare' | 'grid' | 'compare-grid'
-export type ModelsSubView = string // model key or '__create__'
+export type ModelsSubView = string
 
 export function App() {
   const [activeModule, setActiveModule] = useState<ModuleKey>("render");

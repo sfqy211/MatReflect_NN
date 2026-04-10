@@ -9,9 +9,6 @@ from backend.models.train import (
     NeuralH5ConvertRequest,
     NeuralKerasTrainRequest,
     NeuralPytorchTrainRequest,
-    TrainModelCreateRequest,
-    TrainModelDeleteResponse,
-    TrainModelMutationResponse,
     TrainModelsResponse,
     TrainRunsResponse,
     TrainTaskDetailResponse,
@@ -27,26 +24,6 @@ router = APIRouter(tags=["train"])
 @router.get("/train/models", response_model=TrainModelsResponse)
 def train_models() -> TrainModelsResponse:
     return train_service.list_models()
-
-
-@router.post("/train/models", response_model=TrainModelMutationResponse)
-def create_train_model(request: TrainModelCreateRequest) -> TrainModelMutationResponse:
-    try:
-        item = train_service.create_model(request)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return TrainModelMutationResponse(item=item)
-
-
-@router.delete("/train/models/{model_key}", response_model=TrainModelDeleteResponse)
-def delete_train_model(model_key: str) -> TrainModelDeleteResponse:
-    try:
-        train_service.delete_model(model_key)
-    except KeyError as exc:
-        raise HTTPException(status_code=404, detail=f"Unknown model_key: {model_key}") from exc
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return TrainModelDeleteResponse(deleted_key=model_key)
 
 
 @router.get("/train/runs", response_model=TrainRunsResponse)

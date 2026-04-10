@@ -34,6 +34,11 @@ scripts\start_v2_desktop.ps1
 scripts\build_v2_desktop.ps1
 ```
 
+补充说明：
+
+- 开发模式会分别启动后端和前端两个窗口。
+- 桌面模式会复用现有 `frontend/dist`，并在本地窗口中嵌入当前 V2 前端。
+
 ## 环境准备
 
 推荐使用 Conda，多环境如下。
@@ -88,7 +93,7 @@ pip install matplotlib==3.3.4 numpy==1.21.6 pandas==1.2.2 scikit_learn==1.1.3 Py
 ### 网络模型管理
 
 - 内置 Neural-BRDF / HyperBRDF 模型注册项
-- 支持自定义模型注册与删除
+- 新模型需通过修改代码接入，不再提供 UI 动态注册
 - 支持训练任务、参数提取、`pt -> fullbin`
 - 支持独立 `H5 -> NPY` 转换
 - 支持运行记录扫描
@@ -98,7 +103,8 @@ pip install matplotlib==3.3.4 numpy==1.21.6 pandas==1.2.2 scikit_learn==1.1.3 Py
 - 支持 `.binary`、`.fullbin`、`.npy` 三类输入
 - 支持 Mitsuba XML 场景切换
 - 支持 EXR -> PNG 自动转换
-- 支持重建后直接渲染
+- 前端当前提供“仅渲染 / 仅重建”两种工作模式
+- 后端保留“重建后继续渲染”的串联能力，但前端当前未直接开放该按钮
 
 ### 材质表达结果分析
 
@@ -113,7 +119,11 @@ pip install matplotlib==3.3.4 numpy==1.21.6 pandas==1.2.2 scikit_learn==1.1.3 Py
 
 - 深浅主题切换
 - 系统摘要
+- Mitsuba 路径管理
+- 依赖路径管理
+- 虚拟环境管理
 - Mitsuba 编译辅助入口
+- 设置持久化与状态检查
 
 ## 目录结构
 
@@ -121,6 +131,7 @@ pip install matplotlib==3.3.4 numpy==1.21.6 pandas==1.2.2 scikit_learn==1.1.3 Py
 MatReflect_NN/
 ├── frontend/                    # V2 React 前端
 ├── backend/                     # V2 FastAPI 后端
+├── backend/runtime/             # 运行时任务、日志、临时 XML、系统设置
 ├── scripts/                     # 启动脚本、桌面封装脚本等
 ├── desktop/                     # 桌面封装说明
 ├── data/                        # 输入数据与输出结果
@@ -153,4 +164,10 @@ MatReflect_NN/
 
 ### 如果 Mitsuba 没有被检测到怎么办？
 
-先打开 V2 的设置页，检查系统摘要和路径状态。默认检测位置为项目目录下的 `mitsuba/dist/mitsuba.exe`。
+先打开 V2 的设置页，检查系统摘要、路径状态、依赖路径和虚拟环境状态。默认检测位置为项目目录下的 `mitsuba/dist/mitsuba.exe`。
+
+### 新模型是通过页面添加吗？
+
+不是。
+
+当前版本已经移除“自建模型动态注册”功能。新增模型的标准方式是开发者直接修改代码接入，详见 [MODEL_PLUGIN_DEVELOPMENT_SPEC.md](/d:/AHEU/GP/MatReflect_NN/MODEL_PLUGIN_DEVELOPMENT_SPEC.md)。

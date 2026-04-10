@@ -30,29 +30,6 @@ class TrainModelItem(BaseModel):
     adapter_options: dict[str, Any] = Field(default_factory=dict)
 
 
-class TrainModelCreateRequest(BaseModel):
-    key: str = Field(min_length=2, max_length=64)
-    label: str = Field(min_length=1, max_length=128)
-    category: TrainModelCategory
-    adapter: TrainModelAdapter
-    description: str = ""
-    supports_training: bool = True
-    supports_extract: bool = False
-    supports_decode: bool = False
-    supports_runs: bool = False
-    default_paths: dict[str, str] = Field(default_factory=dict)
-    runtime: dict[str, str] = Field(default_factory=dict)
-    adapter_options: dict[str, Any] = Field(default_factory=dict)
-
-
-class TrainModelMutationResponse(BaseModel):
-    item: TrainModelItem
-
-
-class TrainModelDeleteResponse(BaseModel):
-    deleted_key: str
-
-
 class TrainModelsResponse(BaseModel):
     items: list[TrainModelItem] = Field(default_factory=list)
 

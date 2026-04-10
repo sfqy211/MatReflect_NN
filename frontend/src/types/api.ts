@@ -311,29 +311,6 @@ export type TrainModelsResponse = {
   items: TrainModelItem[]
 }
 
-export type TrainModelCreateRequest = {
-  key: string
-  label: string
-  category: TrainModelCategory
-  adapter: TrainModelAdapter
-  description: string
-  supports_training: boolean
-  supports_extract: boolean
-  supports_decode: boolean
-  supports_runs: boolean
-  default_paths: Record<string, string>
-  runtime: Record<string, string>
-  adapter_options: Record<string, unknown>
-}
-
-export type TrainModelMutationResponse = {
-  item: TrainModelItem
-}
-
-export type TrainModelDeleteResponse = {
-  deleted_key: string
-}
-
 export type TrainRunSummary = {
   model_key: string
   label: string

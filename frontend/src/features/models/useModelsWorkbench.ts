@@ -1,6 +1,6 @@
 import { useMutation, useQuery } from '@tanstack/react-query'
 
-import { apiDelete, apiGet, apiPost } from '../../lib/api'
+import { apiGet, apiPost } from '../../lib/api'
 import type {
   FileListResponse,
   HyperDecodeRequest,
@@ -11,9 +11,6 @@ import type {
   NeuralPytorchTrainRequest,
   TaskDetailResponse,
   TaskStartResponse,
-  TrainModelCreateRequest,
-  TrainModelDeleteResponse,
-  TrainModelMutationResponse,
   TrainModelsResponse,
   TrainRunsResponse,
 } from '../../types/api'
@@ -78,22 +75,6 @@ export function useWorkspaceFiles(directory: string, suffix: string[], search: s
         search,
       }),
     enabled: enabled && Boolean(directory.trim()),
-  })
-}
-
-
-export function useCreateTrainModel() {
-  return useMutation({
-    mutationFn: (payload: TrainModelCreateRequest) =>
-      apiPost<TrainModelMutationResponse>('/train/models', payload),
-  })
-}
-
-
-export function useDeleteTrainModel() {
-  return useMutation({
-    mutationFn: (modelKey: string) =>
-      apiDelete<TrainModelDeleteResponse>(`/train/models/${encodeURIComponent(modelKey)}`),
   })
 }
 

@@ -20,7 +20,6 @@ from backend.models.train import (
     NeuralH5ConvertRequest,
     NeuralKerasTrainRequest,
     NeuralPytorchTrainRequest,
-    TrainModelCreateRequest,
     TrainModelItem,
     TrainModelsResponse,
     TrainRunSummary,
@@ -59,12 +58,6 @@ class TrainService:
 
     def list_models(self) -> TrainModelsResponse:
         return TrainModelsResponse(items=model_registry_service.list_models())
-
-    def create_model(self, request: TrainModelCreateRequest) -> TrainModelItem:
-        return model_registry_service.create_model(request)
-
-    def delete_model(self, model_key: str) -> None:
-        model_registry_service.delete_model(model_key)
 
     def list_runs(self, model_key: Optional[str] = None) -> TrainRunsResponse:
         if model_key:

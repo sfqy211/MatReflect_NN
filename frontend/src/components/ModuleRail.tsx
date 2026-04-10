@@ -167,37 +167,6 @@ export function ModuleRail({ activeModule, onChange, activeAnalysisSubView, onAn
                     {m.label}
                   </button>
                 ))}
-                <button
-                  type="button"
-                  onClick={() => onModelsSubViewChange('__create__')}
-                  style={{
-                    textAlign: 'left',
-                    padding: '8px 12px',
-                    background: '__create__' === activeModelsSubView ? 'color-mix(in oklab, var(--surface-strong) 100%, transparent)' : 'transparent',
-                    color: '__create__' === activeModelsSubView ? 'var(--accent)' : 'var(--text-muted)',
-                    border: '1px dashed',
-                    borderColor: '__create__' === activeModelsSubView ? 'var(--accent)' : 'var(--border)',
-                    borderRadius: '4px',
-                    fontSize: '0.9rem',
-                    transition: 'all 0.2s ease',
-                    cursor: 'pointer',
-                    marginTop: '4px',
-                  }}
-                  onMouseEnter={(e) => {
-                    if ('__create__' !== activeModelsSubView) {
-                      e.currentTarget.style.color = 'var(--text-strong)'
-                      e.currentTarget.style.background = 'color-mix(in oklab, var(--surface-soft) 40%, transparent)'
-                    }
-                  }}
-                  onMouseLeave={(e) => {
-                    if ('__create__' !== activeModelsSubView) {
-                      e.currentTarget.style.color = 'var(--text-muted)'
-                      e.currentTarget.style.background = 'transparent'
-                    }
-                  }}
-                >
-                  + 自建模型
-                </button>
               </div>
             )}
           </div>

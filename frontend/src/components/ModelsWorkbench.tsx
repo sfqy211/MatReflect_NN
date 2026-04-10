@@ -3,8 +3,6 @@ import { useEffect, useMemo, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 
 import {
-  useCreateTrainModel,
-  useDeleteTrainModel,
   useMaterialsDirectory,
   useStartHyperDecode,
   useStartHyperExtract,
@@ -22,8 +20,6 @@ import { BACKEND_ORIGIN } from '../lib/api'
 import type {
   NeuralTrainEngine,
   TaskEvent,
-  TrainModelAdapter,
-  TrainModelCreateRequest,
   TrainModelItem,
   TrainRunSummary,
 } from '../types/api'
@@ -73,52 +69,13 @@ function getRuntimeValue(model: TrainModelItem | null, field: string, fallback =
   return model?.runtime[field] ?? fallback
 }
 
-function buildDraft(adapter: TrainModelAdapter): TrainModelCreateRequest {
-  const category = adapter === 'hyper-family' ? 'hyper' : 'neural'
-  return {
-    key: '',
-    label: '',
-    category,
-    adapter,
-    description: '',
-    supports_training: true,
-    supports_extract: adapter === 'hyper-family',
-    supports_decode: adapter === 'hyper-family',
-    supports_runs: adapter === 'hyper-family',
-    default_paths:
-      adapter === 'neural-pytorch'
-        ? { materials_dir: 'data/inputs/binary', output_dir: 'data/inputs/npy' }
-        : adapter === 'neural-keras'
-          ? {
-              materials_dir: 'data/inputs/binary',
-              h5_output_dir: 'Neural-BRDF/data/merl_nbrdf',
-              npy_output_dir: 'data/inputs/npy',
-            }
-          : {
-              materials_dir: 'data/inputs/binary',
-              results_dir: '',
-              extract_dir: '',
-              checkpoint: '',
-            },
-    runtime:
-      adapter === 'neural-pytorch'
-        ? { conda_env: '', working_dir: '', train_script: '' }
-        : adapter === 'neural-keras'
-          ? { conda_env: '', working_dir: '', train_script: '', convert_script: '' }
-          : { conda_env: '', working_dir: '', train_script: '', extract_script: '', decode_script: '' },
-    adapter_options: {},
-  }
-}
-
 import type { ModelsSubView } from '../App'
 
 export function ModelsWorkbench({ activeSubView, onSubViewChange }: { activeSubView: ModelsSubView; onSubViewChange: (view: ModelsSubView) => void }) {
   const queryClient = useQueryClient()
 
-  const activeModelKey = activeSubView === '__create__' ? '' : activeSubView
-  const showCreateForm = activeSubView === '__create__'
+  const activeModelKey = activeSubView
 
-  const [draft, setDraft] = useState<TrainModelCreateRequest>(() => buildDraft('hyper-family'))
   const [selectedMaterials, setSelectedMaterials] = useState<string[]>([])
   const [selectedH5Files, setSelectedH5Files] = useState<string[]>([])
   const [selectedPts, setSelectedPts] = useState<string[]>([])
@@ -161,8 +118,6 @@ export function ModelsWorkbench({ activeSubView, onSubViewChange }: { activeSubV
   const ptFilesQuery = useWorkspaceFiles(ptDir, ['.pt'], '', Boolean(activeModel?.supports_decode))
   const taskDetailQuery = useTrainTaskDetail(activeTaskId)
 
-  const createTrainModel = useCreateTrainModel()
-  const deleteTrainModel = useDeleteTrainModel()
   const startNeuralPytorch = useStartNeuralPytorch()
   const startNeuralKeras = useStartNeuralKeras()
   const startNeuralH5Convert = useStartNeuralH5Convert()
@@ -250,22 +205,19 @@ export function ModelsWorkbench({ activeSubView, onSubViewChange }: { activeSubV
       `当前模型: ${activeModel?.label ?? '-'}`,
       `适配器: ${activeModel?.adapter ?? '-'}`,
       `分类: ${activeModel?.category ?? '-'}`,
-      `类型: ${activeModel?.built_in ? '内建' : '自定义'}`,
       `固定材质库: ${materialItems.length}`,
       `已选材质: ${selectedMaterials.length}`,
       `H5 文件: ${h5Items.length}`,
       `运行记录: ${runs.length}`,
       `PT 文件: ${ptItems.length}`,
     ],
-    [activeModel?.adapter, activeModel?.label, activeModel?.category, activeModel?.built_in, h5Items.length, materialItems.length, ptItems.length, runs.length, selectedMaterials.length],
+    [activeModel?.adapter, activeModel?.label, activeModel?.category, h5Items.length, materialItems.length, ptItems.length, runs.length, selectedMaterials.length],
   )
 
   const logs = liveLogs.length > 0 ? liveLogs : taskDetail?.logs ?? []
   const currentStatus = taskRecord?.status ?? 'idle'
   const progressValue = taskRecord?.progress ?? 0
   const taskError =
-    createTrainModel.error ??
-    deleteTrainModel.error ??
     startNeuralPytorch.error ??
     startNeuralKeras.error ??
     startNeuralH5Convert.error ??
@@ -286,44 +238,6 @@ export function ModelsWorkbench({ activeSubView, onSubViewChange }: { activeSubV
     onSubViewChange(run.model_key)
     setCheckpointPath(run.checkpoint_path)
     setDataset(run.dataset === 'EPFL' ? 'EPFL' : 'MERL')
-  }
-
-  const updateDraft = (updater: (current: TrainModelCreateRequest) => TrainModelCreateRequest) => {
-    setDraft((current) => updater(current))
-  }
-
-  const changeDraftAdapter = (adapter: TrainModelAdapter) => {
-    setDraft((current) => {
-      const next = buildDraft(adapter)
-      return {
-        ...next,
-        key: current.key,
-        label: current.label,
-        description: current.description,
-      }
-    })
-  }
-
-  const submitCreateModel = async () => {
-    const response = await createTrainModel.mutateAsync(draft)
-    await queryClient.invalidateQueries({ queryKey: ['train-models'] })
-    onSubViewChange(response.item.key)
-    setDraft(buildDraft(draft.adapter))
-  }
-
-  const removeModel = async (model: TrainModelItem) => {
-    if (model.built_in) {
-      return
-    }
-    if (!window.confirm(`确认删除模型 ${model.label} (${model.key}) 吗？`)) {
-      return
-    }
-    await deleteTrainModel.mutateAsync(model.key)
-    await queryClient.invalidateQueries({ queryKey: ['train-models'] })
-    if (activeModelKey === model.key) {
-      const fallback = modelQuery.data?.items.find((item) => item.key !== model.key)?.key ?? ''
-      onSubViewChange(fallback)
-    }
   }
 
   const startTraining = async () => {
@@ -433,24 +347,14 @@ export function ModelsWorkbench({ activeSubView, onSubViewChange }: { activeSubV
 
   return (
     <section className="workspace-canvas">
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '24px' }}>
-        <div className="detail-pill-grid" style={{ marginBottom: 0, flex: 1 }}>
+      <div style={{ marginBottom: '24px' }}>
+        <div className="detail-pill-grid" style={{ marginBottom: 0 }}>
           {summaryChips.map((chip) => (
             <Badge key={chip} variant="detail">
               {chip}
             </Badge>
           ))}
         </div>
-        {activeModel && !activeModel.built_in ? (
-          <Button
-            type="button"
-            variant="danger"
-            onClick={() => void removeModel(activeModel)}
-            style={{ marginLeft: '16px', flexShrink: 0 }}
-          >
-            删除当前模型
-          </Button>
-        ) : null}
       </div>
 
       <div className="models-layout">
@@ -521,215 +425,6 @@ export function ModelsWorkbench({ activeSubView, onSubViewChange }: { activeSubV
             </Field>
           </div>
         </section>
-
-        {showCreateForm ? (
-          <section className="models-section models-section--wide">
-            <div className="detail-board__lead">
-              <h3>添加自建模型</h3>
-              <p>基于现有适配器结构配置你的模型运行参数。</p>
-            </div>
-            <div className="render-form-grid">
-              <Field label="模型 key">
-              <input value={draft.key} onChange={(event) => updateDraft((current) => ({ ...current, key: event.target.value }))} />
-            </Field>
-              <Field label="显示名称">
-              <input value={draft.label} onChange={(event) => updateDraft((current) => ({ ...current, label: event.target.value }))} />
-            </Field>
-              <Field label="适配器">
-              <select value={draft.adapter} onChange={(event) => changeDraftAdapter(event.target.value as TrainModelAdapter)}>
-                  <option value="hyper-family">hyper-family</option>
-                  <option value="neural-pytorch">neural-pytorch</option>
-                  <option value="neural-keras">neural-keras</option>
-                </select>
-            </Field>
-              <Field label="说明">
-              <input value={draft.description} onChange={(event) => updateDraft((current) => ({ ...current, description: event.target.value }))} />
-            </Field>
-            </div>
-
-            <div className="render-form-grid">
-              <Field label="Conda 环境">
-              <input
-                  value={draft.runtime.conda_env ?? ''}
-                  onChange={(event) =>
-                    updateDraft((current) => ({
-                      ...current,
-                      runtime: { ...current.runtime, conda_env: event.target.value },
-                    }))
-                  }
-                />
-            </Field>
-              <Field label="工作目录">
-              <input
-                  value={draft.runtime.working_dir ?? ''}
-                  onChange={(event) =>
-                    updateDraft((current) => ({
-                      ...current,
-                      runtime: { ...current.runtime, working_dir: event.target.value },
-                    }))
-                  }
-                />
-            </Field>
-              <Field label="训练脚本">
-              <input
-                  value={draft.runtime.train_script ?? ''}
-                  onChange={(event) =>
-                    updateDraft((current) => ({
-                      ...current,
-                      runtime: { ...current.runtime, train_script: event.target.value },
-                    }))
-                  }
-                />
-            </Field>
-              {draft.adapter === 'neural-keras' ? (
-                <Field label="转换脚本">
-              <input
-                    value={draft.runtime.convert_script ?? ''}
-                    onChange={(event) =>
-                      updateDraft((current) => ({
-                        ...current,
-                        runtime: { ...current.runtime, convert_script: event.target.value },
-                      }))
-                    }
-                  />
-            </Field>
-              ) : null}
-              {draft.adapter === 'hyper-family' ? (
-                <>
-                  <Field label="提取脚本">
-              <input
-                      value={draft.runtime.extract_script ?? ''}
-                      onChange={(event) =>
-                        updateDraft((current) => ({
-                          ...current,
-                          runtime: { ...current.runtime, extract_script: event.target.value },
-                        }))
-                      }
-                    />
-            </Field>
-                  <Field label="解码脚本">
-              <input
-                      value={draft.runtime.decode_script ?? ''}
-                      onChange={(event) =>
-                        updateDraft((current) => ({
-                          ...current,
-                          runtime: { ...current.runtime, decode_script: event.target.value },
-                        }))
-                      }
-                    />
-            </Field>
-                </>
-              ) : null}
-            </div>
-
-            <div className="render-form-grid">
-              <Field label="材质目录">
-              <input
-                  value={draft.default_paths.materials_dir ?? ''}
-                  onChange={(event) =>
-                    updateDraft((current) => ({
-                      ...current,
-                      default_paths: { ...current.default_paths, materials_dir: event.target.value },
-                    }))
-                  }
-                />
-            </Field>
-              {draft.adapter === 'neural-pytorch' ? (
-                <Field label="输出目录">
-              <input
-                    value={draft.default_paths.output_dir ?? ''}
-                    onChange={(event) =>
-                      updateDraft((current) => ({
-                        ...current,
-                        default_paths: { ...current.default_paths, output_dir: event.target.value },
-                      }))
-                    }
-                  />
-            </Field>
-              ) : null}
-              {draft.adapter === 'neural-keras' ? (
-                <>
-                  <Field label="H5 输出目录">
-              <input
-                      value={draft.default_paths.h5_output_dir ?? ''}
-                      onChange={(event) =>
-                        updateDraft((current) => ({
-                          ...current,
-                          default_paths: { ...current.default_paths, h5_output_dir: event.target.value },
-                        }))
-                      }
-                    />
-            </Field>
-                  <Field label="NPY 输出目录">
-              <input
-                      value={draft.default_paths.npy_output_dir ?? ''}
-                      onChange={(event) =>
-                        updateDraft((current) => ({
-                          ...current,
-                          default_paths: { ...current.default_paths, npy_output_dir: event.target.value },
-                        }))
-                      }
-                    />
-            </Field>
-                </>
-              ) : null}
-              {draft.adapter === 'hyper-family' ? (
-                <>
-                  <Field label="结果目录">
-              <input
-                      value={draft.default_paths.results_dir ?? ''}
-                      onChange={(event) =>
-                        updateDraft((current) => ({
-                          ...current,
-                          default_paths: { ...current.default_paths, results_dir: event.target.value },
-                        }))
-                      }
-                    />
-            </Field>
-                  <Field label="PT 目录">
-              <input
-                      value={draft.default_paths.extract_dir ?? ''}
-                      onChange={(event) =>
-                        updateDraft((current) => ({
-                          ...current,
-                          default_paths: { ...current.default_paths, extract_dir: event.target.value },
-                        }))
-                      }
-                    />
-            </Field>
-                  <Field label="默认 Checkpoint">
-              <input
-                      value={draft.default_paths.checkpoint ?? ''}
-                      onChange={(event) =>
-                        updateDraft((current) => ({
-                          ...current,
-                          default_paths: { ...current.default_paths, checkpoint: event.target.value },
-                        }))
-                      }
-                    />
-            </Field>
-                </>
-              ) : null}
-            </div>
-
-            {draft.adapter === 'hyper-family' ? (
-              <div className="render-toggle-row" style={{ marginTop: '8px' }}>
-                <CheckboxField label="支持参数提取" checked={draft.supports_extract} onChange={(event) => updateDraft((current) => ({ ...current, supports_extract: event.target.checked }))} />
-                <CheckboxField label="支持 fullbin 解码" checked={draft.supports_decode} onChange={(event) => updateDraft((current) => ({ ...current, supports_decode: event.target.checked }))} />
-                <CheckboxField label="支持运行记录扫描" checked={draft.supports_runs} onChange={(event) => updateDraft((current) => ({ ...current, supports_runs: event.target.checked }))} />
-              </div>
-            ) : null}
-
-            <div className="render-actions">
-              <Button type="button" variant="primary" onClick={() => void submitCreateModel()}>
-                保存模型
-              </Button>
-              <Button type="button"  onClick={() => setDraft(buildDraft(draft.adapter))}>
-                重置表单
-              </Button>
-            </div>
-          </section>
-        ) : null}
 
         <section className="models-section">
           <div className="detail-board__lead">
