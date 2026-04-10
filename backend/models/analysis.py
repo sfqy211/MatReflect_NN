@@ -1,4 +1,4 @@
-from typing import Literal
+from typing import Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -16,7 +16,7 @@ class AnalysisImagesResponse(BaseModel):
 
 
 class AnalysisSource(BaseModel):
-    image_set: AnalysisImageSet | None = None
+    image_set: Optional[AnalysisImageSet] = None
     directory: str = ""
     label: str = ""
 
@@ -63,7 +63,7 @@ class GridRequest(BaseModel):
 
 
 class ComparisonColumn(BaseModel):
-    image_set: AnalysisImageSet | None = None
+    image_set: Optional[AnalysisImageSet] = None
     directory: str = ""
     label: str
 

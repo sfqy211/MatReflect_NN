@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from pathlib import Path
+from typing import Optional
 
 from backend.core.config import MEDIA_OUTPUTS_PREFIX, OUTPUTS_ROOT, PROJECT_ROOT
 from backend.core.paths import resolve_safe_path
@@ -13,7 +14,7 @@ from backend.models.common import (
 )
 
 
-def build_preview_url(path: Path) -> str | None:
+def build_preview_url(path: Path) -> Optional[str]:
     try:
         relative = path.resolve().relative_to(OUTPUTS_ROOT.resolve())
     except ValueError:

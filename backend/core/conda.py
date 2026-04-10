@@ -4,12 +4,13 @@ import os
 import shutil
 import sys
 from pathlib import Path
+from typing import Optional
 
 
-def find_conda_command() -> str | None:
+def find_conda_command() -> Optional[str]:
     candidates: list[str] = []
 
-    def append_candidate(value: str | None) -> None:
+    def append_candidate(value: Optional[str]) -> None:
         if not value:
             return
         text = value.strip()
@@ -32,7 +33,7 @@ def find_conda_command() -> str | None:
     return None
 
 
-def build_python_runner(conda_env: str | None = None) -> tuple[list[str], bool]:
+def build_python_runner(conda_env: Optional[str] = None) -> tuple[list[str], bool]:
     conda_cmd = find_conda_command()
     if conda_cmd and conda_env:
         use_shell = conda_cmd.lower().endswith((".bat", ".cmd"))

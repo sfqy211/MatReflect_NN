@@ -4,6 +4,7 @@ import asyncio
 import json
 from datetime import datetime
 from pathlib import Path
+from typing import Optional
 from uuid import uuid4
 
 from backend.core.config import TASKS_ROOT
@@ -29,10 +30,10 @@ class TaskManager:
             except Exception:
                 continue
 
-    def get(self, task_id: str) -> TaskRecord | None:
+    def get(self, task_id: str) -> Optional[TaskRecord]:
         return self._tasks.get(task_id)
 
-    def create(self, task_type: str, message: str = "", log_path: str | None = None) -> TaskRecord:
+    def create(self, task_type: str, message: str = "", log_path: Optional[str] = None) -> TaskRecord:
         task_id = f"{task_type}_{uuid4().hex[:8]}"
         record = TaskRecord(
             task_id=task_id,
@@ -73,13 +74,13 @@ class TaskManager:
         self,
         task_id: str,
         *,
-        status: str | None = None,
-        progress: int | None = None,
-        message: str | None = None,
-        log_path: str | None = None,
-        result_payload: dict | None = None,
+        status: Optional[str] = None,
+        progress: Optional[int] = None,
+        message: Optional[str] = None,
+        log_path: Optional[str] = None,
+        result_payload: Optional[dict] = None,
         event: str = "log",
-    ) -> TaskRecord | None:
+    ) -> Optional[TaskRecord]:
         record = self._tasks.get(task_id)
         if not record:
             return None

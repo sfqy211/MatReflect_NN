@@ -8,6 +8,7 @@ import shutil
 import subprocess
 from datetime import datetime
 from pathlib import Path
+from typing import Optional, Union
 
 from backend.core.config import LOGS_ROOT, PROJECT_ROOT
 from backend.core.paths import SAFE_PATHS, get_mitsuba_paths
@@ -19,7 +20,7 @@ from backend.services.task_manager import task_manager
 DEFAULT_VCVARSALL_PATH = r"C:\Program Files (x86)\Microsoft Visual Studio\2017\Professional\VC\Auxiliary\Build\vcvarsall.bat"
 
 
-def decode_subprocess_output(raw: bytes | str | None) -> str:
+def decode_subprocess_output(raw: Optional[Union[bytes, str]]) -> str:
     if raw is None:
         return ""
     if isinstance(raw, str):
@@ -37,7 +38,7 @@ def decode_subprocess_output(raw: bytes | str | None) -> str:
     return raw.decode("utf-8", errors="replace")
 
 
-def build_serial_compile_command(compile_cmd: str) -> str | None:
+def build_serial_compile_command(compile_cmd: str) -> Optional[str]:
     if not compile_cmd or "scons" not in compile_cmd.lower():
         return None
     serial_cmd = re.sub(r"(?i)(^|\s)-j\s*\d+", r"\1-j1", compile_cmd)
@@ -96,7 +97,7 @@ class SystemService:
             compile_defaults=self.get_compile_defaults(),
         )
 
-    def get_task_detail(self, task_id: str, limit: int = 240) -> TaskDetailResponse | None:
+    def get_task_detail(self, task_id: str, limit: int = 240) -> Optional[TaskDetailResponse]:
         record = task_manager.get(task_id)
         if record is None:
             return None
@@ -132,10 +133,10 @@ class SystemService:
         log_path: Path,
         message: str,
         *,
-        status: str | None = None,
-        progress: int | None = None,
+        status: Optional[str] = None,
+        progress: Optional[int] = None,
         event: str = "log",
-        result_payload: dict | None = None,
+        result_payload: Optional[dict] = None,
     ) -> None:
         clean_message = message.replace("\r", "").replace("\b", "")
         with log_path.open("a", encoding="utf-8") as handle:

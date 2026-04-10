@@ -7,7 +7,7 @@ import shutil
 import subprocess
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional, Dict, Union
 
 from backend.core.conda import build_python_runner
 from backend.core.config import LOGS_ROOT, PROJECT_ROOT
@@ -29,7 +29,7 @@ from backend.services.model_registry import model_registry_service
 from backend.services.task_manager import task_manager
 
 
-def decode_subprocess_output(raw: bytes | str | None) -> str:
+def decode_subprocess_output(raw: Optional[Union[bytes, str]]) -> str:
     if raw is None:
         return ""
     if isinstance(raw, str):
@@ -65,7 +65,7 @@ class TrainService:
     def delete_model(self, model_key: str) -> None:
         model_registry_service.delete_model(model_key)
 
-    def list_runs(self, model_key: str | None = None) -> TrainRunsResponse:
+    def list_runs(self, model_key: Optional[str] = None) -> TrainRunsResponse:
         if model_key:
             model = self._get_model(model_key)
             if model.adapter != "hyper-family" or not model.supports_runs:
@@ -109,7 +109,7 @@ class TrainService:
         items.sort(key=lambda item: item.updated_at, reverse=True)
         return TrainRunsResponse(total=len(items), items=items)
 
-    def get_task_detail(self, task_id: str, limit: int = 200) -> TaskDetailResponse | None:
+    def get_task_detail(self, task_id: str, limit: int = 200) -> Optional[TaskDetailResponse]:
         record = task_manager.get(task_id)
         if record is None:
             return None
@@ -222,10 +222,10 @@ class TrainService:
         log_path: Path,
         message: str,
         *,
-        status: str | None = None,
-        progress: int | None = None,
+        status: Optional[str] = None,
+        progress: Optional[int] = None,
         event: str = "log",
-        result_payload: dict[str, Any] | None = None,
+        result_payload: Optional[Dict[str, Any]] = None,
     ) -> None:
         clean_message = message.replace("\r", "").replace("\b", "")
         with log_path.open("a", encoding="utf-8") as handle:
@@ -248,10 +248,10 @@ class TrainService:
         *,
         cwd: Path,
         env: dict[str, str],
-        progress: int | None = None,
+        progress: Optional[int] = None,
         start_message: str,
         use_shell: bool = False,
-        cancel_event: asyncio.Event | None = None,
+        cancel_event: Optional[asyncio.Event] = None,
     ) -> int:
         await self._write_log(task_id, log_path, start_message, status="running", progress=progress)
         if use_shell:
@@ -311,7 +311,7 @@ class TrainService:
         env["PYTHONPATH"] = os.pathsep.join(part for part in pythonpath_parts if part)
         return env
 
-    def _python_runner(self, conda_env: str | None = None) -> tuple[list[str], bool]:
+    def _python_runner(self, conda_env: Optional[str] = None) -> tuple[list[str], bool]:
         return build_python_runner(conda_env)
 
     def _resolve_project_path(self, path_value: str, *, must_exist: bool) -> Path:

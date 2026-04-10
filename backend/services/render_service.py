@@ -9,6 +9,7 @@ import subprocess
 import xml.etree.ElementTree as ET
 from datetime import datetime
 from pathlib import Path
+from typing import Optional, Union
 
 from backend.core.conda import build_python_runner
 from backend.core.config import LOGS_ROOT, OUTPUTS_ROOT, PROJECT_ROOT, RUNTIME_ROOT
@@ -41,7 +42,7 @@ DATA_INPUTS_FULLBIN = PROJECT_ROOT / "data" / "inputs" / "fullbin"
 BINARY_TO_NBRDF_DIR = NEURAL_BRDF_DIR / "binary_to_nbrdf"
 PYTORCH_SCRIPT = BINARY_TO_NBRDF_DIR / "pytorch_code" / "train_NBRDF_pytorch.py"
 
-HB_RENDER_PROJECTS: dict[TrainProjectVariant, dict[str, Path | str]] = {
+HB_RENDER_PROJECTS: dict[TrainProjectVariant, dict[str, Union[Path, str]]] = {
     "hyperbrdf": {
         "label": "HyperBRDF",
         "dir": HYPER_BRDF_DIR,
@@ -51,7 +52,7 @@ HB_RENDER_PROJECTS: dict[TrainProjectVariant, dict[str, Path | str]] = {
 }
 
 
-def decode_subprocess_output(raw: bytes | str | None) -> str:
+def decode_subprocess_output(raw: Optional[Union[bytes, str]]) -> str:
     if raw is None:
         return ""
     if isinstance(raw, str):
@@ -78,7 +79,7 @@ def ensure_exists(path: Path, *, file_ok: bool = False) -> None:
         raise FileNotFoundError(path)
 
 
-def detect_merl_variant(file_path: Path) -> str | None:
+def detect_merl_variant(file_path: Path) -> Optional[str]:
     try:
         file_size = file_path.stat().st_size
     except OSError:
@@ -109,7 +110,7 @@ def list_scene_xmls() -> list[Path]:
     return results
 
 
-def get_default_scene_path(render_mode: RenderMode = "brdfs") -> Path | None:
+def get_default_scene_path(render_mode: RenderMode = "brdfs") -> Optional[Path]:
     preferred_candidates: list[Path] = []
     if render_mode == "fullbin":
         preferred_candidates.append(PROJECT_ROOT / "scene" / "dj_xml" / "hyperbrdf_ref.xml")
@@ -151,7 +152,7 @@ def split_rgb_base_paths(base_path: str) -> tuple[str, str, str]:
     return trimmed, trimmed, trimmed
 
 
-def is_placeholder_value(value: str | None) -> bool:
+def is_placeholder_value(value: Optional[str]) -> bool:
     return isinstance(value, str) and value.strip().startswith("$")
 
 
@@ -177,7 +178,7 @@ def ensure_hdr_film(root: ET.Element) -> None:
         film_node.set("type", "hdrfilm")
 
 
-def find_target_bsdf(root: ET.Element) -> ET.Element | None:
+def find_target_bsdf(root: ET.Element) -> Optional[ET.Element]:
     for bsdf in root.iter("bsdf"):
         if bsdf.get("id") == "Material":
             return bsdf
@@ -292,7 +293,7 @@ class RenderService:
             "npy": "render_outputs_npy_png",
         }[render_mode]
 
-    def _project_config(self, project_variant: TrainProjectVariant) -> dict[str, Path | str]:
+    def _project_config(self, project_variant: TrainProjectVariant) -> dict[str, Union[Path, str]]:
         return HB_RENDER_PROJECTS[project_variant]
 
     def _default_conda_env(self, project_variant: TrainProjectVariant) -> str:
@@ -311,7 +312,7 @@ class RenderService:
         env["PYTHONPATH"] = os.pathsep.join([str(BINARY_TO_NBRDF_DIR), str(PYTORCH_SCRIPT.parent), env.get("PYTHONPATH", "")]).rstrip(os.pathsep)
         return env
 
-    def _python_runner(self, conda_env: str | None = None) -> tuple[list[str], bool]:
+    def _python_runner(self, conda_env: Optional[str] = None) -> tuple[list[str], bool]:
         return build_python_runner(conda_env)
 
     def list_scenes(self, render_mode: RenderMode = "brdfs") -> RenderScenesResponse:
@@ -390,7 +391,7 @@ class RenderService:
                 continue
         raise FileNotFoundError(f"Unknown scene path: {requested_path}")
 
-    def _parse_progress(self, line: str, index: int, total: int) -> int | None:
+    def _parse_progress(self, line: str, index: int, total: int) -> Optional[int]:
         if "Rendering: [" not in line:
             return None
         match = re.search(r"\[(.+)\]", line)
@@ -408,10 +409,10 @@ class RenderService:
         log_path: Path,
         message: str,
         *,
-        status: str | None = None,
-        progress: int | None = None,
+        status: Optional[str] = None,
+        progress: Optional[int] = None,
         event: str = "log",
-        result_payload: dict | None = None,
+        result_payload: Optional[dict] = None,
     ) -> None:
         clean_message = message.replace("\r", "").replace("\b", "")
         with log_path.open("a", encoding="utf-8") as handle:
@@ -426,10 +427,10 @@ class RenderService:
         *,
         cwd: Path,
         env: dict[str, str],
-        progress: int | None = None,
+        progress: Optional[int] = None,
         start_message: str,
         use_shell: bool = False,
-        cancel_event: asyncio.Event | None = None,
+        cancel_event: Optional[asyncio.Event] = None,
     ) -> int:
         await self._write_log(task_id, log_path, start_message, status="running", progress=progress)
         if use_shell:
@@ -497,7 +498,7 @@ class RenderService:
         asyncio.create_task(self._run_convert(record.task_id, request, log_path))
         return record
 
-    def get_task_detail(self, task_id: str, limit: int = 200) -> TaskDetailResponse | None:
+    def get_task_detail(self, task_id: str, limit: int = 200) -> Optional[TaskDetailResponse]:
         record = task_manager.get(task_id)
         if record is None:
             return None
@@ -594,7 +595,7 @@ class RenderService:
             self._cancel_events.pop(task_id, None)
             self._processes.pop(task_id, None)
 
-    async def _execute_render_batch(self, task_id: str, request: RenderBatchRequest, log_path: Path, cancel_event: asyncio.Event, *, input_dir_override: Path | None = None, progress_offset: int = 0, progress_span: int = 100, start_message: str = "Render task started", result_payload_extra: dict | None = None) -> None:
+    async def _execute_render_batch(self, task_id: str, request: RenderBatchRequest, log_path: Path, cancel_event: asyncio.Event, *, input_dir_override: Optional[Path] = None, progress_offset: int = 0, progress_span: int = 100, start_message: str = "Render task started", result_payload_extra: Optional[dict] = None) -> None:
         scene_path = self._resolve_scene_path(request.scene_path)
         input_dir = input_dir_override or self._input_dir(request.render_mode)
         output_dir = self._output_dir(request.render_mode)

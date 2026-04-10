@@ -4,6 +4,7 @@ import math
 import re
 from datetime import datetime
 from pathlib import Path
+from typing import Optional
 
 import cv2
 import numpy as np
@@ -86,7 +87,7 @@ class AnalysisService:
     def _dir_for(self, image_set: AnalysisImageSet) -> Path:
         return self._set_dirs[image_set]
 
-    def _resolve_directory(self, image_set: AnalysisImageSet | None = None, directory: str = "") -> Path:
+    def _resolve_directory(self, image_set: Optional[AnalysisImageSet] = None, directory: str = "") -> Path:
         if directory.strip():
             return resolve_workspace_path(directory.strip())
         if image_set is None:
@@ -127,7 +128,7 @@ class AnalysisService:
     def _comparison_title(self, label_a: str, label_b: str) -> str:
         return f"{label_a} vs {label_b}"
 
-    def _load_rgb(self, image_path: Path) -> np.ndarray | None:
+    def _load_rgb(self, image_path: Path) -> Optional[np.ndarray]:
         image = cv2.imread(str(image_path))
         if image is None:
             return None

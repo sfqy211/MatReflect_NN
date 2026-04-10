@@ -10,6 +10,7 @@ import traceback
 import urllib.error
 import urllib.request
 from pathlib import Path
+from typing import Optional
 
 import uvicorn
 
@@ -101,8 +102,8 @@ class BackendThread(threading.Thread):
         super().__init__(daemon=True)
         self.host = host
         self.port = port
-        self.server: DesktopServer | None = None
-        self.error: BaseException | None = None
+        self.server: Optional[DesktopServer] = None
+        self.error: Optional[BaseException] = None
 
     def run(self) -> None:
         try:
