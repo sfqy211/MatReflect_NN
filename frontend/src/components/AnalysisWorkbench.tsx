@@ -279,7 +279,7 @@ export function AnalysisWorkbench({ activeSubView, onSubViewChange: _onSubViewCh
                   <h3>图片预览</h3>
                 </div>
 
-                <div className="render-form-grid" style={{ gridTemplateColumns: '1fr' }}>
+                <div className="render-form-grid">
                   <Field label="预览类型">
               <select value={previewSet} onChange={(event) => setPreviewSet(event.target.value as AnalysisImageSet)}>
                       {Object.entries(IMAGE_SET_LABELS).map(([key, label]) => (
@@ -297,7 +297,7 @@ export function AnalysisWorkbench({ activeSubView, onSubViewChange: _onSubViewCh
             </Field>
                 </div>
 
-                <div className="render-form-grid" style={{ gridTemplateColumns: '1fr' }}>
+                <div className="render-form-grid">
                   <Field label="删除目标">
               <MaterialSelector
                       title="选择要删除的图片"
@@ -337,7 +337,7 @@ export function AnalysisWorkbench({ activeSubView, onSubViewChange: _onSubViewCh
                   <h3>量化评估</h3>
                 </div>
 
-                <div className="render-form-grid" style={{ gridTemplateColumns: '1fr' }}>
+                <div className="render-form-grid">
                   <Field label="GT 目录">
               <input value={gtDir} onChange={(event) => setGtDir(event.target.value)} placeholder={brdfsQuery.data?.resolved_path ?? '留空使用默认目录'} />
             </Field>
@@ -380,7 +380,7 @@ export function AnalysisWorkbench({ activeSubView, onSubViewChange: _onSubViewCh
                   <h3>图像对比滑块</h3>
                 </div>
 
-                <div className="render-form-grid" style={{ gridTemplateColumns: '1fr' }}>
+                <div className="render-form-grid">
                   <Field label="左图">
               <select value={compareLeftSet} onChange={(event) => setCompareLeftSet(event.target.value as AnalysisImageSet)}>
                       <option value="brdfs">GT / BRDF</option>
@@ -414,7 +414,7 @@ export function AnalysisWorkbench({ activeSubView, onSubViewChange: _onSubViewCh
                 <div className="detail-board__lead">
                   <h3>材质选择</h3>
                 </div>
-                <div className="render-form-grid" style={{ gridTemplateColumns: '1fr' }}>
+                <div className="render-form-grid">
                   <Field label="源材质列表">
               <MaterialSelector
                       title="选择材质"
@@ -437,7 +437,7 @@ export function AnalysisWorkbench({ activeSubView, onSubViewChange: _onSubViewCh
                 <div className="detail-board__lead" style={{ marginTop: '16px' }}>
                   <h3>网格拼图设置</h3>
                 </div>
-                <div className="render-form-grid" style={{ gridTemplateColumns: '1fr' }}>
+                <div className="render-form-grid">
                   <Field label="源图片集">
               <select value={gridSet} onChange={(event) => setGridSet(event.target.value as AnalysisImageSet)}>
                       <option value="brdfs">GT / BRDF</option>
@@ -481,7 +481,7 @@ export function AnalysisWorkbench({ activeSubView, onSubViewChange: _onSubViewCh
                   <h3>对比拼图设置</h3>
                 </div>
 
-                <div className="render-form-grid" style={{ gridTemplateColumns: '1fr' }}>
+                <div className="render-form-grid">
                   {comparisonColumns.map((column) => (
                     <label key={column.key} className="field">
                       <span>{column.label || IMAGE_SET_LABELS[column.imageSet]}目录</span>
@@ -494,7 +494,7 @@ export function AnalysisWorkbench({ activeSubView, onSubViewChange: _onSubViewCh
                   ))}
                 </div>
 
-                <div className="render-form-grid" style={{ gridTemplateColumns: '1fr' }}>
+                <div className="render-form-grid">
                   {comparisonColumns.map((column) => (
                     <label key={`${column.key}-label`} className="field">
                       <span>{IMAGE_SET_LABELS[column.imageSet]} 标签</span>
@@ -514,7 +514,7 @@ export function AnalysisWorkbench({ activeSubView, onSubViewChange: _onSubViewCh
                   ))}
                 </div>
 
-                <div className="render-form-grid" style={{ gridTemplateColumns: '1fr' }}>
+                <div className="render-form-grid">
                   <Field label="输出目录">
               <input value={comparisonOutputDir} onChange={(event) => setComparisonOutputDir(event.target.value)} />
             </Field>

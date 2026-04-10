@@ -471,7 +471,7 @@ export function ModelsWorkbench({ activeSubView, onSubViewChange }: { activeSubV
               <input value={condaEnv} onChange={(event) => setCondaEnv(event.target.value)} />
             </Field>
             </div>
-            <div className="render-form-grid" style={{ gridTemplateColumns: '1fr', marginTop: '16px' }}>
+            <div className="render-form-grid" style={{ marginTop: '16px' }}>
               <Field label="H5 文件选择">
               <MaterialSelector
                   title="选择 H5 文件"
@@ -497,7 +497,7 @@ export function ModelsWorkbench({ activeSubView, onSubViewChange }: { activeSubV
           <div className="detail-board__lead">
             <h3>固定材质选择</h3>
           </div>
-          <div className="render-form-grid" style={{ gridTemplateColumns: '1fr', marginTop: '16px' }}>
+          <div className="render-form-grid" style={{ marginTop: '16px' }}>
             <Field label="材质选择">
               <MaterialSelector
                 title="选择固定材质"
@@ -909,7 +909,7 @@ export function ModelsWorkbench({ activeSubView, onSubViewChange }: { activeSubV
               <input value={cudaDevice} onChange={(event) => setCudaDevice(event.target.value)} />
             </Field>
                 </div>
-                <div className="render-form-grid" style={{ gridTemplateColumns: '1fr', marginTop: '16px' }}>
+                <div className="render-form-grid" style={{ marginTop: '16px' }}>
                   <Field label="PT 文件选择">
               <MaterialSelector
                       title="选择 PT 文件"
