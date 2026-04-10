@@ -22,6 +22,26 @@ class SystemDependencyCheck(BaseModel):
     message: str
 
 
+class SystemVirtualEnvSetting(BaseModel):
+    id: str = Field(min_length=1, max_length=128)
+    label: str = Field(min_length=1, max_length=128)
+    manager: str = Field(default="conda", min_length=1, max_length=32)
+    env_name: str = Field(min_length=1, max_length=128)
+    role: str = Field(default="", max_length=128)
+
+
+class SystemVirtualEnvCheck(BaseModel):
+    id: str
+    label: str
+    manager: str
+    env_name: str
+    role: str
+    exists: bool
+    status: str
+    message: str
+    prefix: str = ""
+
+
 class SystemSettings(BaseModel):
     project_root: str
     mitsuba_exe: str
@@ -32,6 +52,7 @@ class SystemSettings(BaseModel):
     vcvarsall_path: str
     work_dir: str
     dependencies: List[SystemDependencySetting] = Field(default_factory=list)
+    virtual_envs: List[SystemVirtualEnvSetting] = Field(default_factory=list)
 
 
 class SystemCompileDefaults(BaseModel):
@@ -48,6 +69,7 @@ class SystemCompileDefaults(BaseModel):
 class SystemSettingsResponse(BaseModel):
     settings: SystemSettings
     checks: List[SystemDependencyCheck] = Field(default_factory=list)
+    env_checks: List[SystemVirtualEnvCheck] = Field(default_factory=list)
 
 
 class SystemSummaryResponse(BaseModel):
@@ -62,6 +84,7 @@ class SystemSummaryResponse(BaseModel):
     compile_defaults: SystemCompileDefaults
     settings: SystemSettings
     checks: List[SystemDependencyCheck] = Field(default_factory=list)
+    env_checks: List[SystemVirtualEnvCheck] = Field(default_factory=list)
 
 
 class SystemSettingsRequest(BaseModel):
@@ -74,6 +97,7 @@ class SystemSettingsRequest(BaseModel):
     vcvarsall_path: str = Field(default="", max_length=1024)
     work_dir: str = Field(default="", max_length=1024)
     dependencies: List[SystemDependencySetting] = Field(default_factory=list)
+    virtual_envs: List[SystemVirtualEnvSetting] = Field(default_factory=list)
 
 
 class SystemCompileRequest(BaseModel):

@@ -5,7 +5,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import type { AnalysisSubView, ModelsSubView } from '../App'
 import { BACKEND_ORIGIN } from '../lib/api'
 import { parseAssetName } from '../lib/fileNames'
-import type { FileListItem, ModuleKey, SystemDependencySetting, SystemSummary, TaskEvent } from '../types/api'
+import type { FileListItem, ModuleKey, SystemDependencySetting, SystemSummary, SystemVirtualEnvSetting, TaskEvent } from '../types/api'
 import {
   useCheckSystemSettings,
   useSaveSystemSettings,
@@ -141,6 +141,7 @@ function SettingsCanvas({
   const [vcvarsallPath, setVcvarsallPath] = useState('')
   const [compileWorkDir, setCompileWorkDir] = useState('')
   const [dependencies, setDependencies] = useState<SystemDependencySetting[]>([])
+  const [virtualEnvs, setVirtualEnvs] = useState<SystemVirtualEnvSetting[]>([])
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null)
   const [liveLogs, setLiveLogs] = useState<string[]>([])
 
@@ -165,7 +166,8 @@ function SettingsCanvas({
     setVcvarsallPath(savedSettings.vcvarsall_path)
     setCompileWorkDir(savedSettings.work_dir)
     setDependencies(savedSettings.dependencies)
-  }, [dependencies.length, projectRoot, savedSettings])
+    setVirtualEnvs(savedSettings.virtual_envs)
+  }, [dependencies.length, projectRoot, savedSettings, virtualEnvs.length])
 
   useEffect(() => {
     if (!taskDetail) {
@@ -212,8 +214,11 @@ function SettingsCanvas({
     taskRecord?.status ?? (startCompileMutation.isPending || stopCompileMutation.isPending ? 'pending' : 'idle')
   const compileProgress = taskRecord?.progress ?? 0
   const dependencyChecks = saveSettingsMutation.data?.checks ?? checkSettingsMutation.data?.checks ?? system?.checks ?? []
+  const envChecks = saveSettingsMutation.data?.env_checks ?? checkSettingsMutation.data?.env_checks ?? system?.env_checks ?? []
   const dependencyOkCount = dependencyChecks.filter((check) => check.status === 'ok').length
   const dependencyTotalCount = dependencyChecks.length
+  const envOkCount = envChecks.filter((check) => check.status === 'ok').length
+  const envTotalCount = envChecks.length
   const settingsSavedState = savedSettings ? '已加载' : '未加载'
   const currentCompileProfile = compileLabel.trim() || compileDefaults?.preset_label || '-'
 
@@ -233,6 +238,15 @@ function SettingsCanvas({
         path: dependency.path.trim(),
       }))
       .filter((dependency) => dependency.label || dependency.path),
+    virtual_envs: virtualEnvs
+      .map((env) => ({
+        id: env.id,
+        label: env.label.trim(),
+        manager: env.manager.trim() || 'conda',
+        env_name: env.env_name.trim(),
+        role: env.role.trim(),
+      }))
+      .filter((env) => env.label || env.env_name),
   }
 
   const resetFromSavedSettings = () => {
@@ -248,6 +262,7 @@ function SettingsCanvas({
     setVcvarsallPath(savedSettings.vcvarsall_path)
     setCompileWorkDir(savedSettings.work_dir)
     setDependencies(savedSettings.dependencies)
+    setVirtualEnvs(savedSettings.virtual_envs)
   }
 
   const updateDependency = (id: string, patch: Partial<SystemDependencySetting>) => {
@@ -260,6 +275,18 @@ function SettingsCanvas({
 
   const removeDependency = (id: string) => {
     setDependencies((current) => current.filter((dependency) => dependency.id !== id))
+  }
+
+  const updateVirtualEnv = (id: string, patch: Partial<SystemVirtualEnvSetting>) => {
+    setVirtualEnvs((current) => current.map((env) => (env.id === id ? { ...env, ...patch } : env)))
+  }
+
+  const addVirtualEnv = () => {
+    setVirtualEnvs((current) => [...current, { id: `env-${Date.now()}-${current.length}`, label: '', manager: 'conda', env_name: '', role: '' }])
+  }
+
+  const removeVirtualEnv = (id: string) => {
+    setVirtualEnvs((current) => current.filter((env) => env.id !== id))
   }
 
   const startCompile = async () => {
@@ -297,6 +324,7 @@ function SettingsCanvas({
     setVcvarsallPath(response.settings.vcvarsall_path)
     setCompileWorkDir(response.settings.work_dir)
     setDependencies(response.settings.dependencies)
+    setVirtualEnvs(response.settings.virtual_envs)
     await queryClient.invalidateQueries({ queryKey: ['system-summary'] })
   }
 
@@ -319,6 +347,7 @@ function SettingsCanvas({
             <SettingRow label="mtsutil" value={system?.mtsutil_exists ? 'Ready' : 'Pending'} />
             <SettingRow label="输出索引" value={String(galleryCount)} />
             <SettingRow label="依赖检查" value={dependencyTotalCount > 0 ? `${dependencyOkCount} / ${dependencyTotalCount}` : '未检查'} />
+            <SettingRow label="环境检查" value={envTotalCount > 0 ? `${envOkCount} / ${envTotalCount}` : '未检查'} />
             <SettingRow label="设置状态" value={settingsSavedState} />
             <SettingRow label="当前编译预设" value={currentCompileProfile} />
           </div>
@@ -388,6 +417,36 @@ function SettingsCanvas({
             </div>
           </div>
 
+          <div className="detail-board__lead" style={{ marginTop: 18 }}>
+            <h3>虚拟环境管理</h3>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: 12 }}>
+            {virtualEnvs.map((env) => (
+              <div key={env.id} style={{ display: 'grid', gridTemplateColumns: '170px 120px 170px minmax(0, 1fr) 96px', gap: '10px', alignItems: 'end' }}>
+                <Field label="名称">
+                  <input value={env.label} onChange={(event) => updateVirtualEnv(env.id, { label: event.target.value })} placeholder="环境名称" />
+                </Field>
+                <Field label="管理器">
+                  <input value={env.manager} onChange={(event) => updateVirtualEnv(env.id, { manager: event.target.value })} placeholder="conda" />
+                </Field>
+                <Field label="环境名">
+                  <input value={env.env_name} onChange={(event) => updateVirtualEnv(env.id, { env_name: event.target.value })} placeholder="matreflect" />
+                </Field>
+                <Field label="用途">
+                  <input value={env.role} onChange={(event) => updateVirtualEnv(env.id, { role: event.target.value })} placeholder="项目后端 / 某模型训练" />
+                </Field>
+                <Button type="button" onClick={() => removeVirtualEnv(env.id)}>
+                  删除
+                </Button>
+              </div>
+            ))}
+            <div className="render-actions" style={{ marginTop: 0 }}>
+              <Button type="button" onClick={() => addVirtualEnv()}>
+                添加环境
+              </Button>
+            </div>
+          </div>
+
           <div className="settings-list" style={{ marginTop: 16 }}>
             <SettingRow label="当前任务" value={activeTaskId ?? '暂无'} />
             <SettingRow label="已保存依赖数" value={String(savedSettings?.dependencies.length ?? dependencies.length)} />
@@ -425,6 +484,17 @@ function SettingsCanvas({
             <div className="settings-list" style={{ marginTop: 16 }}>
               {dependencyChecks.map((check) => (
                 <SettingRow key={check.id} label={`${check.label} [${check.status}]`} value={check.path ? `${summarizePath(check.path)} | ${check.message}` : check.message} />
+              ))}
+            </div>
+          ) : null}
+          {envChecks.length > 0 ? (
+            <div className="settings-list" style={{ marginTop: 16 }}>
+              {envChecks.map((check) => (
+                <SettingRow
+                  key={check.id}
+                  label={`${check.label} [${check.status}]`}
+                  value={check.prefix ? `${check.env_name} | ${summarizePath(check.prefix)} | ${check.message}` : `${check.env_name} | ${check.message}`}
+                />
               ))}
             </div>
           ) : null}

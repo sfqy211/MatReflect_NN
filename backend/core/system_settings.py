@@ -6,7 +6,7 @@ from typing import List
 from uuid import uuid4
 
 from backend.core.config import PROJECT_ROOT, RUNTIME_ROOT
-from backend.models.system import SystemDependencySetting, SystemSettings
+from backend.models.system import SystemDependencySetting, SystemSettings, SystemVirtualEnvSetting
 
 
 SYSTEM_SETTINGS_PATH = RUNTIME_ROOT / "system_settings.json"
@@ -16,6 +16,15 @@ def _default_dependencies(work_dir: Path) -> List[SystemDependencySetting]:
     return [
         SystemDependencySetting(id="dep-bin", label="依赖 bin", path=str((work_dir / "dependencies" / "bin").resolve())),
         SystemDependencySetting(id="dep-lib", label="依赖 lib", path=str((work_dir / "dependencies" / "lib").resolve())),
+    ]
+
+
+def _default_virtual_envs() -> List[SystemVirtualEnvSetting]:
+    return [
+        SystemVirtualEnvSetting(id="env-matreflect", label="项目主环境", manager="conda", env_name="matreflect", role="项目后端 / 桌面封装"),
+        SystemVirtualEnvSetting(id="env-mitsuba-build", label="Mitsuba 编译环境", manager="conda", env_name="mitsuba-build", role="Mitsuba 编译"),
+        SystemVirtualEnvSetting(id="env-nbrdf-train", label="Neural-BRDF 环境", manager="conda", env_name="nbrdf-train", role="Neural-BRDF 训练与转换"),
+        SystemVirtualEnvSetting(id="env-hyperbrdf", label="HyperBRDF 环境", manager="conda", env_name="hyperbrdf", role="HyperBRDF 训练 / 提取 / 解码"),
     ]
 
 
@@ -32,6 +41,7 @@ def build_default_system_settings() -> SystemSettings:
         vcvarsall_path=r"C:\Program Files (x86)\Microsoft Visual Studio\2017\Professional\VC\Auxiliary\Build\vcvarsall.bat",
         work_dir=str(work_dir),
         dependencies=_default_dependencies(work_dir),
+        virtual_envs=_default_virtual_envs(),
     )
 
 
@@ -42,10 +52,21 @@ def _normalize_dependency(raw: SystemDependencySetting) -> SystemDependencySetti
     return SystemDependencySetting(id=dep_id, label=label, path=path)
 
 
+def _normalize_virtual_env(raw: SystemVirtualEnvSetting) -> SystemVirtualEnvSetting:
+    env_id = raw.id.strip() or f"env-{uuid4().hex[:8]}"
+    label = raw.label.strip() or env_id
+    manager = raw.manager.strip() or "conda"
+    env_name = raw.env_name.strip()
+    role = raw.role.strip()
+    return SystemVirtualEnvSetting(id=env_id, label=label, manager=manager, env_name=env_name, role=role)
+
+
 def _coerce_settings(raw_data: dict) -> SystemSettings:
     defaults = build_default_system_settings()
     dependencies_data = raw_data.get("dependencies", [])
+    virtual_envs_data = raw_data.get("virtual_envs", [])
     dependencies = []
+    virtual_envs = []
     for entry in dependencies_data:
         try:
             dependency = SystemDependencySetting.model_validate(entry)
@@ -54,6 +75,15 @@ def _coerce_settings(raw_data: dict) -> SystemSettings:
         dependencies.append(_normalize_dependency(dependency))
     if not dependencies:
         dependencies = defaults.dependencies
+    for entry in virtual_envs_data:
+        try:
+            virtual_env = SystemVirtualEnvSetting.model_validate(entry)
+        except Exception:
+            continue
+        if virtual_env.env_name.strip():
+            virtual_envs.append(_normalize_virtual_env(virtual_env))
+    if not virtual_envs:
+        virtual_envs = defaults.virtual_envs
 
     return SystemSettings(
         project_root=str(raw_data.get("project_root") or defaults.project_root),
@@ -65,6 +95,7 @@ def _coerce_settings(raw_data: dict) -> SystemSettings:
         vcvarsall_path=str(raw_data.get("vcvarsall_path") or defaults.vcvarsall_path),
         work_dir=str(raw_data.get("work_dir") or defaults.work_dir),
         dependencies=dependencies,
+        virtual_envs=virtual_envs,
     )
 
 

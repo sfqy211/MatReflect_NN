@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import locale
 import os
 import re
@@ -11,6 +12,7 @@ from pathlib import Path
 from typing import Any, List, Optional, Tuple, Union
 
 from backend.core.config import LOGS_ROOT, PROJECT_ROOT
+from backend.core.conda import find_conda_command
 from backend.core.paths import SAFE_PATHS, get_mitsuba_paths
 from backend.core.runtime_logging import log_task_message
 from backend.core.system_settings import build_default_system_settings, load_system_settings, save_system_settings
@@ -25,6 +27,8 @@ from backend.models.system import (
     SystemSettingsRequest,
     SystemSettingsResponse,
     SystemSummaryResponse,
+    SystemVirtualEnvCheck,
+    SystemVirtualEnvSetting,
 )
 from backend.services.task_manager import task_manager
 
@@ -87,6 +91,31 @@ class SystemService:
     def _dependency_paths(self, settings: SystemSettings) -> List[Path]:
         project_root = self._resolve_path(settings.project_root)
         return [self._resolve_path(dependency.path, project_root) for dependency in settings.dependencies if dependency.path.strip()]
+
+    def _conda_env_prefix_map(self) -> tuple[dict[str, str], Optional[str]]:
+        conda_cmd = find_conda_command()
+        if not conda_cmd:
+            return {}, "未检测到 conda 命令"
+        use_cmd = conda_cmd.lower().endswith((".bat", ".cmd"))
+        cmd = ["cmd", "/c", conda_cmd, "env", "list", "--json"] if use_cmd else [conda_cmd, "env", "list", "--json"]
+        try:
+            output = subprocess.check_output(
+                cmd,
+                text=True,
+                encoding=locale.getpreferredencoding(False),
+                errors="replace",
+            )
+        except Exception as exc:
+            return {}, f"读取 conda 环境失败: {exc}"
+        try:
+            payload = json.loads(output)
+        except json.JSONDecodeError:
+            return {}, "conda env list 返回内容无法解析"
+        env_prefixes = {}
+        for prefix in payload.get("envs", []):
+            prefix_path = Path(prefix)
+            env_prefixes[prefix_path.name] = str(prefix_path)
+        return env_prefixes, None
 
     def _check_path(self, key: str, label: str, path_value: str, *, expect: str, base_dir: Optional[Path]) -> SystemDependencyCheck:
         if not path_value.strip():
@@ -154,9 +183,61 @@ class SystemService:
             checks.append(self._check_path(dependency.id, dependency.label, dependency.path, expect="dir", base_dir=project_root))
         return checks
 
+    def _build_env_checks(self, settings: SystemSettings) -> List[SystemVirtualEnvCheck]:
+        env_prefixes, error_message = self._conda_env_prefix_map()
+        checks: List[SystemVirtualEnvCheck] = []
+        for env in settings.virtual_envs:
+            if env.manager != "conda":
+                checks.append(
+                    SystemVirtualEnvCheck(
+                        id=env.id,
+                        label=env.label,
+                        manager=env.manager,
+                        env_name=env.env_name,
+                        role=env.role,
+                        exists=False,
+                        status="unsupported",
+                        message=f"暂不支持的环境管理器: {env.manager}",
+                        prefix="",
+                    )
+                )
+                continue
+            if error_message:
+                checks.append(
+                    SystemVirtualEnvCheck(
+                        id=env.id,
+                        label=env.label,
+                        manager=env.manager,
+                        env_name=env.env_name,
+                        role=env.role,
+                        exists=False,
+                        status="warning",
+                        message=error_message,
+                        prefix="",
+                    )
+                )
+                continue
+            prefix = env_prefixes.get(env.env_name, "")
+            exists = bool(prefix)
+            checks.append(
+                SystemVirtualEnvCheck(
+                    id=env.id,
+                    label=env.label,
+                    manager=env.manager,
+                    env_name=env.env_name,
+                    role=env.role,
+                    exists=exists,
+                    status="ok" if exists else "missing",
+                    message="环境可用" if exists else "未找到该 conda 环境",
+                    prefix=prefix,
+                )
+            )
+        return checks
+
     def _coerce_settings_request(self, request: SystemSettingsRequest) -> SystemSettings:
         defaults = build_default_system_settings()
         dependencies = [SystemDependencySetting.model_validate(item.model_dump()) for item in request.dependencies if item.path.strip()]
+        virtual_envs = [SystemVirtualEnvSetting.model_validate(item.model_dump()) for item in request.virtual_envs if item.env_name.strip()]
         return SystemSettings(
             project_root=request.project_root.strip() or defaults.project_root,
             mitsuba_exe=request.mitsuba_exe.strip() or defaults.mitsuba_exe,
@@ -167,6 +248,7 @@ class SystemService:
             vcvarsall_path=request.vcvarsall_path.strip(),
             work_dir=request.work_dir.strip() or defaults.work_dir,
             dependencies=dependencies or defaults.dependencies,
+            virtual_envs=virtual_envs or defaults.virtual_envs,
         )
 
     def _compile_defaults_from_settings(self, settings: SystemSettings) -> SystemCompileDefaults:
@@ -186,16 +268,16 @@ class SystemService:
 
     def get_settings_response(self) -> SystemSettingsResponse:
         settings = load_system_settings()
-        return SystemSettingsResponse(settings=settings, checks=self._build_checks(settings))
+        return SystemSettingsResponse(settings=settings, checks=self._build_checks(settings), env_checks=self._build_env_checks(settings))
 
     def save_settings(self, request: SystemSettingsRequest) -> SystemSettingsResponse:
         settings = self._coerce_settings_request(request)
         saved = save_system_settings(settings)
-        return SystemSettingsResponse(settings=saved, checks=self._build_checks(saved))
+        return SystemSettingsResponse(settings=saved, checks=self._build_checks(saved), env_checks=self._build_env_checks(saved))
 
     def check_settings(self, request: SystemSettingsRequest) -> SystemSettingsResponse:
         settings = self._coerce_settings_request(request)
-        return SystemSettingsResponse(settings=settings, checks=self._build_checks(settings))
+        return SystemSettingsResponse(settings=settings, checks=self._build_checks(settings), env_checks=self._build_env_checks(settings))
 
     def get_summary(self) -> SystemSummaryResponse:
         settings = load_system_settings()
@@ -213,6 +295,7 @@ class SystemService:
             compile_defaults=self._compile_defaults_from_settings(settings),
             settings=settings,
             checks=checks,
+            env_checks=self._build_env_checks(settings),
         )
 
     def get_task_detail(self, task_id: str, limit: int = 240) -> Optional[TaskDetailResponse]:

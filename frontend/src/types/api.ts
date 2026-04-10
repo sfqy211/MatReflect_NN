@@ -12,6 +12,7 @@ export type SystemSummary = {
   compile_defaults: SystemCompileDefaults
   settings: SystemSettings
   checks: SystemDependencyCheck[]
+  env_checks: SystemVirtualEnvCheck[]
 }
 
 export type SystemCompileDefaults = {
@@ -42,6 +43,26 @@ export type SystemDependencyCheck = {
   message: string
 }
 
+export type SystemVirtualEnvSetting = {
+  id: string
+  label: string
+  manager: string
+  env_name: string
+  role: string
+}
+
+export type SystemVirtualEnvCheck = {
+  id: string
+  label: string
+  manager: string
+  env_name: string
+  role: string
+  exists: boolean
+  status: string
+  message: string
+  prefix: string
+}
+
 export type SystemSettings = {
   project_root: string
   mitsuba_exe: string
@@ -52,6 +73,7 @@ export type SystemSettings = {
   vcvarsall_path: string
   work_dir: string
   dependencies: SystemDependencySetting[]
+  virtual_envs: SystemVirtualEnvSetting[]
 }
 
 export type SystemSettingsRequest = SystemSettings
@@ -59,6 +81,7 @@ export type SystemSettingsRequest = SystemSettings
 export type SystemSettingsResponse = {
   settings: SystemSettings
   checks: SystemDependencyCheck[]
+  env_checks: SystemVirtualEnvCheck[]
 }
 
 export type SystemCompileRequest = {
