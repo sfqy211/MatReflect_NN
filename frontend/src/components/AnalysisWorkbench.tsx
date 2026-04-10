@@ -6,7 +6,6 @@ import { toBackendUrl } from '../lib/api'
 import { normalizeMaterialName } from '../lib/fileNames'
 import type { AnalysisImageSet, FileListItem } from '../types/api'
 import { FeedbackPanel } from './FeedbackPanel'
-import { GalleryPreview } from './GalleryPreview'
 import { MaterialSelector } from './MaterialSelector'
 import { Badge } from './ui/Badge'
 import { Button } from './ui/Button'
@@ -15,7 +14,6 @@ import { CheckboxField } from './ui/CheckboxField'
 import { Field } from './ui/Field'
 import {
   useAnalysisImages,
-  useDeleteAnalysisImage,
   useEvaluateAnalysis,
   useGenerateComparison,
   useGenerateGrid,
@@ -55,15 +53,10 @@ function buildMaterialMap(items: FileListItem[]) {
 }
 
 
-type AnalysisSubView = 'preview' | 'evaluate' | 'compare' | 'grid' | 'compare-grid'
+type AnalysisSubView = 'evaluate' | 'compare' | 'grid' | 'compare-grid'
 
 export function AnalysisWorkbench({ activeSubView, onSubViewChange: _onSubViewChange }: { activeSubView: AnalysisSubView; onSubViewChange: (view: AnalysisSubView) => void }) {
   const queryClient = useQueryClient()
-
-  const [previewSet, setPreviewSet] = useState<AnalysisImageSet>('brdfs')
-  const [previewSearch, setPreviewSearch] = useState('')
-  const [previewDirectory, setPreviewDirectory] = useState('')
-  const [previewSelectedPaths, setPreviewSelectedPaths] = useState<string[]>([])
 
   const [gtDir, setGtDir] = useState('')
   const [method1Dir, setMethod1Dir] = useState('')
@@ -124,14 +117,12 @@ export function AnalysisWorkbench({ activeSubView, onSubViewChange: _onSubViewCh
     }
   }, [isDraggingSplitter])
 
-  const previewQuery = useAnalysisImages(previewSet, previewSearch, previewDirectory)
   const brdfsQuery = useAnalysisImages('brdfs', '', gtDir)
   const fullbinQuery = useAnalysisImages('fullbin', '', method1Dir)
   const npyQuery = useAnalysisImages('npy', '', method2Dir)
   const gridsQuery = useAnalysisImages('grids', '', '')
   const comparisonsQuery = useAnalysisImages('comparisons', '', '')
 
-  const deleteImageMutation = useDeleteAnalysisImage()
   const evaluateMutation = useEvaluateAnalysis()
   const gridMutation = useGenerateGrid()
   const comparisonMutation = useGenerateComparison()
@@ -180,11 +171,7 @@ export function AnalysisWorkbench({ activeSubView, onSubViewChange: _onSubViewCh
   const sliderLeft = sliderMaterial ? compareLeftMap.get(sliderMaterial) : undefined
   const sliderRight = sliderMaterial ? compareRightMap.get(sliderMaterial) : undefined
 
-  const previewItems = previewQuery.data?.items ?? []
-  const previewSelectedNames = previewSelectedPaths.map(p => previewItems.find(i => i.path === p)?.name).filter(Boolean) as string[]
-
   const summaryChips = [
-    `预览目录: ${previewQuery.data?.resolved_path ?? '-'}`,
     `候选材质: ${baseMaterials.length}`,
     `已选材质: ${selectedMaterials.length}`,
     `网格输出: ${gridsQuery.data?.total ?? 0}`,
@@ -193,18 +180,6 @@ export function AnalysisWorkbench({ activeSubView, onSubViewChange: _onSubViewCh
 
   const updateComparisonColumn = (key: ComparisonColumnDraft['key'], patch: Partial<ComparisonColumnDraft>) => {
     setComparisonColumns((current) => current.map((column) => (column.key === key ? { ...column, ...patch } : column)))
-  }
-
-  const deletePreviewImage = async () => {
-    if (previewSelectedPaths.length === 0) {
-      return
-    }
-    await deleteImageMutation.mutateAsync({
-      image_paths: previewSelectedPaths,
-      delete_matching_exr: true,
-    })
-    setPreviewSelectedPaths([])
-    await queryClient.invalidateQueries({ queryKey: ['analysis-images'] })
   }
 
   const evaluate = async () => {
@@ -269,64 +244,6 @@ export function AnalysisWorkbench({ activeSubView, onSubViewChange: _onSubViewCh
       <div className="analysis-layout">
         <div className="resizable-container" ref={resizableContainerRef}>
           <div className="resizable-pane resizable-pane--left" style={{ width: leftPaneWidth }}>
-            {activeSubView === 'preview' ? (
-              <section className="analysis-section">
-                <div className="detail-board__lead">
-                  <h3>图片预览</h3>
-                </div>
-
-                <div className="render-form-grid">
-                  <Field label="预览类型">
-              <select value={previewSet} onChange={(event) => setPreviewSet(event.target.value as AnalysisImageSet)}>
-                      {Object.entries(IMAGE_SET_LABELS).map(([key, label]) => (
-                        <option key={key} value={key}>
-                          {label}
-                        </option>
-                      ))}
-                    </select>
-            </Field>
-                  <Field label="预览目录">
-              <input value={previewDirectory} onChange={(event) => setPreviewDirectory(event.target.value)} placeholder={previewQuery.data?.resolved_path ?? '留空使用默认目录'} />
-            </Field>
-                  <Field label="搜索">
-              <input value={previewSearch} onChange={(event) => setPreviewSearch(event.target.value)} placeholder="搜索图片名" />
-            </Field>
-                </div>
-
-                <div className="render-form-grid">
-                  <Field label="删除目标">
-              <MaterialSelector
-                      title="选择要删除的图片"
-                      items={previewItems}
-                      selectedItems={previewSelectedNames}
-                      onSelectionChange={(selected) => {
-                        const selectedPaths = selected
-                          .map((name) => previewItems.find((i) => i.name === name)?.path)
-                          .filter(Boolean) as string[]
-                        setPreviewSelectedPaths(selectedPaths)
-                      }}
-                      multiSelect={true}
-                      emptyMessage="当前目录下没有图片"
-                    />
-            </Field>
-                </div>
-
-                <div className="render-actions">
-                  <Button type="button" variant="danger" onClick={() => void deletePreviewImage()} disabled={previewSelectedPaths.length === 0 || deleteImageMutation.isPending}>
-                    删除选中的 {previewSelectedPaths.length > 0 ? previewSelectedPaths.length : ''} 张图片及关联 EXR
-                  </Button>
-                </div>
-
-                {deleteImageMutation.data ? (
-                  <p className="muted">
-                    已删除 {deleteImageMutation.data.deleted.length} 个文件
-                    {deleteImageMutation.data.missing.length > 0 ? `，未找到 ${deleteImageMutation.data.missing.length} 个文件` : ''}
-                  </p>
-                ) : null}
-                {deleteImageMutation.error instanceof Error ? <FeedbackPanel title="删除失败" message={deleteImageMutation.error.message} tone="error" compact /> : null}
-              </section>
-            ) : null}
-
             {activeSubView === 'evaluate' ? (
               <section className="analysis-section">
                 <div className="detail-board__lead">
@@ -542,10 +459,6 @@ export function AnalysisWorkbench({ activeSubView, onSubViewChange: _onSubViewCh
           />
 
           <div className="resizable-pane resizable-pane--right">
-            {activeSubView === 'preview' ? (
-              <GalleryPreview items={previewItems} isLoading={previewQuery.isLoading} />
-            ) : null}
-
             {activeSubView === 'evaluate' ? (
               <div className="metric-grid">
                 {(evaluateMutation.data?.comparisons ?? []).map((comparison) => (

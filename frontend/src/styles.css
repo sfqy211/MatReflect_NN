@@ -613,14 +613,33 @@ button {
 
 .render-layout {
   display: grid;
-  grid-template-columns: 340px minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   gap: 12px;
   flex: 1;
   min-height: 0;
 }
 
 .render-layout--no-logs {
-  grid-template-columns: 340px minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.render-resizable-container {
+  flex: 1;
+  min-height: 0;
+}
+
+.render-resizable-pane {
+  min-height: 0;
+}
+
+.render-resizable-pane--left {
+  flex-shrink: 0;
+}
+
+.render-resizable-pane--right {
+  padding: 0;
+  flex: 1;
+  min-width: 0;
 }
 
 .sub-nav {
@@ -1462,10 +1481,6 @@ button {
   z-index: 200;
 }
 
-/* Update layout for no-logs */
-.render-layout {
-  grid-template-columns: 380px minmax(0, 1fr) !important;
-}
 .models-layout {
   grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)) !important;
   gap: 16px !important;

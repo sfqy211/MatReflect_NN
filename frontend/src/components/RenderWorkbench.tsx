@@ -1,12 +1,12 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { useQueryClient } from '@tanstack/react-query'
 
+import { useAnalysisImages, useDeleteAnalysisImage } from '../features/analysis/useAnalysisWorkbench'
 import { useMaterialsDirectory, useTrainRuns } from '../features/models/useModelsWorkbench'
 import {
   useConvertOutputs,
   useRenderInputs,
-  useRenderOutputs,
   useRenderScenes,
   useRenderTaskDetail,
   useStartReconstruct,
@@ -14,7 +14,8 @@ import {
   useStopRender,
 } from '../features/render/useRenderWorkbench'
 import { BACKEND_ORIGIN } from '../lib/api'
-import type { RenderMode, RenderReconstructModel, RenderSourceModel, TaskEvent, TrainProjectVariant } from '../types/api'
+import type { AnalysisImageSet, RenderMode, RenderReconstructModel, RenderSourceModel, TaskEvent, TrainProjectVariant } from '../types/api'
+import { FeedbackPanel } from './FeedbackPanel'
 import { GalleryPreview } from './GalleryPreview'
 import { MaterialSelector } from './MaterialSelector'
 import { TerminalDrawer } from './TerminalDrawer'
@@ -73,6 +74,12 @@ function getRenderMode(model: RenderSourceModel): RenderMode {
   return 'fullbin'
 }
 
+function getAnalysisImageSet(model: RenderSourceModel): AnalysisImageSet {
+  if (model === 'gt') return 'brdfs'
+  if (model === 'neural') return 'npy'
+  return 'fullbin'
+}
+
 function normalizeMaterialName(fileName: string) {
   return fileName.replace(/(_fc1)?\.(binary|fullbin|npy)$/i, '')
 }
@@ -80,6 +87,7 @@ function normalizeMaterialName(fileName: string) {
 
 export function RenderWorkbench() {
   const queryClient = useQueryClient()
+  const resizableContainerRef = useRef<HTMLDivElement>(null)
   const [sourceModel, setSourceModel] = useState<RenderSourceModel>('gt')
   const [workflowMode, setWorkflowMode] = useState<WorkflowMode>('render')
   const [scenePath, setScenePath] = useState('')
@@ -94,8 +102,14 @@ export function RenderWorkbench() {
   const [showCustomCmd, setShowCustomCmd] = useState(false)
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null)
   const [liveLogs, setLiveLogs] = useState<string[]>([])
+  const [outputSearch, setOutputSearch] = useState('')
+  const [outputDirectory, setOutputDirectory] = useState('')
+  const [selectedOutputPaths, setSelectedOutputPaths] = useState<string[]>([])
+  const [leftPaneWidth, setLeftPaneWidth] = useState(380)
+  const [isDraggingSplitter, setIsDraggingSplitter] = useState(false)
 
   const renderMode = useMemo(() => getRenderMode(sourceModel), [sourceModel])
+  const analysisImageSet = useMemo(() => getAnalysisImageSet(sourceModel), [sourceModel])
   const canReconstruct = sourceModel !== 'gt'
   const needsCheckpoint = sourceModel === 'hyperbrdf'
   const projectVariant = needsCheckpoint ? (sourceModel as TrainProjectVariant) : null
@@ -105,12 +119,13 @@ export function RenderWorkbench() {
   const renderInputsQuery = useRenderInputs(renderMode, search)
   const materialsQuery = useMaterialsDirectory(search)
   const runsQuery = useTrainRuns(projectVariant)
-  const outputsQuery = useRenderOutputs(renderMode)
+  const outputGalleryQuery = useAnalysisImages(analysisImageSet, outputSearch, outputDirectory)
   const taskDetailQuery = useRenderTaskDetail(activeTaskId)
   const startRenderMutation = useStartRender()
   const startReconstructMutation = useStartReconstruct()
   const stopRenderMutation = useStopRender()
   const convertMutation = useConvertOutputs()
+  const deleteImageMutation = useDeleteAnalysisImage()
 
   const availableRuns = useMemo(
     () => (runsQuery.data?.items ?? []).filter((run) => run.has_checkpoint && run.dataset === 'MERL'),
@@ -121,6 +136,7 @@ export function RenderWorkbench() {
     [availableRuns, selectedRunKey],
   )
   const availableFiles = isReconstructMode ? materialsQuery.data?.items ?? [] : renderInputsQuery.data?.items ?? []
+  const outputItems = outputGalleryQuery.data?.items ?? []
   const currentListError = isReconstructMode ? materialsQuery.error : renderInputsQuery.error
   const taskDetail = taskDetailQuery.data
   const taskRecord = taskDetail?.record
@@ -141,6 +157,11 @@ export function RenderWorkbench() {
     const availableNames = new Set(availableFiles.map((item) => item.name))
     setSelectedFiles((current) => current.filter((name) => availableNames.has(name)))
   }, [availableFiles])
+
+  useEffect(() => {
+    const availablePaths = new Set(outputItems.map((item) => item.path))
+    setSelectedOutputPaths((current) => current.filter((path) => availablePaths.has(path)))
+  }, [outputItems])
 
   useEffect(() => {
     if (!needsCheckpoint) {
@@ -174,15 +195,42 @@ export function RenderWorkbench() {
       }
       queryClient.invalidateQueries({ queryKey: ['render-task-detail', activeTaskId] })
       if (payload.event === 'done') {
-        queryClient.invalidateQueries({ queryKey: ['render-outputs', renderMode] })
         queryClient.invalidateQueries({ queryKey: ['render-inputs', renderMode] })
+        queryClient.invalidateQueries({ queryKey: ['analysis-images'] })
       }
     }
 
     return () => socket.close()
   }, [activeTaskId, queryClient, renderMode])
 
+  useEffect(() => {
+    if (!isDraggingSplitter) return
+
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!resizableContainerRef.current) return
+      const rect = resizableContainerRef.current.getBoundingClientRect()
+      const newWidth = e.clientX - rect.left
+      if (newWidth > 320 && newWidth < rect.width - 320) {
+        setLeftPaneWidth(newWidth)
+      }
+    }
+
+    const handleMouseUp = () => {
+      setIsDraggingSplitter(false)
+    }
+
+    document.addEventListener('mousemove', handleMouseMove)
+    document.addEventListener('mouseup', handleMouseUp)
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove)
+      document.removeEventListener('mouseup', handleMouseUp)
+    }
+  }, [isDraggingSplitter])
+
   const selectedCount = selectedFiles.length
+  const selectedOutputNames = selectedOutputPaths
+    .map((path) => outputItems.find((item) => item.path === path)?.name)
+    .filter(Boolean) as string[]
   const logs = liveLogs.length > 0 ? liveLogs : taskDetail?.logs ?? []
   const currentStatus =
     taskRecord?.status ??
@@ -200,10 +248,11 @@ export function RenderWorkbench() {
       `Mitsuba 输入: ${INPUT_TYPE_LABELS[sourceModel]}`,
       `候选: ${availableFiles.length}`,
       `已选: ${selectedCount}`,
-      `输出: ${outputsQuery.data?.total ?? 0}`,
+      `输出目录: ${outputGalleryQuery.data?.resolved_path ?? '-'}`,
+      `输出: ${outputGalleryQuery.data?.total ?? 0}`,
       `重建说明: ${RECONSTRUCT_NOTES[sourceModel]}`,
     ],
-    [availableFiles.length, outputsQuery.data?.total, selectedCount, sourceModel],
+    [availableFiles.length, outputGalleryQuery.data?.resolved_path, outputGalleryQuery.data?.total, selectedCount, sourceModel],
   )
 
 
@@ -261,6 +310,17 @@ export function RenderWorkbench() {
     setLiveLogs([])
     const response = await convertMutation.mutateAsync(renderMode)
     setActiveTaskId(response.task_id)
+    queryClient.invalidateQueries({ queryKey: ['analysis-images'] })
+  }
+
+  const deleteOutputs = async () => {
+    if (selectedOutputPaths.length === 0) return
+    await deleteImageMutation.mutateAsync({
+      image_paths: selectedOutputPaths,
+      delete_matching_exr: true,
+    })
+    setSelectedOutputPaths([])
+    await queryClient.invalidateQueries({ queryKey: ['analysis-images'] })
   }
 
   return (
@@ -274,10 +334,11 @@ export function RenderWorkbench() {
       </div>
 
       <div className="render-layout">
-        <section className="render-section">
-          <div className="detail-board__lead">
-            <h3>工作流面板</h3>
-          </div>
+        <div className="resizable-container render-resizable-container" ref={resizableContainerRef}>
+          <section className="render-section render-resizable-pane render-resizable-pane--left" style={{ width: leftPaneWidth }}>
+            <div className="detail-board__lead">
+              <h3>工作流面板</h3>
+            </div>
 
           <div className="render-form-grid">
             <Field label="网络模型">
@@ -370,6 +431,49 @@ export function RenderWorkbench() {
             </Field>
           </div>
 
+          <div className="detail-board__lead" style={{ marginTop: 16 }}>
+            <h3>输出预览管理</h3>
+          </div>
+
+          <div className="render-form-grid">
+            <Field label="输出目录">
+              <input
+                type="text"
+                value={outputDirectory}
+                onChange={(event) => setOutputDirectory(event.target.value)}
+                placeholder={outputGalleryQuery.data?.resolved_path ?? '留空使用默认输出目录'}
+              />
+            </Field>
+
+            <Field label="输出搜索">
+              <input
+                type="text"
+                value={outputSearch}
+                onChange={(event) => setOutputSearch(event.target.value)}
+                placeholder="搜索输出图片名"
+              />
+            </Field>
+          </div>
+
+          <div className="render-form-grid">
+            <Field label="删除目标">
+              <MaterialSelector
+                title="选择要删除的输出图片"
+                items={outputItems}
+                selectedItems={selectedOutputNames}
+                onSelectionChange={(selected) => {
+                  const selectedPaths = selected
+                    .map((name) => outputItems.find((item) => item.name === name)?.path)
+                    .filter(Boolean) as string[]
+                  setSelectedOutputPaths(selectedPaths)
+                }}
+                error={outputGalleryQuery.error as Error | null}
+                emptyMessage="当前输出目录下没有图片"
+                searchPlaceholder="搜索待删除图片"
+              />
+            </Field>
+          </div>
+
           <div className="render-actions">
             {isReconstructMode ? (
               <Button type="button" variant="primary" onClick={startReconstructAction} disabled={selectedFiles.length === 0 || (needsCheckpoint && !selectedRun)}>
@@ -388,12 +492,32 @@ export function RenderWorkbench() {
                 转换 EXR
               </Button>
             ) : null}
+            <Button type="button" variant="danger" onClick={deleteOutputs} disabled={selectedOutputPaths.length === 0 || deleteImageMutation.isPending}>
+              删除选中输出
+            </Button>
           </div>
-        </section>
 
-        <section className="render-section render-section--wide">
-          <GalleryPreview items={outputsQuery.data?.items ?? []} isLoading={outputsQuery.isLoading} />
-        </section>
+          {deleteImageMutation.data ? (
+            <p className="muted">
+              已删除 {deleteImageMutation.data.deleted.length} 个文件
+              {deleteImageMutation.data.missing.length > 0 ? `，未找到 ${deleteImageMutation.data.missing.length} 个文件` : ''}
+            </p>
+          ) : null}
+          {deleteImageMutation.error instanceof Error ? <FeedbackPanel title="输出删除失败" message={deleteImageMutation.error.message} tone="error" compact /> : null}
+          </section>
+
+          <div
+            className={`splitter ${isDraggingSplitter ? 'splitter--dragging' : ''}`}
+            onMouseDown={(e) => {
+              e.preventDefault()
+              setIsDraggingSplitter(true)
+            }}
+          />
+
+          <section className="render-section render-section--wide render-resizable-pane render-resizable-pane--right">
+            <GalleryPreview items={outputItems} isLoading={outputGalleryQuery.isLoading} />
+          </section>
+        </div>
       </div>
       <TerminalDrawer 
         taskId={activeTaskId} 

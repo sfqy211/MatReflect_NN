@@ -11,12 +11,12 @@ import type { ModuleKey } from "./types/api";
 
 type ThemeMode = "dark" | "light";
 
-export type AnalysisSubView = 'preview' | 'evaluate' | 'compare' | 'grid' | 'compare-grid'
+export type AnalysisSubView = 'evaluate' | 'compare' | 'grid' | 'compare-grid'
 export type ModelsSubView = string
 
 export function App() {
   const [activeModule, setActiveModule] = useState<ModuleKey>("render");
-  const [activeAnalysisSubView, setActiveAnalysisSubView] = useState<AnalysisSubView>('preview');
+  const [activeAnalysisSubView, setActiveAnalysisSubView] = useState<AnalysisSubView>('evaluate');
   const [activeModelsSubView, setActiveModelsSubView] = useState<ModelsSubView>('');
   const [railCollapsed, setRailCollapsed] = useState(false);
   const [theme, setTheme] = useState<ThemeMode>(() => {

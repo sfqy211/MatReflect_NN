@@ -27,7 +27,6 @@ const modules: Array<{ key: ModuleKey; label: string; shortLabel: string }> = [
 ]
 
 const analysisSubViews: Array<{ key: AnalysisSubView; label: string }> = [
-  { key: 'preview', label: '图片预览' },
   { key: 'evaluate', label: '量化评估' },
   { key: 'compare', label: '图像对比滑块' },
   { key: 'grid', label: '网格拼图' },
