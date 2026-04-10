@@ -2,6 +2,7 @@ import asyncio
 import logging
 from typing import Any
 
+from datetime import datetime
 import psutil
 from backend.services.task_manager import task_manager
 
@@ -55,8 +56,17 @@ class MetricsService:
                 logging.warning(f"Error fetching GPU metrics: {e}")
 
         running_tasks = []
+        now = datetime.now()
         for task_id, record in list(task_manager._tasks.items()):
-            if record.status in ["pending", "running"]:
+            is_active = record.status in ["pending", "running"]
+            is_recent_finished = False
+
+            if record.finished_at:
+                delta = (now - record.finished_at).total_seconds()
+                if delta < 15:  # keep finished tasks for 15 seconds
+                    is_recent_finished = True
+
+            if is_active or is_recent_finished:
                 running_tasks.append(
                     {
                         "task_id": task_id,

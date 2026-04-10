@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { FeedbackPanel } from './FeedbackPanel';
 
 type TerminalDrawerProps = {
@@ -13,14 +14,20 @@ type TerminalDrawerProps = {
 
 export function TerminalDrawer({ taskId, status, progress, logs, error, onStop, taskStateMessage }: TerminalDrawerProps) {
   const [expanded, setExpanded] = useState(false);
+  const [portalNode, setPortalNode] = useState<HTMLElement | null>(null);
+
+  useEffect(() => {
+    setPortalNode(document.getElementById('status-bar-terminal-portal'));
+  }, []);
+
   const latestLog = logs.length > 0 ? logs[logs.length - 1] : 'Waiting for tasks...';
 
-  if (!taskId && !expanded && logs.length === 0) {
+  if (!taskId && !expanded && logs.length === 0 && !error) {
     return null;
   }
 
-  return (
-    <div className={`terminal-drawer ${expanded ? 'terminal-drawer--expanded' : ''}`}>
+  const content = (
+    <div className="terminal-drawer">
       <div className="terminal-drawer__header" onClick={() => setExpanded(!expanded)}>
         <div className="terminal-drawer__status">
           <span className={`status-dot status-${status}`} />
@@ -61,7 +68,7 @@ export function TerminalDrawer({ taskId, status, progress, logs, error, onStop, 
           <div className="log-panel">
             {logs.length > 0 ? (
               logs.map((line, index) => (
-                <div key={`${index}-${line.slice(0, 16)}`} className="log-line">
+                <div key={`${index}-${line.slice(0, 16)}`} className="log-line" style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
                   {line}
                 </div>
               ))
@@ -73,4 +80,7 @@ export function TerminalDrawer({ taskId, status, progress, logs, error, onStop, 
       )}
     </div>
   );
+
+  if (!portalNode) return null;
+  return createPortal(content, portalNode);
 }

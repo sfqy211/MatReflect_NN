@@ -65,14 +65,22 @@ export function StatusBar() {
 
   return (
     <footer className="status-bar">
-      <div className="status-bar__left">
-        <span className="status-bar__item">MatReflect_NN Workspace</span>
+      <div className="status-bar__left" id="status-bar-terminal-portal">
+        {/* The active tasks from metrics will only render if no terminal drawer overrides it */}
         {metrics && metrics.active_tasks && metrics.active_tasks.length > 0 && (
           <div className="status-bar__tasks">
             {metrics.active_tasks.map((task) => (
-              <div key={task.task_id} className="status-bar__task-badge">
+              <div 
+                key={task.task_id} 
+                className={`status-bar__task-badge status-bar__task-badge--${task.status}`}
+                title={task.message || task.status}
+              >
                 <span className="task-type">{task.task_type}</span>
-                <span className="task-progress">{task.progress}%</span>
+                {task.status === "running" || task.status === "pending" ? (
+                  <span className="task-progress">{task.progress}%</span>
+                ) : (
+                  <span className="task-progress">{task.status === "success" ? "DONE" : "ERR"}</span>
+                )}
               </div>
             ))}
           </div>

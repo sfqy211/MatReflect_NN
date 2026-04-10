@@ -20,6 +20,11 @@ DEFAULT_PORT = 18000
 DEFAULT_TITLE = "MatReflect_NN Desktop"
 
 
+def configure_windows_event_loop_policy() -> None:
+    if hasattr(asyncio, "WindowsProactorEventLoopPolicy"):
+        asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Launch MatReflect_NN as a desktop app.")
     parser.add_argument("--project-root", default="", help="Project root containing backend/, frontend/, scene/.")
@@ -153,6 +158,7 @@ def configure_environment(project_root: Path) -> None:
 
 
 def main() -> int:
+    configure_windows_event_loop_policy()
     args = parse_args()
     project_root = resolve_project_root(args.project_root)
     ensure_frontend_dist(project_root)

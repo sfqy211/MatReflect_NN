@@ -24,7 +24,7 @@ export function FeedbackPanel({
   return (
     <div className={className}>
       <strong>{title}</strong>
-      {message ? <p>{message}</p> : null}
+      {message ? <p style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{message}</p> : null}
       {actionLabel && onAction ? (
         <div className="feedback-panel__actions">
           <button type="button" className="theme-toggle" onClick={onAction}>

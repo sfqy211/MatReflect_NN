@@ -43,7 +43,7 @@ Set-Location '$ProjectDir'
 Write-Host 'Starting MatReflect backend...'
 Write-Host 'ProjectDir: $ProjectDir'
 Write-Host 'URL: http://$BackendHost`:$BackendPort/docs'
-& '$CondaBat' run --no-capture-output -n $BackendEnv python -m uvicorn backend.main:app --reload --host $BackendHost --port $BackendPort
+& '$CondaBat' run --no-capture-output -n $BackendEnv python -m backend.run_server --reload --host $BackendHost --port $BackendPort
 "@
 
 $frontendCommand = @"

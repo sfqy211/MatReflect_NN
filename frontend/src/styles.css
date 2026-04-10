@@ -97,7 +97,17 @@ button {
   color: var(--text-muted);
 }
 
-.status-bar__left,
+.status-bar__left {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex: 1;
+}
+
+#status-bar-terminal-portal:not(:empty) .status-bar__tasks {
+  display: none;
+}
+
 .status-bar__right {
   display: flex;
   align-items: center;
@@ -127,9 +137,6 @@ button {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-left: 12px;
-  padding-left: 12px;
-  border-left: 1px solid var(--border);
 }
 
 .status-bar__task-badge {
@@ -140,6 +147,22 @@ button {
   background: var(--accent-soft);
   border-radius: 12px;
   font-size: 11px;
+}
+
+.status-bar__task-badge--failed {
+  background: color-mix(in oklab, var(--danger) 15%, transparent);
+}
+
+.status-bar__task-badge--failed .task-progress {
+  color: var(--danger);
+}
+
+.status-bar__task-badge--success {
+  background: color-mix(in oklab, var(--accent-warm) 15%, transparent);
+}
+
+.status-bar__task-badge--success .task-progress {
+  color: var(--accent-warm);
 }
 
 .status-bar__task-badge .task-type {
@@ -1349,35 +1372,25 @@ button {
 
 /* Terminal Drawer */
 .terminal-drawer {
-  position: fixed;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  z-index: 100;
-  background: var(--surface-strong);
-  border-top: 1px solid var(--border);
   display: flex;
-  flex-direction: column;
-  transition: height 0.2s ease;
-}
-
-.terminal-drawer--expanded {
-  height: 300px;
+  align-items: center;
+  height: 32px;
+  position: relative;
+  width: 100%;
 }
 
 .terminal-drawer__header {
   height: 32px;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 0 16px;
+  gap: 16px;
   cursor: pointer;
-  position: relative;
-  background: var(--surface);
+  padding: 0;
+  width: 100%;
 }
 
 .terminal-drawer__header:hover {
-  background: var(--surface-soft);
+  background: transparent;
 }
 
 .terminal-drawer__status {
@@ -1387,9 +1400,6 @@ button {
   font-family: var(--font-display);
   font-size: 12px;
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  flex: 1;
 }
 
 .status-dot {
@@ -1399,13 +1409,14 @@ button {
   background: var(--text-muted);
 }
 .status-running, .status-pending { background: var(--accent); }
-.status-done, .status-completed { background: var(--accent-warm); }
+.status-done, .status-completed, .status-success { background: var(--accent-warm); }
 .status-failed, .status-error { background: var(--danger); }
 
 .terminal-drawer__latest-log {
   color: var(--text-muted);
   overflow: hidden;
   text-overflow: ellipsis;
+  max-width: 400px;
 }
 
 .terminal-drawer__progress {
@@ -1426,12 +1437,23 @@ button {
 }
 
 .terminal-drawer__body {
+  position: absolute;
+  bottom: 32px;
+  left: 0;
+  width: 600px;
+  max-height: 400px;
+  background: var(--surface-strong);
+  border: 1px solid var(--border);
+  border-top-right-radius: 6px;
+  border-top-left-radius: 6px;
+  box-shadow: 0 -4px 12px rgba(0,0,0,0.2);
   padding: 16px;
   flex: 1;
   min-height: 0;
   overflow: auto;
   display: flex;
   flex-direction: column;
+  z-index: 200;
 }
 
 /* Update layout for no-logs */

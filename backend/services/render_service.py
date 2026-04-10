@@ -5,16 +5,17 @@ import locale
 import os
 import re
 import shutil
-import subprocess
+import traceback
 import xml.etree.ElementTree as ET
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, Union
+from typing import Any, Optional, Union
 
 from backend.core.conda import build_python_runner
 from backend.core.config import LOGS_ROOT, OUTPUTS_ROOT, PROJECT_ROOT, RUNTIME_ROOT
 from backend.core.paths import get_mitsuba_paths
 from backend.core.runtime_logging import format_command, log_task_message
+from backend.core.threaded_subprocess import process_is_running, run_process_streaming, terminate_process
 from backend.models.common import FileListItem, TaskDetailResponse
 from backend.models.render import (
     RenderBatchRequest,
@@ -271,7 +272,7 @@ def update_integrator_and_sampler(root: ET.Element, integrator_type: str, sample
 class RenderService:
     def __init__(self) -> None:
         self._cancel_events: dict[str, asyncio.Event] = {}
-        self._processes: dict[str, asyncio.subprocess.Process] = {}
+        self._processes: dict[str, Any] = {}
 
     def _input_dir(self, render_mode: RenderMode) -> Path:
         return {
@@ -436,35 +437,21 @@ class RenderService:
     ) -> int:
         await self._write_log(task_id, log_path, start_message, status="running", progress=progress)
         await self._write_log(task_id, log_path, format_command(cmd, cwd=cwd, use_shell=use_shell), progress=progress)
-        if use_shell:
-            process = await asyncio.create_subprocess_shell(subprocess.list2cmdline(cmd), stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT, cwd=str(cwd), env=env)
-        else:
-            process = await asyncio.create_subprocess_exec(*cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT, cwd=str(cwd), env=env)
-        self._processes[task_id] = process
-        try:
-            while True:
-                if cancel_event and cancel_event.is_set():
-                    if process.returncode is None:
-                        process.terminate()
-                        await process.wait()
-                    return -1
-                try:
-                    line = await asyncio.wait_for(process.stdout.readline(), timeout=0.5) if process.stdout else b""
-                except asyncio.TimeoutError:
-                    if process.returncode is not None:
-                        break
-                    continue
-                if not line:
-                    if process.returncode is None:
-                        await asyncio.sleep(0.1)
-                        continue
-                    break
-                text = decode_subprocess_output(line).strip()
-                if text:
-                    await self._write_log(task_id, log_path, text, progress=progress)
-            return await process.wait()
-        finally:
-            self._processes.pop(task_id, None)
+        async def handle_output(line: bytes) -> None:
+            text = decode_subprocess_output(line).strip()
+            if text:
+                await self._write_log(task_id, log_path, text, progress=progress)
+
+        return await run_process_streaming(
+            cmd,
+            cwd=cwd,
+            env=env,
+            use_shell=use_shell,
+            cancel_event=cancel_event,
+            process_store=self._processes,
+            process_key=task_id,
+            on_output=handle_output,
+        )
 
     async def start_batch(self, request: RenderBatchRequest):
         log_path = LOGS_ROOT / f"render_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.log"
@@ -490,8 +477,8 @@ class RenderService:
         if cancel_event is not None:
             cancel_event.set()
         process = self._processes.get(task_id)
-        if process and process.returncode is None:
-            process.terminate()
+        if process_is_running(process):
+            terminate_process(process)
         await task_manager.update(task_id, status="cancelled", message="Cancellation requested", event="log")
         return True
 
@@ -514,7 +501,8 @@ class RenderService:
         try:
             await self._execute_render_batch(task_id, request, log_path, cancel_event)
         except Exception as exc:
-            await self._write_log(task_id, log_path, f"Render task failed: {exc}", status="failed", progress=100, event="done")
+            await self._write_log(task_id, log_path, f"Render task failed: {exc!r}", status="failed", progress=100, event="done")
+            await self._write_log(task_id, log_path, traceback.format_exc(), progress=100)
         finally:
             self._cancel_events.pop(task_id, None)
             self._processes.pop(task_id, None)
@@ -593,7 +581,8 @@ class RenderService:
 
             await self._write_log(task_id, log_path, f"{config['label']} reconstruction completed", status="success", progress=100, event="done", result_payload={"pipeline": "reconstruct_only", "model_key": request.model_key, "output_dir": str(output_dir), "generated_files": generated_fullbins})
         except Exception as exc:
-            await self._write_log(task_id, log_path, f"Reconstruct task failed: {exc}", status="failed", progress=100, event="done")
+            await self._write_log(task_id, log_path, f"Reconstruct task failed: {exc!r}", status="failed", progress=100, event="done")
+            await self._write_log(task_id, log_path, traceback.format_exc(), progress=100)
         finally:
             self._cancel_events.pop(task_id, None)
             self._processes.pop(task_id, None)
@@ -646,29 +635,68 @@ class RenderService:
             env["PYTHONUNBUFFERED"] = "1"
             env["PATH"] = str(mitsuba_dir) + os.pathsep + env.get("PATH", "")
             await self._write_log(task_id, log_path, format_command(cmd, cwd=mitsuba_dir, use_shell=False), progress=progress_offset, result_payload=result_payload)
-            process = await asyncio.create_subprocess_exec(*cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT, env=env)
-            self._processes[task_id] = process
-            while True:
-                line = await process.stdout.readline() if process.stdout else b""
-                if not line:
-                    break
+            async def handle_render_output(line: bytes) -> None:
                 text = decode_subprocess_output(line).strip()
                 if text:
                     parsed = self._parse_progress(text, index, total)
                     progress = progress_offset + int((parsed or 0) * progress_span / 100)
                     await self._write_log(task_id, log_path, text, progress=min(99, progress), result_payload=result_payload)
-            if await process.wait() != 0:
-                await self._write_log(task_id, log_path, f"Render failed: {filename}", status="failed", progress=100, event="done", result_payload=result_payload)
+
+            return_code = await run_process_streaming(
+                cmd,
+                cwd=mitsuba_dir,
+                env=env,
+                cancel_event=cancel_event,
+                process_store=self._processes,
+                process_key=task_id,
+                on_output=handle_render_output,
+            )
+            if return_code == -1:
+                await self._write_log(task_id, log_path, "Render task cancelled", status="cancelled", progress=100, event="done", result_payload=result_payload)
+                return
+            if return_code != 0:
+                await self._write_log(
+                    task_id,
+                    log_path,
+                    f"Render failed: {filename} (exit code: {return_code})",
+                    status="failed",
+                    progress=100,
+                    event="done",
+                    result_payload=result_payload,
+                )
                 return
             await self._write_log(task_id, log_path, f"Rendered {filename} ({selected_type})", result_payload=result_payload)
             if request.auto_convert and exr_out.exists() and mtsutil_exe.exists():
                 convert_cmd = [str(mtsutil_exe), "tonemap", "-o", str(png_out), str(exr_out)]
                 await self._write_log(task_id, log_path, format_command(convert_cmd, cwd=mitsuba_dir, use_shell=False), result_payload=result_payload)
-                convert = await asyncio.create_subprocess_exec(str(mtsutil_exe), "tonemap", "-o", str(png_out), str(exr_out), stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT, env=env)
-                stdout, _ = await convert.communicate()
-                convert_text = decode_subprocess_output(stdout).strip()
-                if convert_text:
-                    await self._write_log(task_id, log_path, convert_text, result_payload=result_payload)
+                async def handle_tonemap_output(line: bytes) -> None:
+                    text = decode_subprocess_output(line).strip()
+                    if text:
+                        await self._write_log(task_id, log_path, text, result_payload=result_payload)
+
+                convert_return_code = await run_process_streaming(
+                    convert_cmd,
+                    cwd=mitsuba_dir,
+                    env=env,
+                    cancel_event=cancel_event,
+                    process_store=self._processes,
+                    process_key=task_id,
+                    on_output=handle_tonemap_output,
+                )
+                if convert_return_code == -1:
+                    await self._write_log(task_id, log_path, "Tonemap task cancelled", status="cancelled", progress=100, event="done", result_payload=result_payload)
+                    return
+                if convert_return_code != 0:
+                    await self._write_log(
+                        task_id,
+                        log_path,
+                        f"Tonemap failed for {filename} (exit code: {convert_return_code})",
+                        status="failed",
+                        progress=100,
+                        event="done",
+                        result_payload=result_payload,
+                    )
+                    return
                 if png_out.exists():
                     generated_pngs.append(png_out.name)
             await task_manager.update(task_id, status="running", progress=min(99, progress_offset + int((index + 1) / total * progress_span)), message=f"Completed {index + 1}/{total}: {filename}", result_payload=result_payload, event="log")
@@ -693,15 +721,33 @@ class RenderService:
                 png_out = png_dir / f"{entry.stem}.png"
                 convert_cmd = [str(mtsutil_exe), "tonemap", "-o", str(png_out), str(entry)]
                 await self._write_log(task_id, log_path, format_command(convert_cmd, cwd=mtsutil_exe.parent, use_shell=False), progress=min(99, int(index / len(candidates) * 100)))
-                process = await asyncio.create_subprocess_exec(str(mtsutil_exe), "tonemap", "-o", str(png_out), str(entry), stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT)
-                stdout, _ = await process.communicate()
-                text = decode_subprocess_output(stdout).strip()
-                if text:
-                    await self._write_log(task_id, log_path, text, progress=min(99, int((index + 1) / len(candidates) * 100)))
+                async def handle_convert_output(line: bytes) -> None:
+                    text = decode_subprocess_output(line).strip()
+                    if text:
+                        await self._write_log(task_id, log_path, text, progress=min(99, int((index + 1) / len(candidates) * 100)))
+
+                return_code = await run_process_streaming(
+                    convert_cmd,
+                    cwd=mtsutil_exe.parent,
+                    process_store=self._processes,
+                    process_key=task_id,
+                    on_output=handle_convert_output,
+                )
+                if return_code != 0:
+                    await self._write_log(
+                        task_id,
+                        log_path,
+                        f"Convert failed: {entry.name} (exit code: {return_code})",
+                        status="failed",
+                        progress=100,
+                        event="done",
+                    )
+                    return
                 await self._write_log(task_id, log_path, f"Converted {entry.name}", progress=min(99, int((index + 1) / len(candidates) * 100)))
             await self._write_log(task_id, log_path, "EXR to PNG conversion completed", status="success", progress=100, event="done")
         except Exception as exc:
-            await self._write_log(task_id, log_path, f"Convert task failed: {exc}", status="failed", progress=100, event="done")
+            await self._write_log(task_id, log_path, f"Convert task failed: {exc!r}", status="failed", progress=100, event="done")
+            await self._write_log(task_id, log_path, traceback.format_exc(), progress=100)
 
 
 render_service = RenderService()

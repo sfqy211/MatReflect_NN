@@ -26,6 +26,19 @@ class TaskManager:
             try:
                 payload = json.loads(task_file.read_text(encoding="utf-8"))
                 record = TaskRecord.model_validate(payload)
+
+                # Mark left-over pending/running tasks as failed because they were interrupted
+                if record.status in ["pending", "running"]:
+                    record.status = "failed"
+                    record.message = "Task interrupted (server restart)"
+                    if record.started_at is None:
+                        record.started_at = datetime.now()
+                    record.finished_at = datetime.now()
+                    self._task_file(record.task_id).write_text(
+                        record.model_dump_json(indent=2),
+                        encoding="utf-8",
+                    )
+
                 self._tasks[record.task_id] = record
             except Exception:
                 continue
@@ -33,7 +46,9 @@ class TaskManager:
     def get(self, task_id: str) -> Optional[TaskRecord]:
         return self._tasks.get(task_id)
 
-    def create(self, task_type: str, message: str = "", log_path: Optional[str] = None) -> TaskRecord:
+    def create(
+        self, task_type: str, message: str = "", log_path: Optional[str] = None
+    ) -> TaskRecord:
         task_id = f"{task_type}_{uuid4().hex[:8]}"
         record = TaskRecord(
             task_id=task_id,
@@ -118,7 +133,9 @@ class TaskManager:
         return record
 
     async def _run_demo(self, task_id: str) -> None:
-        await self.update(task_id, status="running", progress=0, message="Starting demo task")
+        await self.update(
+            task_id, status="running", progress=0, message="Starting demo task"
+        )
         steps = [
             (15, "Scanning workspace"),
             (35, "Loading data directories"),
@@ -130,7 +147,9 @@ class TaskManager:
             await asyncio.sleep(0.6)
             event = "done" if progress == 100 else "log"
             status = "success" if progress == 100 else "running"
-            await self.update(task_id, status=status, progress=progress, message=message, event=event)
+            await self.update(
+                task_id, status=status, progress=progress, message=message, event=event
+            )
 
 
 task_manager = TaskManager()

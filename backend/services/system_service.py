@@ -8,11 +8,12 @@ import shutil
 import subprocess
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, Union
+from typing import Any, Optional, Union
 
 from backend.core.config import LOGS_ROOT, PROJECT_ROOT
 from backend.core.paths import SAFE_PATHS, get_mitsuba_paths
 from backend.core.runtime_logging import log_task_message
+from backend.core.threaded_subprocess import process_is_running, run_process_streaming, terminate_process
 from backend.models.common import TaskDetailResponse
 from backend.models.system import SystemCompileDefaults, SystemCompileRequest, SystemSummaryResponse
 from backend.services.task_manager import task_manager
@@ -55,15 +56,15 @@ def has_manifest_access_denied(log_lines: list[str]) -> bool:
         "mt.exe : general error c101008d",
         "failed to write the updated manifest",
         "error 31",
-        "拒绝访问",
         "access is denied",
+        "拒绝访问",
     ]
     return any(pattern in joined for pattern in patterns)
 
 
 class SystemService:
     def __init__(self) -> None:
-        self._processes: dict[str, asyncio.subprocess.Process] = {}
+        self._processes: dict[str, Any] = {}
         self._cancel_events: dict[str, asyncio.Event] = {}
 
     def _compile_work_dir(self) -> Path:
@@ -75,7 +76,7 @@ class SystemService:
     def get_compile_defaults(self) -> SystemCompileDefaults:
         work_dir = self._compile_work_dir()
         return SystemCompileDefaults(
-            preset_label="默认 SCons 并行编译",
+            preset_label="Default SCons Parallel Build",
             compile_cmd="scons --parallelize",
             conda_env="mitsuba-build",
             vcvarsall_path=DEFAULT_VCVARSALL_PATH,
@@ -115,8 +116,8 @@ class SystemService:
         if cancel_event is not None:
             cancel_event.set()
         process = self._processes.get(task_id)
-        if process and process.returncode is None:
-            process.terminate()
+        if process_is_running(process):
+            terminate_process(process)
         await task_manager.update(task_id, status="cancelled", message="Cancellation requested", event="log")
         return True
 
@@ -184,11 +185,21 @@ class SystemService:
         return ""
 
     def _auto_detect_vcvarsall(self) -> str:
-        vswhere = Path(os.path.expandvars(r"${ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"))
-        if not vswhere.exists():
-            vswhere = Path(os.path.expandvars(r"${ProgramFiles}\Microsoft Visual Studio\Installer\vswhere.exe"))
-        if not vswhere.exists():
-            raise FileNotFoundError("未找到 vswhere.exe")
+        installer_roots = [
+            os.environ.get("ProgramFiles(x86)", ""),
+            os.environ.get("ProgramFiles", ""),
+        ]
+        vswhere = Path()
+        for root in installer_roots:
+            if not root:
+                continue
+            candidate = Path(root) / "Microsoft Visual Studio" / "Installer" / "vswhere.exe"
+            if candidate.exists():
+                vswhere = candidate
+                break
+        if not vswhere:
+            raise FileNotFoundError("vswhere.exe not found")
+
         cmd = [
             str(vswhere),
             "-latest",
@@ -206,10 +217,10 @@ class SystemService:
             errors="replace",
         ).strip()
         if not vs_path:
-            raise FileNotFoundError("未找到安装了 VC++ 工具集的 Visual Studio")
+            raise FileNotFoundError("No Visual Studio installation with VC++ tools was found")
         vcvarsall = Path(vs_path) / "VC" / "Auxiliary" / "Build" / "vcvarsall.bat"
         if not vcvarsall.exists():
-            raise FileNotFoundError(f"未找到 vcvarsall.bat: {vcvarsall}")
+            raise FileNotFoundError(f"vcvarsall.bat not found: {vcvarsall}")
         return str(vcvarsall)
 
     def _resolve_vcvarsall(self, requested_path: str) -> str:
@@ -218,7 +229,7 @@ class SystemService:
             resolved = self._resolve_vcvarsall_from_shortcut(candidate)
             if resolved:
                 return resolved
-            raise FileNotFoundError("无法从快捷方式解析 vcvarsall.bat，请检查链接目标")
+            raise FileNotFoundError("Failed to resolve vcvarsall.bat from shortcut")
         if candidate and Path(candidate).exists():
             return candidate
         return self._auto_detect_vcvarsall()
@@ -284,43 +295,28 @@ echo %BUILD_ERROR%> "{exit_code_file}"
 exit /b %BUILD_ERROR%
 """
         bat_file.write_text(bat_content, encoding="utf-8")
-        await self._write_log(task_id, log_path, f"生成构建脚本: {bat_file}", progress=15)
+        await self._write_log(task_id, log_path, f"Generated build script: {bat_file}", progress=15)
 
         output_lines: list[str] = []
-        process = await asyncio.create_subprocess_exec(
-            "cmd",
-            "/c",
-            str(bat_file),
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.STDOUT,
-            cwd=str(work_dir),
+
+        async def handle_output(line: bytes) -> None:
+            text = decode_subprocess_output(line).strip()
+            if text:
+                output_lines.append(text)
+                await self._write_log(task_id, log_path, text, progress=55)
+
+        final_exit_code = await run_process_streaming(
+            ["cmd", "/c", str(bat_file)],
+            cwd=work_dir,
+            cancel_event=cancel_event,
+            process_store=self._processes,
+            process_key=task_id,
+            on_output=handle_output,
         )
-        self._processes[task_id] = process
-        try:
-            while True:
-                if cancel_event.is_set():
-                    if process.returncode is None:
-                        process.terminate()
-                        await process.wait()
-                    return -1, output_lines
-                try:
-                    line = await asyncio.wait_for(process.stdout.readline(), timeout=0.5) if process.stdout else b""
-                except asyncio.TimeoutError:
-                    if process.returncode is not None:
-                        break
-                    continue
-                if not line:
-                    if process.returncode is None:
-                        await asyncio.sleep(0.1)
-                        continue
-                    break
-                text = decode_subprocess_output(line).strip()
-                if text:
-                    output_lines.append(text)
-                    await self._write_log(task_id, log_path, text, progress=55)
-            final_exit_code = await process.wait()
-        finally:
-            self._processes.pop(task_id, None)
+        if final_exit_code == -1:
+            bat_file.unlink(missing_ok=True)
+            exit_code_file.unlink(missing_ok=True)
+            return -1, output_lines
 
         if exit_code_file.exists():
             try:
@@ -329,8 +325,8 @@ exit /b %BUILD_ERROR%
                 pass
             exit_code_file.unlink(missing_ok=True)
         bat_file.unlink(missing_ok=True)
-        await self._write_log(task_id, log_path, f"构建脚本退出码: {process.returncode}", progress=80)
-        await self._write_log(task_id, log_path, f"最终退出码: {final_exit_code}", progress=82)
+        await self._write_log(task_id, log_path, f"Build script exit code: {final_exit_code}", progress=80)
+        await self._write_log(task_id, log_path, f"Final exit code: {final_exit_code}", progress=82)
         return final_exit_code, output_lines
 
     async def _run_compile(
@@ -351,7 +347,7 @@ exit /b %BUILD_ERROR%
             await self._write_log(
                 task_id,
                 log_path,
-                f"编译任务已创建: {request.compile_label}",
+                f"Compile task created: {request.compile_label}",
                 status="running",
                 progress=5,
                 result_payload=result_payload,
@@ -362,11 +358,11 @@ exit /b %BUILD_ERROR%
             dep_lib = Path(defaults.dep_lib)
             conda_cmd = os.environ.get("CONDA_EXE") or shutil.which("conda") or "conda"
 
-            await self._write_log(task_id, log_path, f"vcvarsall 路径: {vcvarsall}", progress=10, result_payload=result_payload)
-            await self._write_log(task_id, log_path, f"编译工作目录: {work_dir}", progress=11, result_payload=result_payload)
-            await self._write_log(task_id, log_path, f"编译命令: {request.compile_cmd}", progress=12, result_payload=result_payload)
-            await self._write_log(task_id, log_path, f"Conda 运行器: {conda_cmd}", progress=13, result_payload=result_payload)
-            await self._write_log(task_id, log_path, "开始执行编译", progress=14, result_payload=result_payload)
+            await self._write_log(task_id, log_path, f"vcvarsall path: {vcvarsall}", progress=10, result_payload=result_payload)
+            await self._write_log(task_id, log_path, f"Compile working directory: {work_dir}", progress=11, result_payload=result_payload)
+            await self._write_log(task_id, log_path, f"Compile command: {request.compile_cmd}", progress=12, result_payload=result_payload)
+            await self._write_log(task_id, log_path, f"Conda executable: {conda_cmd}", progress=13, result_payload=result_payload)
+            await self._write_log(task_id, log_path, "Starting compile task", progress=14, result_payload=result_payload)
 
             final_exit_code, output_lines = await self._run_compile_attempt(
                 task_id,
@@ -385,9 +381,9 @@ exit /b %BUILD_ERROR%
             if final_exit_code != 0 and has_manifest_access_denied(output_lines):
                 serial_cmd = build_serial_compile_command(request.compile_cmd)
                 if serial_cmd and serial_cmd != request.compile_cmd:
-                    await self._write_log(task_id, log_path, "检测到 mt.exe manifest 写入冲突，2 秒后使用串行增量补编译", progress=86)
+                    await self._write_log(task_id, log_path, "Manifest conflict detected, retrying with serial compile", progress=86)
                     await asyncio.sleep(2)
-                    await self._write_log(task_id, log_path, f"串行补编译命令: {serial_cmd}", progress=88)
+                    await self._write_log(task_id, log_path, f"Serial retry command: {serial_cmd}", progress=88)
                     final_exit_code, _ = await self._run_compile_attempt(
                         task_id,
                         log_path,
@@ -407,7 +403,7 @@ exit /b %BUILD_ERROR%
                 await self._write_log(
                     task_id,
                     log_path,
-                    "编译成功",
+                    "Compile succeeded",
                     status="success",
                     progress=100,
                     event="done",
@@ -417,7 +413,7 @@ exit /b %BUILD_ERROR%
                 await self._write_log(
                     task_id,
                     log_path,
-                    "编译失败",
+                    "Compile failed",
                     status="failed",
                     progress=100,
                     event="done",
@@ -427,7 +423,7 @@ exit /b %BUILD_ERROR%
             await self._write_log(
                 task_id,
                 log_path,
-                f"编译异常: {exc}",
+                f"Compile exception: {exc}",
                 status="failed",
                 progress=100,
                 event="done",

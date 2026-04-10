@@ -4,14 +4,14 @@ import asyncio
 import json
 import os
 import shutil
-import subprocess
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Optional, Dict, Union
+from typing import Any, Dict, Optional, Union
 
 from backend.core.conda import build_python_runner
 from backend.core.config import LOGS_ROOT, PROJECT_ROOT
 from backend.core.runtime_logging import format_command, log_task_message
+from backend.core.threaded_subprocess import process_is_running, run_process_streaming, terminate_process
 from backend.models.common import TaskDetailResponse
 from backend.models.train import (
     HyperDecodeRequest,
@@ -54,7 +54,7 @@ def ensure_exists(path: Path, *, file_ok: bool = False) -> None:
 
 class TrainService:
     def __init__(self) -> None:
-        self._processes: dict[str, asyncio.subprocess.Process] = {}
+        self._processes: dict[str, Any] = {}
         self._cancel_events: dict[str, asyncio.Event] = {}
 
     def list_models(self) -> TrainModelsResponse:
@@ -127,8 +127,8 @@ class TrainService:
         if cancel_event is not None:
             cancel_event.set()
         process = self._processes.get(task_id)
-        if process and process.returncode is None:
-            process.terminate()
+        if process_is_running(process):
+            terminate_process(process)
         await task_manager.update(task_id, status="cancelled", message="Cancellation requested", event="log")
         return True
 
@@ -257,47 +257,21 @@ class TrainService:
     ) -> int:
         await self._write_log(task_id, log_path, start_message, status="running", progress=progress)
         await self._write_log(task_id, log_path, format_command(cmd, cwd=cwd, use_shell=use_shell), progress=progress)
-        if use_shell:
-            process = await asyncio.create_subprocess_shell(
-                subprocess.list2cmdline(cmd),
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.STDOUT,
-                cwd=str(cwd),
-                env=env,
-            )
-        else:
-            process = await asyncio.create_subprocess_exec(
-                *cmd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.STDOUT,
-                cwd=str(cwd),
-                env=env,
-            )
-        self._processes[task_id] = process
-        try:
-            while True:
-                if cancel_event and cancel_event.is_set():
-                    if process.returncode is None:
-                        process.terminate()
-                        await process.wait()
-                    return -1
-                try:
-                    line = await asyncio.wait_for(process.stdout.readline(), timeout=0.5) if process.stdout else b""
-                except asyncio.TimeoutError:
-                    if process.returncode is not None:
-                        break
-                    continue
-                if not line:
-                    if process.returncode is None:
-                        await asyncio.sleep(0.1)
-                        continue
-                    break
-                text = decode_subprocess_output(line).strip()
-                if text:
-                    await self._write_log(task_id, log_path, text, progress=progress)
-            return await process.wait()
-        finally:
-            self._processes.pop(task_id, None)
+        async def handle_output(line: bytes) -> None:
+            text = decode_subprocess_output(line).strip()
+            if text:
+                await self._write_log(task_id, log_path, text, progress=progress)
+
+        return await run_process_streaming(
+            cmd,
+            cwd=cwd,
+            env=env,
+            use_shell=use_shell,
+            cancel_event=cancel_event,
+            process_store=self._processes,
+            process_key=task_id,
+            on_output=handle_output,
+        )
 
     def _make_env(self, model: TrainModelItem, *, include_script_parent: str = "") -> dict[str, str]:
         env = os.environ.copy()
