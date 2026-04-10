@@ -11,6 +11,10 @@ import { FeedbackPanel } from './FeedbackPanel'
 import { ModelsWorkbench } from './ModelsWorkbench'
 import { RenderWorkbench } from './RenderWorkbench'
 import { TerminalDrawer } from './TerminalDrawer'
+import { Badge } from './ui/Badge'
+import { Button } from './ui/Button'
+import { Card } from './ui/Card'
+import { Field } from './ui/Field'
 import type { AnalysisSubView, ModelsSubView } from '../App'
 
 type WorkspaceCanvasProps = {
@@ -215,7 +219,7 @@ function SettingsCanvas({
   return (
     <section className="workspace-canvas" style={{ overflowY: 'auto' }}>
       <div className="settings-grid">
-        <section className="settings-card">
+        <Card variant="settings">
           <div className="detail-board__lead">
             <h3>系统状态</h3>
           </div>
@@ -227,9 +231,9 @@ function SettingsCanvas({
             <SettingRow label="输出索引" value={String(galleryCount)} />
             <SettingRow label="模块数" value={String(system?.available_modules.length ?? 4)} />
           </div>
-        </section>
+        </Card>
 
-        <section className="settings-card settings-card--wide">
+        <Card variant="settings" className="settings-card--wide">
           <div className="detail-board__lead">
             <h3>项目路径</h3>
           </div>
@@ -238,9 +242,9 @@ function SettingsCanvas({
             <SettingRow label="Mitsuba EXE" value={system ? summarizePath(system.mitsuba_exe) : '-'} />
             <SettingRow label="mtsutil EXE" value={system ? summarizePath(system.mtsutil_exe) : '-'} />
           </div>
-        </section>
+        </Card>
 
-        <section className="settings-card settings-card--wide">
+        <Card variant="settings" className="settings-card--wide">
           <div className="detail-board__lead">
             <h3>Mitsuba 编译辅助</h3>
           </div>
@@ -248,26 +252,22 @@ function SettingsCanvas({
             该入口已从 V1 迁移到 V2。用于调用 Visual Studio 工具链、激活 `mitsuba-build` 环境并执行 SCons 编译。
           </p>
           <div className="render-form-grid" style={{ marginTop: 12 }}>
-            <label className="field">
-              <span>预设名称</span>
+            <Field label="预设名称">
               <input value={compileLabel} onChange={(event) => setCompileLabel(event.target.value)} placeholder="默认 SCons 并行编译" />
-            </label>
-            <label className="field">
-              <span>Conda 环境</span>
+            </Field>
+            <Field label="Conda 环境">
               <input value={compileCondaEnv} onChange={(event) => setCompileCondaEnv(event.target.value)} placeholder="mitsuba-build" />
-            </label>
-            <label className="field">
-              <span>编译命令</span>
+            </Field>
+            <Field label="编译命令">
               <input value={compileCmd} onChange={(event) => setCompileCmd(event.target.value)} placeholder="scons --parallelize" />
-            </label>
-            <label className="field">
-              <span>vcvarsall</span>
+            </Field>
+            <Field label="vcvarsall">
               <input
                 value={vcvarsallPath}
                 onChange={(event) => setVcvarsallPath(event.target.value)}
                 placeholder="可填写 vcvarsall.bat 或 .lnk；留空则自动检测"
               />
-            </label>
+            </Field>
           </div>
           <div className="settings-list" style={{ marginTop: 0 }}>
             <SettingRow label="编译工作目录" value={compileDefaults ? summarizePath(compileDefaults.work_dir) : '等待后端摘要返回'} />
@@ -276,22 +276,22 @@ function SettingsCanvas({
             <SettingRow label="当前任务" value={activeTaskId ?? '暂无'} />
           </div>
           <div className="render-actions" style={{ marginTop: 12, marginBottom: 0 }}>
-            <button
+            <Button
               type="button"
-              className="theme-toggle render-actions--primary"
+              variant="primary"
               disabled={startCompileMutation.isPending || !compileCmd.trim() || !compileCondaEnv.trim()}
               onClick={() => void startCompile()}
             >
               启动编译
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
-              className="theme-toggle render-actions--danger"
+              variant="danger"
               disabled={!activeTaskId || !['pending', 'running'].includes(compileStatus)}
               onClick={() => void stopCompile()}
             >
               停止编译
-            </button>
+            </Button>
           </div>
           {compileError ? <FeedbackPanel title="编译任务提交失败" message={compileError.message} tone="error" compact /> : null}
           <TerminalDrawer
@@ -303,7 +303,7 @@ function SettingsCanvas({
             onStop={!['pending', 'running'].includes(compileStatus) ? undefined : () => void stopCompile()}
             taskStateMessage={taskRecord?.message ?? null}
           />
-        </section>
+        </Card>
       </div>
     </section>
   )
@@ -394,9 +394,9 @@ function ModulePlaceholder({
         </div>
         <div className="detail-pill-grid">
           {activeAction.settings.map((setting) => (
-            <span key={setting} className="detail-pill">
+            <Badge key={setting} variant="detail">
               {setting}
-            </span>
+            </Badge>
           ))}
         </div>
       </div>

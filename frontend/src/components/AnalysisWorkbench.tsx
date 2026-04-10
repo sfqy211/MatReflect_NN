@@ -7,6 +7,11 @@ import type { AnalysisImageSet, FileListItem } from '../types/api'
 import { FeedbackPanel } from './FeedbackPanel'
 import { GalleryPreview } from './GalleryPreview'
 import { MaterialSelector } from './MaterialSelector'
+import { Badge } from './ui/Badge'
+import { Button } from './ui/Button'
+import { Card } from './ui/Card'
+import { CheckboxField } from './ui/CheckboxField'
+import { Field } from './ui/Field'
 import {
   useAnalysisImages,
   useDeleteAnalysisImage,
@@ -259,9 +264,9 @@ export function AnalysisWorkbench({ activeSubView, onSubViewChange: _onSubViewCh
     <section className="workspace-canvas">
       <div className="detail-pill-grid">
         {summaryChips.map((chip) => (
-          <span key={chip} className="detail-pill">
-            {chip}
-          </span>
+          <Badge key={chip} variant="detail">
+              {chip}
+            </Badge>
         ))}
       </div>
 
@@ -275,30 +280,26 @@ export function AnalysisWorkbench({ activeSubView, onSubViewChange: _onSubViewCh
                 </div>
 
                 <div className="render-form-grid" style={{ gridTemplateColumns: '1fr' }}>
-                  <label className="field">
-                    <span>预览类型</span>
-                    <select value={previewSet} onChange={(event) => setPreviewSet(event.target.value as AnalysisImageSet)}>
+                  <Field label="预览类型">
+              <select value={previewSet} onChange={(event) => setPreviewSet(event.target.value as AnalysisImageSet)}>
                       {Object.entries(IMAGE_SET_LABELS).map(([key, label]) => (
                         <option key={key} value={key}>
                           {label}
                         </option>
                       ))}
                     </select>
-                  </label>
-                  <label className="field">
-                    <span>预览目录</span>
-                    <input value={previewDirectory} onChange={(event) => setPreviewDirectory(event.target.value)} placeholder={previewQuery.data?.resolved_path ?? '留空使用默认目录'} />
-                  </label>
-                  <label className="field">
-                    <span>搜索</span>
-                    <input value={previewSearch} onChange={(event) => setPreviewSearch(event.target.value)} placeholder="搜索图片名" />
-                  </label>
+            </Field>
+                  <Field label="预览目录">
+              <input value={previewDirectory} onChange={(event) => setPreviewDirectory(event.target.value)} placeholder={previewQuery.data?.resolved_path ?? '留空使用默认目录'} />
+            </Field>
+                  <Field label="搜索">
+              <input value={previewSearch} onChange={(event) => setPreviewSearch(event.target.value)} placeholder="搜索图片名" />
+            </Field>
                 </div>
 
                 <div className="render-form-grid" style={{ gridTemplateColumns: '1fr' }}>
-                  <label className="field">
-                    <span>删除目标</span>
-                    <MaterialSelector
+                  <Field label="删除目标">
+              <MaterialSelector
                       title="选择要删除的图片"
                       items={previewItems}
                       selectedItems={previewSelectedNames}
@@ -311,13 +312,13 @@ export function AnalysisWorkbench({ activeSubView, onSubViewChange: _onSubViewCh
                       multiSelect={true}
                       emptyMessage="当前目录下没有图片"
                     />
-                  </label>
+            </Field>
                 </div>
 
                 <div className="render-actions">
-                  <button type="button" className="theme-toggle render-actions--danger" onClick={() => void deletePreviewImage()} disabled={previewSelectedPaths.length === 0 || deleteImageMutation.isPending}>
+                  <Button type="button" variant="danger" onClick={() => void deletePreviewImage()} disabled={previewSelectedPaths.length === 0 || deleteImageMutation.isPending}>
                     删除选中的 {previewSelectedPaths.length > 0 ? previewSelectedPaths.length : ''} 张图片及关联 EXR
-                  </button>
+                  </Button>
                 </div>
 
                 {deleteImageMutation.data ? (
@@ -337,36 +338,30 @@ export function AnalysisWorkbench({ activeSubView, onSubViewChange: _onSubViewCh
                 </div>
 
                 <div className="render-form-grid" style={{ gridTemplateColumns: '1fr' }}>
-                  <label className="field">
-                    <span>GT 目录</span>
-                    <input value={gtDir} onChange={(event) => setGtDir(event.target.value)} placeholder={brdfsQuery.data?.resolved_path ?? '留空使用默认目录'} />
-                  </label>
-                  <label className="field">
-                    <span>方法一目录</span>
-                    <input value={method1Dir} onChange={(event) => setMethod1Dir(event.target.value)} placeholder={fullbinQuery.data?.resolved_path ?? '留空使用默认目录'} />
-                  </label>
-                  <label className="field">
-                    <span>方法二目录</span>
-                    <input value={method2Dir} onChange={(event) => setMethod2Dir(event.target.value)} placeholder={npyQuery.data?.resolved_path ?? '留空使用默认目录'} />
-                  </label>
-                  <label className="field">
-                    <span>GT 标签</span>
-                    <input value={gtLabel} onChange={(event) => setGtLabel(event.target.value)} />
-                  </label>
-                  <label className="field">
-                    <span>方法一标签</span>
-                    <input value={method1Label} onChange={(event) => setMethod1Label(event.target.value)} />
-                  </label>
-                  <label className="field">
-                    <span>方法二标签</span>
-                    <input value={method2Label} onChange={(event) => setMethod2Label(event.target.value)} />
-                  </label>
+                  <Field label="GT 目录">
+              <input value={gtDir} onChange={(event) => setGtDir(event.target.value)} placeholder={brdfsQuery.data?.resolved_path ?? '留空使用默认目录'} />
+            </Field>
+                  <Field label="方法一目录">
+              <input value={method1Dir} onChange={(event) => setMethod1Dir(event.target.value)} placeholder={fullbinQuery.data?.resolved_path ?? '留空使用默认目录'} />
+            </Field>
+                  <Field label="方法二目录">
+              <input value={method2Dir} onChange={(event) => setMethod2Dir(event.target.value)} placeholder={npyQuery.data?.resolved_path ?? '留空使用默认目录'} />
+            </Field>
+                  <Field label="GT 标签">
+              <input value={gtLabel} onChange={(event) => setGtLabel(event.target.value)} />
+            </Field>
+                  <Field label="方法一标签">
+              <input value={method1Label} onChange={(event) => setMethod1Label(event.target.value)} />
+            </Field>
+                  <Field label="方法二标签">
+              <input value={method2Label} onChange={(event) => setMethod2Label(event.target.value)} />
+            </Field>
                 </div>
 
                 <div className="render-actions">
-                  <button type="button" className="theme-toggle" onClick={() => void evaluate()} disabled={evaluateMutation.isPending}>
+                  <Button type="button"  onClick={() => void evaluate()} disabled={evaluateMutation.isPending}>
                     开始评估
-                  </button>
+                  </Button>
                 </div>
                 
                 {evaluateMutation.data ? (
@@ -386,25 +381,22 @@ export function AnalysisWorkbench({ activeSubView, onSubViewChange: _onSubViewCh
                 </div>
 
                 <div className="render-form-grid" style={{ gridTemplateColumns: '1fr' }}>
-                  <label className="field">
-                    <span>左图</span>
-                    <select value={compareLeftSet} onChange={(event) => setCompareLeftSet(event.target.value as AnalysisImageSet)}>
+                  <Field label="左图">
+              <select value={compareLeftSet} onChange={(event) => setCompareLeftSet(event.target.value as AnalysisImageSet)}>
                       <option value="brdfs">GT / BRDF</option>
                       <option value="fullbin">FullBin</option>
                       <option value="npy">NPY</option>
                     </select>
-                  </label>
-                  <label className="field">
-                    <span>右图</span>
-                    <select value={compareRightSet} onChange={(event) => setCompareRightSet(event.target.value as AnalysisImageSet)}>
+            </Field>
+                  <Field label="右图">
+              <select value={compareRightSet} onChange={(event) => setCompareRightSet(event.target.value as AnalysisImageSet)}>
                       <option value="brdfs">GT / BRDF</option>
                       <option value="fullbin">FullBin</option>
                       <option value="npy">NPY</option>
                     </select>
-                  </label>
-                  <label className="field">
-                    <span>对比材质</span>
-                    <MaterialSelector
+            </Field>
+                  <Field label="对比材质">
+              <MaterialSelector
                       title="对比材质"
                       items={commonMaterials}
                       selectedItems={sliderMaterial ? [sliderMaterial] : []}
@@ -412,7 +404,7 @@ export function AnalysisWorkbench({ activeSubView, onSubViewChange: _onSubViewCh
                       multiSelect={false}
                       emptyMessage="没有同时在左右图集中找到相同的材质"
                     />
-                  </label>
+            </Field>
                 </div>
               </section>
             ) : null}
@@ -423,9 +415,8 @@ export function AnalysisWorkbench({ activeSubView, onSubViewChange: _onSubViewCh
                   <h3>材质选择</h3>
                 </div>
                 <div className="render-form-grid" style={{ gridTemplateColumns: '1fr' }}>
-                  <label className="field">
-                    <span>源材质列表</span>
-                    <MaterialSelector
+                  <Field label="源材质列表">
+              <MaterialSelector
                       title="选择材质"
                       items={baseMaterials}
                       selectedItems={selectedMaterials}
@@ -436,7 +427,7 @@ export function AnalysisWorkbench({ activeSubView, onSubViewChange: _onSubViewCh
                         { label: '选前 20 个', filter: (items) => items.slice(0, 20).map((i) => i.name) },
                       ]}
                     />
-                  </label>
+            </Field>
                 </div>
               </section>
             ) : null}
@@ -447,43 +438,39 @@ export function AnalysisWorkbench({ activeSubView, onSubViewChange: _onSubViewCh
                   <h3>网格拼图设置</h3>
                 </div>
                 <div className="render-form-grid" style={{ gridTemplateColumns: '1fr' }}>
-                  <label className="field">
-                    <span>源图片集</span>
-                    <select value={gridSet} onChange={(event) => setGridSet(event.target.value as AnalysisImageSet)}>
+                  <Field label="源图片集">
+              <select value={gridSet} onChange={(event) => setGridSet(event.target.value as AnalysisImageSet)}>
                       <option value="brdfs">GT / BRDF</option>
                       <option value="fullbin">FullBin</option>
                       <option value="npy">NPY</option>
                     </select>
-                  </label>
-                  <label className="field">
-                    <span>源目录</span>
-                    <input value={gridSourceDir} onChange={(event) => setGridSourceDir(event.target.value)} placeholder="留空使用源图片集默认目录" />
-                  </label>
-                  <label className="field">
-                    <span>输出目录</span>
-                    <input value={gridOutputDir} onChange={(event) => setGridOutputDir(event.target.value)} />
-                  </label>
-                  <label className="field">
-                    <span>输出文件名</span>
-                    <input value={gridOutputName} onChange={(event) => setGridOutputName(event.target.value)} />
-                  </label>
-                  <label className="field">
-                    <span>单图宽度</span>
-                    <input type="number" value={gridCellWidth} onChange={(event) => setGridCellWidth(Number(event.target.value) || 256)} />
-                  </label>
-                  <label className="field">
-                    <span>间距</span>
-                    <input type="number" value={gridPadding} onChange={(event) => setGridPadding(Number(event.target.value) || 10)} />
-                  </label>
+            </Field>
+                  <Field label="源目录">
+              <input value={gridSourceDir} onChange={(event) => setGridSourceDir(event.target.value)} placeholder="留空使用源图片集默认目录" />
+            </Field>
+                  <Field label="输出目录">
+              <input value={gridOutputDir} onChange={(event) => setGridOutputDir(event.target.value)} />
+            </Field>
+                  <Field label="输出文件名">
+              <input value={gridOutputName} onChange={(event) => setGridOutputName(event.target.value)} />
+            </Field>
+                  <Field label="单图宽度">
+              <input type="number" value={gridCellWidth} onChange={(event) => setGridCellWidth(Number(event.target.value) || 256)} />
+            </Field>
+                  <Field label="间距">
+              <input type="number" value={gridPadding} onChange={(event) => setGridPadding(Number(event.target.value) || 10)} />
+            </Field>
                 </div>
-                <label className="toggle-field" style={{ marginBottom: '12px' }}>
-                  <input type="checkbox" checked={gridShowNames} onChange={(event) => setGridShowNames(event.target.checked)} />
-                  <span>显示文件名</span>
-                </label>
+                <CheckboxField 
+                  style={{ marginBottom: '12px' }}
+                  label="显示文件名" 
+                  checked={gridShowNames} 
+                  onChange={(event) => setGridShowNames(event.target.checked)} 
+                />
                 <div className="render-actions">
-                  <button type="button" className="theme-toggle" onClick={() => void generateGrid()} disabled={gridMutation.isPending}>
+                  <Button type="button"  onClick={() => void generateGrid()} disabled={gridMutation.isPending}>
                     生成网格图
-                  </button>
+                  </Button>
                 </div>
               </section>
             ) : null}
@@ -518,39 +505,33 @@ export function AnalysisWorkbench({ activeSubView, onSubViewChange: _onSubViewCh
 
                 <div className="render-toggle-row">
                   {comparisonColumns.map((column) => (
-                    <label key={`${column.key}-enabled`} className="toggle-field">
-                      <input type="checkbox" checked={column.enabled} onChange={(event) => updateComparisonColumn(column.key, { enabled: event.target.checked })} />
-                      <span>启用 {column.label || IMAGE_SET_LABELS[column.imageSet]}</span>
-                    </label>
+                    <CheckboxField 
+                      key={`${column.key}-enabled`}
+                      label={`启用 ${column.label || IMAGE_SET_LABELS[column.imageSet]}`}
+                      checked={column.enabled}
+                      onChange={(event) => updateComparisonColumn(column.key, { enabled: event.target.checked })}
+                    />
                   ))}
                 </div>
 
                 <div className="render-form-grid" style={{ gridTemplateColumns: '1fr' }}>
-                  <label className="field">
-                    <span>输出目录</span>
-                    <input value={comparisonOutputDir} onChange={(event) => setComparisonOutputDir(event.target.value)} />
-                  </label>
-                  <label className="field">
-                    <span>输出文件名</span>
-                    <input value={comparisonOutputName} onChange={(event) => setComparisonOutputName(event.target.value)} />
-                  </label>
+                  <Field label="输出目录">
+              <input value={comparisonOutputDir} onChange={(event) => setComparisonOutputDir(event.target.value)} />
+            </Field>
+                  <Field label="输出文件名">
+              <input value={comparisonOutputName} onChange={(event) => setComparisonOutputName(event.target.value)} />
+            </Field>
                 </div>
 
                 <div className="render-toggle-row">
-                  <label className="toggle-field">
-                    <input type="checkbox" checked={comparisonShowLabel} onChange={(event) => setComparisonShowLabel(event.target.checked)} />
-                    <span>显示列标题</span>
-                  </label>
-                  <label className="toggle-field">
-                    <input type="checkbox" checked={comparisonShowFilename} onChange={(event) => setComparisonShowFilename(event.target.checked)} />
-                    <span>显示文件名</span>
-                  </label>
+                  <CheckboxField label="显示列标题" checked={comparisonShowLabel} onChange={(event) => setComparisonShowLabel(event.target.checked)} />
+                  <CheckboxField label="显示文件名" checked={comparisonShowFilename} onChange={(event) => setComparisonShowFilename(event.target.checked)} />
                 </div>
 
                 <div className="render-actions">
-                  <button type="button" className="theme-toggle" onClick={() => void generateComparison()} disabled={comparisonMutation.isPending}>
+                  <Button type="button"  onClick={() => void generateComparison()} disabled={comparisonMutation.isPending}>
                     生成对比拼图
-                  </button>
+                  </Button>
                 </div>
               </section>
             ) : null}
@@ -572,12 +553,12 @@ export function AnalysisWorkbench({ activeSubView, onSubViewChange: _onSubViewCh
             {activeSubView === 'evaluate' ? (
               <div className="metric-grid">
                 {(evaluateMutation.data?.comparisons ?? []).map((comparison) => (
-                  <article key={comparison.label} className="metric-card">
+                  <Card key={comparison.label} variant="metric">
                     <strong>{comparison.label}</strong>
                     <span>PSNR {comparison.metrics.psnr.toFixed(2)} dB</span>
                     <span>SSIM {comparison.metrics.ssim.toFixed(4)}</span>
                     <span>Delta E {comparison.metrics.delta_e.toFixed(4)}</span>
-                  </article>
+                  </Card>
                 ))}
               </div>
             ) : null}

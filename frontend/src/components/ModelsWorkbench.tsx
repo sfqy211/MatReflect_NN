@@ -30,6 +30,10 @@ import type {
 import { FeedbackPanel } from './FeedbackPanel'
 import { MaterialSelector } from './MaterialSelector'
 import { TerminalDrawer } from './TerminalDrawer'
+import { Badge } from './ui/Badge'
+import { Button } from './ui/Button'
+import { CheckboxField } from './ui/CheckboxField'
+import { Field } from './ui/Field'
 
 
 const TEST_SET_20 = [
@@ -121,7 +125,7 @@ export function ModelsWorkbench({ activeSubView, onSubViewChange }: { activeSubV
   const [dataset, setDataset] = useState<'MERL' | 'EPFL'>('MERL')
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null)
   const [liveLogs, setLiveLogs] = useState<string[]>([])
-  const [neuralEngine, setNeuralEngine] = useState<NeuralTrainEngine>('pytorch')
+  const [, setNeuralEngine] = useState<NeuralTrainEngine>('pytorch')
 
   const [merlDir, setMerlDir] = useState('')
   const [neuralOutputDir, setNeuralOutputDir] = useState('')
@@ -432,20 +436,20 @@ export function ModelsWorkbench({ activeSubView, onSubViewChange }: { activeSubV
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '24px' }}>
         <div className="detail-pill-grid" style={{ marginBottom: 0, flex: 1 }}>
           {summaryChips.map((chip) => (
-            <span key={chip} className="detail-pill">
+            <Badge key={chip} variant="detail">
               {chip}
-            </span>
+            </Badge>
           ))}
         </div>
         {activeModel && !activeModel.built_in ? (
-          <button
+          <Button
             type="button"
-            className="theme-toggle render-actions--danger"
+            variant="danger"
             onClick={() => void removeModel(activeModel)}
             style={{ marginLeft: '16px', flexShrink: 0 }}
           >
             删除当前模型
-          </button>
+          </Button>
         ) : null}
       </div>
 
@@ -457,23 +461,19 @@ export function ModelsWorkbench({ activeSubView, onSubViewChange }: { activeSubV
               <h3>H5 -&gt; NPY 转换</h3>
             </div>
             <div className="render-form-grid">
-              <label className="field">
-                <span>H5 目录</span>
-                <input value={kerasH5Dir} onChange={(event) => setKerasH5Dir(event.target.value)} />
-              </label>
-              <label className="field">
-                <span>NPY 输出目录</span>
-                <input value={kerasNpyDir} onChange={(event) => setKerasNpyDir(event.target.value)} />
-              </label>
-              <label className="field">
-                <span>Conda 环境</span>
-                <input value={condaEnv} onChange={(event) => setCondaEnv(event.target.value)} />
-              </label>
+              <Field label="H5 目录">
+              <input value={kerasH5Dir} onChange={(event) => setKerasH5Dir(event.target.value)} />
+            </Field>
+              <Field label="NPY 输出目录">
+              <input value={kerasNpyDir} onChange={(event) => setKerasNpyDir(event.target.value)} />
+            </Field>
+              <Field label="Conda 环境">
+              <input value={condaEnv} onChange={(event) => setCondaEnv(event.target.value)} />
+            </Field>
             </div>
             <div className="render-form-grid" style={{ gridTemplateColumns: '1fr', marginTop: '16px' }}>
-              <label className="field">
-                <span>H5 文件选择</span>
-                <MaterialSelector
+              <Field label="H5 文件选择">
+              <MaterialSelector
                   title="选择 H5 文件"
                   items={h5Items}
                   selectedItems={selectedH5Files}
@@ -483,12 +483,12 @@ export function ModelsWorkbench({ activeSubView, onSubViewChange }: { activeSubV
                   searchPlaceholder="搜索 .h5 文件"
                   formatName={(name) => name.replace(/\.h5$/i, '')}
                 />
-              </label>
+            </Field>
             </div>
             <div className="render-actions">
-              <button type="button" className="theme-toggle render-actions--primary" onClick={() => void startH5Convert()} disabled={selectedH5Files.length === 0}>
+              <Button type="button" variant="primary" onClick={() => void startH5Convert()} disabled={selectedH5Files.length === 0}>
                 执行 H5 -&gt; NPY 转换
-              </button>
+              </Button>
             </div>
           </section>
         ) : null}
@@ -498,8 +498,7 @@ export function ModelsWorkbench({ activeSubView, onSubViewChange }: { activeSubV
             <h3>固定材质选择</h3>
           </div>
           <div className="render-form-grid" style={{ gridTemplateColumns: '1fr', marginTop: '16px' }}>
-            <label className="field">
-              <span>材质选择</span>
+            <Field label="材质选择">
               <MaterialSelector
                 title="选择固定材质"
                 items={materialItems}
@@ -519,7 +518,7 @@ export function ModelsWorkbench({ activeSubView, onSubViewChange }: { activeSubV
                   }
                 ]}
               />
-            </label>
+            </Field>
           </div>
         </section>
 
@@ -530,32 +529,27 @@ export function ModelsWorkbench({ activeSubView, onSubViewChange }: { activeSubV
               <p>基于现有适配器结构配置你的模型运行参数。</p>
             </div>
             <div className="render-form-grid">
-              <label className="field">
-                <span>模型 key</span>
-                <input value={draft.key} onChange={(event) => updateDraft((current) => ({ ...current, key: event.target.value }))} />
-              </label>
-              <label className="field">
-                <span>显示名称</span>
-                <input value={draft.label} onChange={(event) => updateDraft((current) => ({ ...current, label: event.target.value }))} />
-              </label>
-              <label className="field">
-                <span>适配器</span>
-                <select value={draft.adapter} onChange={(event) => changeDraftAdapter(event.target.value as TrainModelAdapter)}>
+              <Field label="模型 key">
+              <input value={draft.key} onChange={(event) => updateDraft((current) => ({ ...current, key: event.target.value }))} />
+            </Field>
+              <Field label="显示名称">
+              <input value={draft.label} onChange={(event) => updateDraft((current) => ({ ...current, label: event.target.value }))} />
+            </Field>
+              <Field label="适配器">
+              <select value={draft.adapter} onChange={(event) => changeDraftAdapter(event.target.value as TrainModelAdapter)}>
                   <option value="hyper-family">hyper-family</option>
                   <option value="neural-pytorch">neural-pytorch</option>
                   <option value="neural-keras">neural-keras</option>
                 </select>
-              </label>
-              <label className="field">
-                <span>说明</span>
-                <input value={draft.description} onChange={(event) => updateDraft((current) => ({ ...current, description: event.target.value }))} />
-              </label>
+            </Field>
+              <Field label="说明">
+              <input value={draft.description} onChange={(event) => updateDraft((current) => ({ ...current, description: event.target.value }))} />
+            </Field>
             </div>
 
             <div className="render-form-grid">
-              <label className="field">
-                <span>Conda 环境</span>
-                <input
+              <Field label="Conda 环境">
+              <input
                   value={draft.runtime.conda_env ?? ''}
                   onChange={(event) =>
                     updateDraft((current) => ({
@@ -564,10 +558,9 @@ export function ModelsWorkbench({ activeSubView, onSubViewChange }: { activeSubV
                     }))
                   }
                 />
-              </label>
-              <label className="field">
-                <span>工作目录</span>
-                <input
+            </Field>
+              <Field label="工作目录">
+              <input
                   value={draft.runtime.working_dir ?? ''}
                   onChange={(event) =>
                     updateDraft((current) => ({
@@ -576,10 +569,9 @@ export function ModelsWorkbench({ activeSubView, onSubViewChange }: { activeSubV
                     }))
                   }
                 />
-              </label>
-              <label className="field">
-                <span>训练脚本</span>
-                <input
+            </Field>
+              <Field label="训练脚本">
+              <input
                   value={draft.runtime.train_script ?? ''}
                   onChange={(event) =>
                     updateDraft((current) => ({
@@ -588,11 +580,10 @@ export function ModelsWorkbench({ activeSubView, onSubViewChange }: { activeSubV
                     }))
                   }
                 />
-              </label>
+            </Field>
               {draft.adapter === 'neural-keras' ? (
-                <label className="field">
-                  <span>转换脚本</span>
-                  <input
+                <Field label="转换脚本">
+              <input
                     value={draft.runtime.convert_script ?? ''}
                     onChange={(event) =>
                       updateDraft((current) => ({
@@ -601,13 +592,12 @@ export function ModelsWorkbench({ activeSubView, onSubViewChange }: { activeSubV
                       }))
                     }
                   />
-                </label>
+            </Field>
               ) : null}
               {draft.adapter === 'hyper-family' ? (
                 <>
-                  <label className="field">
-                    <span>提取脚本</span>
-                    <input
+                  <Field label="提取脚本">
+              <input
                       value={draft.runtime.extract_script ?? ''}
                       onChange={(event) =>
                         updateDraft((current) => ({
@@ -616,10 +606,9 @@ export function ModelsWorkbench({ activeSubView, onSubViewChange }: { activeSubV
                         }))
                       }
                     />
-                  </label>
-                  <label className="field">
-                    <span>解码脚本</span>
-                    <input
+            </Field>
+                  <Field label="解码脚本">
+              <input
                       value={draft.runtime.decode_script ?? ''}
                       onChange={(event) =>
                         updateDraft((current) => ({
@@ -628,15 +617,14 @@ export function ModelsWorkbench({ activeSubView, onSubViewChange }: { activeSubV
                         }))
                       }
                     />
-                  </label>
+            </Field>
                 </>
               ) : null}
             </div>
 
             <div className="render-form-grid">
-              <label className="field">
-                <span>材质目录</span>
-                <input
+              <Field label="材质目录">
+              <input
                   value={draft.default_paths.materials_dir ?? ''}
                   onChange={(event) =>
                     updateDraft((current) => ({
@@ -645,11 +633,10 @@ export function ModelsWorkbench({ activeSubView, onSubViewChange }: { activeSubV
                     }))
                   }
                 />
-              </label>
+            </Field>
               {draft.adapter === 'neural-pytorch' ? (
-                <label className="field">
-                  <span>输出目录</span>
-                  <input
+                <Field label="输出目录">
+              <input
                     value={draft.default_paths.output_dir ?? ''}
                     onChange={(event) =>
                       updateDraft((current) => ({
@@ -658,13 +645,12 @@ export function ModelsWorkbench({ activeSubView, onSubViewChange }: { activeSubV
                       }))
                     }
                   />
-                </label>
+            </Field>
               ) : null}
               {draft.adapter === 'neural-keras' ? (
                 <>
-                  <label className="field">
-                    <span>H5 输出目录</span>
-                    <input
+                  <Field label="H5 输出目录">
+              <input
                       value={draft.default_paths.h5_output_dir ?? ''}
                       onChange={(event) =>
                         updateDraft((current) => ({
@@ -673,10 +659,9 @@ export function ModelsWorkbench({ activeSubView, onSubViewChange }: { activeSubV
                         }))
                       }
                     />
-                  </label>
-                  <label className="field">
-                    <span>NPY 输出目录</span>
-                    <input
+            </Field>
+                  <Field label="NPY 输出目录">
+              <input
                       value={draft.default_paths.npy_output_dir ?? ''}
                       onChange={(event) =>
                         updateDraft((current) => ({
@@ -685,14 +670,13 @@ export function ModelsWorkbench({ activeSubView, onSubViewChange }: { activeSubV
                         }))
                       }
                     />
-                  </label>
+            </Field>
                 </>
               ) : null}
               {draft.adapter === 'hyper-family' ? (
                 <>
-                  <label className="field">
-                    <span>结果目录</span>
-                    <input
+                  <Field label="结果目录">
+              <input
                       value={draft.default_paths.results_dir ?? ''}
                       onChange={(event) =>
                         updateDraft((current) => ({
@@ -701,10 +685,9 @@ export function ModelsWorkbench({ activeSubView, onSubViewChange }: { activeSubV
                         }))
                       }
                     />
-                  </label>
-                  <label className="field">
-                    <span>PT 目录</span>
-                    <input
+            </Field>
+                  <Field label="PT 目录">
+              <input
                       value={draft.default_paths.extract_dir ?? ''}
                       onChange={(event) =>
                         updateDraft((current) => ({
@@ -713,10 +696,9 @@ export function ModelsWorkbench({ activeSubView, onSubViewChange }: { activeSubV
                         }))
                       }
                     />
-                  </label>
-                  <label className="field">
-                    <span>默认 Checkpoint</span>
-                    <input
+            </Field>
+                  <Field label="默认 Checkpoint">
+              <input
                       value={draft.default_paths.checkpoint ?? ''}
                       onChange={(event) =>
                         updateDraft((current) => ({
@@ -725,35 +707,26 @@ export function ModelsWorkbench({ activeSubView, onSubViewChange }: { activeSubV
                         }))
                       }
                     />
-                  </label>
+            </Field>
                 </>
               ) : null}
             </div>
 
             {draft.adapter === 'hyper-family' ? (
               <div className="render-toggle-row" style={{ marginTop: '8px' }}>
-                <label className="toggle-field">
-                  <input type="checkbox" checked={draft.supports_extract} onChange={(event) => updateDraft((current) => ({ ...current, supports_extract: event.target.checked }))} />
-                  <span>支持参数提取</span>
-                </label>
-                <label className="toggle-field">
-                  <input type="checkbox" checked={draft.supports_decode} onChange={(event) => updateDraft((current) => ({ ...current, supports_decode: event.target.checked }))} />
-                  <span>支持 fullbin 解码</span>
-                </label>
-                <label className="toggle-field">
-                  <input type="checkbox" checked={draft.supports_runs} onChange={(event) => updateDraft((current) => ({ ...current, supports_runs: event.target.checked }))} />
-                  <span>支持运行记录扫描</span>
-                </label>
+                <CheckboxField label="支持参数提取" checked={draft.supports_extract} onChange={(event) => updateDraft((current) => ({ ...current, supports_extract: event.target.checked }))} />
+                <CheckboxField label="支持 fullbin 解码" checked={draft.supports_decode} onChange={(event) => updateDraft((current) => ({ ...current, supports_decode: event.target.checked }))} />
+                <CheckboxField label="支持运行记录扫描" checked={draft.supports_runs} onChange={(event) => updateDraft((current) => ({ ...current, supports_runs: event.target.checked }))} />
               </div>
             ) : null}
 
             <div className="render-actions">
-              <button type="button" className="theme-toggle render-actions--primary" onClick={() => void submitCreateModel()}>
+              <Button type="button" variant="primary" onClick={() => void submitCreateModel()}>
                 保存模型
-              </button>
-              <button type="button" className="theme-toggle" onClick={() => setDraft(buildDraft(draft.adapter))}>
+              </Button>
+              <Button type="button"  onClick={() => setDraft(buildDraft(draft.adapter))}>
                 重置表单
-              </button>
+              </Button>
             </div>
           </section>
         ) : null}
@@ -763,23 +736,19 @@ export function ModelsWorkbench({ activeSubView, onSubViewChange }: { activeSubV
             <h3>训练入口</h3>
           </div>
           <div className="render-form-grid">
-            <label className="field">
-              <span>材质目录</span>
+            <Field label="材质目录">
               <input value={merlDir} onChange={(event) => setMerlDir(event.target.value)} />
-            </label>
-            <label className="field">
-              <span>数据集</span>
+            </Field>
+            <Field label="数据集">
               <select value={dataset} onChange={(event) => setDataset(event.target.value as 'MERL' | 'EPFL')} disabled={activeModel?.category === 'neural'}>
                 <option value="MERL">MERL</option>
                 <option value="EPFL">EPFL</option>
               </select>
-            </label>
-            <label className="field">
-              <span>Epochs</span>
+            </Field>
+            <Field label="Epochs">
               <input type="number" value={epochs} onChange={(event) => setEpochs(Number(event.target.value) || 1)} />
-            </label>
-            <label className="field">
-              <span>{activeModel?.category === 'neural' && neuralEngine === 'pytorch' ? '训练设备' : 'Conda 环境'}</span>
+            </Field>
+            <Field label="{activeModel?.category === 'neural' && neuralEngine === 'pytorch' ? '训练设备' : 'Conda 环境'}">
               {activeModel?.adapter === 'neural-pytorch' ? (
                 <select value={neuralDevice} onChange={(event) => setNeuralDevice(event.target.value as 'cpu' | 'cuda')}>
                   <option value="cpu">cpu</option>
@@ -788,87 +757,74 @@ export function ModelsWorkbench({ activeSubView, onSubViewChange }: { activeSubV
               ) : (
                 <input value={condaEnv} onChange={(event) => setCondaEnv(event.target.value)} />
               )}
-            </label>
+            </Field>
           </div>
           {activeModel?.adapter === 'neural-pytorch' ? (
             <div className="render-form-grid">
-              <label className="field">
-                <span>NPY 输出目录</span>
-                <input value={neuralOutputDir} onChange={(event) => setNeuralOutputDir(event.target.value)} />
-              </label>
+              <Field label="NPY 输出目录">
+              <input value={neuralOutputDir} onChange={(event) => setNeuralOutputDir(event.target.value)} />
+            </Field>
             </div>
           ) : null}
           {activeModel?.adapter === 'neural-keras' ? (
             <div className="render-form-grid">
-              <label className="field">
-                <span>CUDA 设备</span>
-                <input value={cudaDevice} onChange={(event) => setCudaDevice(event.target.value)} />
-              </label>
-              <label className="field">
-                <span>H5 输出目录</span>
-                <input value={kerasH5Dir} onChange={(event) => setKerasH5Dir(event.target.value)} />
-              </label>
-              <label className="field">
-                <span>NPY 输出目录</span>
-                <input value={kerasNpyDir} onChange={(event) => setKerasNpyDir(event.target.value)} />
-              </label>
+              <Field label="CUDA 设备">
+              <input value={cudaDevice} onChange={(event) => setCudaDevice(event.target.value)} />
+            </Field>
+              <Field label="H5 输出目录">
+              <input value={kerasH5Dir} onChange={(event) => setKerasH5Dir(event.target.value)} />
+            </Field>
+              <Field label="NPY 输出目录">
+              <input value={kerasNpyDir} onChange={(event) => setKerasNpyDir(event.target.value)} />
+            </Field>
             </div>
           ) : null}
           {activeModel?.adapter === 'hyper-family' ? (
             <>
               <div className="render-form-grid">
-                <label className="field">
-                  <span>训练结果目录</span>
-                  <input value={trainOutputDir} onChange={(event) => setTrainOutputDir(event.target.value)} />
-                </label>
-                <label className="field">
-                  <span>稀疏采样点数</span>
-                  <input type="number" value={sparseSamples} onChange={(event) => setSparseSamples(Number(event.target.value) || 1)} />
-                </label>
-                <label className="field">
-                  <span>KL 权重</span>
-                  <input type="number" step="0.01" value={klWeight} onChange={(event) => setKlWeight(Number(event.target.value) || 0)} />
-                </label>
-                <label className="field">
-                  <span>FW 权重</span>
-                  <input type="number" step="0.01" value={fwWeight} onChange={(event) => setFwWeight(Number(event.target.value) || 0)} />
-                </label>
-                <label className="field">
-                  <span>学习率</span>
-                  <input type="number" step="0.00001" value={lr} onChange={(event) => setLr(Number(event.target.value) || 0.00001)} />
-                </label>
-                <label className="field">
-                  <span>训练材质数</span>
-                  <input type="number" value={trainSubset} onChange={(event) => setTrainSubset(Number(event.target.value) || 0)} />
-                </label>
+                <Field label="训练结果目录">
+              <input value={trainOutputDir} onChange={(event) => setTrainOutputDir(event.target.value)} />
+            </Field>
+                <Field label="稀疏采样点数">
+              <input type="number" value={sparseSamples} onChange={(event) => setSparseSamples(Number(event.target.value) || 1)} />
+            </Field>
+                <Field label="KL 权重">
+              <input type="number" step="0.01" value={klWeight} onChange={(event) => setKlWeight(Number(event.target.value) || 0)} />
+            </Field>
+                <Field label="FW 权重">
+              <input type="number" step="0.01" value={fwWeight} onChange={(event) => setFwWeight(Number(event.target.value) || 0)} />
+            </Field>
+                <Field label="学习率">
+              <input type="number" step="0.00001" value={lr} onChange={(event) => setLr(Number(event.target.value) || 0.00001)} />
+            </Field>
+                <Field label="训练材质数">
+              <input type="number" value={trainSubset} onChange={(event) => setTrainSubset(Number(event.target.value) || 0)} />
+            </Field>
               </div>
               <div className="render-toggle-row" style={{ marginTop: '8px' }}>
-                <label className="toggle-field">
-                  <input type="checkbox" checked={keepon} onChange={(event) => setKeepon(event.target.checked)} />
-                  <span>继续训练</span>
-                </label>
+                <CheckboxField label="继续训练" checked={keepon} onChange={(event) => setKeepon(event.target.checked)} />
               </div>
             <div className="render-actions" style={{ marginTop: '12px' }}>
-                <button
+                <Button
                   type="button"
-                  className="theme-toggle render-actions--primary"
+                  variant="primary"
                   onClick={() => void startTraining()}
                   disabled={!activeModel || (activeModel.category === 'neural' && selectedMaterials.length === 0)}
                 >
                   启动训练
-                </button>
+                </Button>
               </div>
             </>
           ) : (
             <div className="render-actions" style={{ marginTop: '12px' }}>
-              <button
+              <Button
                 type="button"
-                className="theme-toggle render-actions--primary"
+                variant="primary"
                 onClick={() => void startTraining()}
                 disabled={!activeModel || (activeModel.category === 'neural' && selectedMaterials.length === 0)}
               >
                 启动训练
-              </button>
+              </Button>
             </div>
           )}
         </section>
@@ -890,9 +846,9 @@ export function ModelsWorkbench({ activeSubView, onSubViewChange }: { activeSubV
                 <span>{run.run_name}</span>
                 <span>{run.dataset} / 已训练 {run.completed_epochs} epochs</span>
                 <div className="render-actions">
-                  <button type="button" className="theme-toggle" onClick={() => applyRun(run)} disabled={!run.has_checkpoint}>
+                  <Button type="button"  onClick={() => applyRun(run)} disabled={!run.has_checkpoint}>
                     应用 Checkpoint
-                  </button>
+                  </Button>
                 </div>
               </article>
             ))}
@@ -909,34 +865,31 @@ export function ModelsWorkbench({ activeSubView, onSubViewChange }: { activeSubV
                   <h3>参数提取</h3>
                 </div>
                 <div className="render-form-grid">
-                  <label className="field">
-                    <span>Checkpoint</span>
-                    <input value={checkpointPath} onChange={(event) => setCheckpointPath(event.target.value)} />
-                  </label>
-                  <label className="field">
-                    <span>PT 输出目录</span>
-                    <input
+                  <Field label="Checkpoint">
+              <input value={checkpointPath} onChange={(event) => setCheckpointPath(event.target.value)} />
+            </Field>
+                  <Field label="PT 输出目录">
+              <input
                       value={extractOutputDir}
                       onChange={(event) => {
                         setExtractOutputDir(event.target.value)
                         setPtDir(event.target.value)
                       }}
                     />
-                  </label>
-                  <label className="field">
-                    <span>随机种子</span>
-                    <input type="number" value={trainSeed} onChange={(event) => setTrainSeed(Number(event.target.value) || 0)} />
-                  </label>
+            </Field>
+                  <Field label="随机种子">
+              <input type="number" value={trainSeed} onChange={(event) => setTrainSeed(Number(event.target.value) || 0)} />
+            </Field>
                 </div>
                 <div className="render-actions">
-                  <button
+                  <Button
                     type="button"
-                    className="theme-toggle render-actions--primary"
+                    variant="primary"
                     onClick={() => void startExtract()}
                     disabled={dataset === 'MERL' && selectedMaterials.length === 0}
                   >
                     启动参数提取
-                  </button>
+                  </Button>
                 </div>
               </section>
             ) : null}
@@ -946,23 +899,19 @@ export function ModelsWorkbench({ activeSubView, onSubViewChange }: { activeSubV
                   <h3>PT 解码</h3>
                 </div>
                 <div className="render-form-grid">
-                  <label className="field">
-                    <span>PT 目录</span>
-                    <input value={ptDir} onChange={(event) => setPtDir(event.target.value)} />
-                  </label>
-                  <label className="field">
-                    <span>FullBin 输出目录</span>
-                    <input value={fullbinOutputDir} onChange={(event) => setFullbinOutputDir(event.target.value)} />
-                  </label>
-                  <label className="field">
-                    <span>CUDA 设备</span>
-                    <input value={cudaDevice} onChange={(event) => setCudaDevice(event.target.value)} />
-                  </label>
+                  <Field label="PT 目录">
+              <input value={ptDir} onChange={(event) => setPtDir(event.target.value)} />
+            </Field>
+                  <Field label="FullBin 输出目录">
+              <input value={fullbinOutputDir} onChange={(event) => setFullbinOutputDir(event.target.value)} />
+            </Field>
+                  <Field label="CUDA 设备">
+              <input value={cudaDevice} onChange={(event) => setCudaDevice(event.target.value)} />
+            </Field>
                 </div>
                 <div className="render-form-grid" style={{ gridTemplateColumns: '1fr', marginTop: '16px' }}>
-                  <label className="field">
-                    <span>PT 文件选择</span>
-                    <MaterialSelector
+                  <Field label="PT 文件选择">
+              <MaterialSelector
                       title="选择 PT 文件"
                       items={ptItems}
                       selectedItems={selectedPts}
@@ -972,12 +921,12 @@ export function ModelsWorkbench({ activeSubView, onSubViewChange }: { activeSubV
                       searchPlaceholder="搜索已提取的 .pt 文件"
                       formatName={(name) => name.replace(/\.pt$/i, '')}
                     />
-                  </label>
+            </Field>
                 </div>
                 <div className="render-actions">
-                  <button type="button" className="theme-toggle render-actions--primary" onClick={() => void startDecode()} disabled={selectedPts.length === 0}>
+                  <Button type="button" variant="primary" onClick={() => void startDecode()} disabled={selectedPts.length === 0}>
                     执行 fullbin 解码
-                  </button>
+                  </Button>
                 </div>
               </section>
             ) : null}

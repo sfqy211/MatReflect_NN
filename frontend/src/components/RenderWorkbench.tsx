@@ -15,10 +15,13 @@ import {
 } from '../features/render/useRenderWorkbench'
 import { BACKEND_ORIGIN } from '../lib/api'
 import type { RenderMode, RenderReconstructModel, RenderSourceModel, TaskEvent, TrainProjectVariant } from '../types/api'
-import { FeedbackPanel } from './FeedbackPanel'
 import { GalleryPreview } from './GalleryPreview'
 import { MaterialSelector } from './MaterialSelector'
 import { TerminalDrawer } from './TerminalDrawer'
+import { Badge } from './ui/Badge'
+import { Button } from './ui/Button'
+import { CheckboxField } from './ui/CheckboxField'
+import { Field } from './ui/Field'
 
 
 type WorkflowMode = 'render' | 'reconstruct'
@@ -80,7 +83,7 @@ export function RenderWorkbench() {
   const [sourceModel, setSourceModel] = useState<RenderSourceModel>('gt')
   const [workflowMode, setWorkflowMode] = useState<WorkflowMode>('render')
   const [scenePath, setScenePath] = useState('')
-  const [search, setSearch] = useState('')
+  const [search] = useState('')
   const [selectedFiles, setSelectedFiles] = useState<string[]>([])
   const [selectedRunKey, setSelectedRunKey] = useState('')
   const [integratorType, setIntegratorType] = useState('bdpt')
@@ -264,9 +267,9 @@ export function RenderWorkbench() {
     <section className="workspace-canvas">
       <div className="detail-pill-grid">
         {summaryChips.map((chip) => (
-          <span key={chip} className="detail-pill">
+          <Badge key={chip} variant="detail">
             {chip}
-          </span>
+          </Badge>
         ))}
       </div>
 
@@ -277,27 +280,24 @@ export function RenderWorkbench() {
           </div>
 
           <div className="render-form-grid">
-            <label className="field">
-              <span>网络模型</span>
+            <Field label="网络模型">
               <select value={sourceModel} onChange={(event) => setSourceModel(event.target.value as RenderSourceModel)}>
                 <option value="gt">GT / MERL</option>
                 <option value="neural">Neural-BRDF</option>
                 <option value="hyperbrdf">HyperBRDF</option>
               </select>
-            </label>
+            </Field>
 
             {canReconstruct ? (
-              <label className="field">
-                <span>工作模式</span>
+              <Field label="工作模式">
                 <select value={workflowMode} onChange={(event) => setWorkflowMode(event.target.value as WorkflowMode)}>
                   <option value="render">仅渲染</option>
                   <option value="reconstruct">仅重建</option>
                 </select>
-              </label>
+              </Field>
             ) : null}
 
-            <label className="field">
-              <span>场景</span>
+            <Field label="场景">
               <select value={scenePath} onChange={(event) => setScenePath(event.target.value)}>
                 {(scenesQuery.data?.items ?? []).map((scene) => (
                   <option key={scene.path} value={scene.path}>
@@ -305,27 +305,24 @@ export function RenderWorkbench() {
                   </option>
                 ))}
               </select>
-            </label>
+            </Field>
 
-            <label className="field">
-              <span>Integrator</span>
+            <Field label="Integrator">
               <select value={integratorType} onChange={(event) => setIntegratorType(event.target.value)}>
                 <option value="bdpt">bdpt</option>
                 <option value="path">path</option>
                 <option value="direct">direct</option>
               </select>
-            </label>
+            </Field>
 
-            <label className="field">
-              <span>Sample Count</span>
+            <Field label="Sample Count">
               <input type="number" min={1} max={8192} value={sampleCount} onChange={(event) => setSampleCount(Number(event.target.value) || 1)} />
-            </label>
+            </Field>
           </div>
 
           {isReconstructMode && needsCheckpoint ? (
             <div className="render-form-grid">
-              <label className="field">
-                <span>训练结果 / Checkpoint</span>
+              <Field label="训练结果 / Checkpoint">
                 <select value={selectedRunKey} onChange={(event) => setSelectedRunKey(event.target.value)}>
                   {availableRuns.map((run) => (
                     <option key={run.run_dir} value={run.run_dir}>
@@ -333,35 +330,24 @@ export function RenderWorkbench() {
                     </option>
                   ))}
                 </select>
-              </label>
+              </Field>
             </div>
           ) : null}
 
           <div className="render-toggle-row">
-            <label className="toggle-field">
-              <input type="checkbox" checked={autoConvert} onChange={(event) => setAutoConvert(event.target.checked)} />
-              <span>自动转 PNG</span>
-            </label>
-            <label className="toggle-field">
-              <input type="checkbox" checked={skipExisting} onChange={(event) => setSkipExisting(event.target.checked)} />
-              <span>跳过已有结果</span>
-            </label>
-            <label className="toggle-field">
-              <input type="checkbox" checked={showCustomCmd} onChange={(event) => setShowCustomCmd(event.target.checked)} />
-              <span>自定义命令</span>
-            </label>
+            <CheckboxField label="自动转 PNG" checked={autoConvert} onChange={(event) => setAutoConvert(event.target.checked)} />
+            <CheckboxField label="跳过已有结果" checked={skipExisting} onChange={(event) => setSkipExisting(event.target.checked)} />
+            <CheckboxField label="自定义命令" checked={showCustomCmd} onChange={(event) => setShowCustomCmd(event.target.checked)} />
           </div>
 
           {showCustomCmd ? (
-            <label className="field">
-              <span>自定义命令</span>
+            <Field label="自定义命令">
               <input type="text" value={customCmd} onChange={(event) => setCustomCmd(event.target.value)} placeholder="{mitsuba} -o {output} {input}" />
-            </label>
+            </Field>
           ) : null}
 
           <div className="render-form-grid">
-            <label className="field">
-              <span>渲染输入文件</span>
+            <Field label="渲染输入文件">
               <MaterialSelector
                 title={isReconstructMode ? '选择待重建材质' : '选择渲染输入'}
                 items={availableFiles}
@@ -381,26 +367,26 @@ export function RenderWorkbench() {
                   }
                 ]}
               />
-            </label>
+            </Field>
           </div>
 
           <div className="render-actions">
             {isReconstructMode ? (
-              <button type="button" className="theme-toggle render-actions--primary" onClick={startReconstructAction} disabled={selectedFiles.length === 0 || (needsCheckpoint && !selectedRun)}>
+              <Button type="button" variant="primary" onClick={startReconstructAction} disabled={selectedFiles.length === 0 || (needsCheckpoint && !selectedRun)}>
                 一键重建
-              </button>
+              </Button>
             ) : (
-              <button type="button" className="theme-toggle render-actions--primary" onClick={startRenderAction} disabled={selectedFiles.length === 0}>
+              <Button type="button" variant="primary" onClick={startRenderAction} disabled={selectedFiles.length === 0}>
                 开始渲染
-              </button>
+              </Button>
             )}
-            <button type="button" className="theme-toggle render-actions--danger" onClick={stopRender} disabled={!activeTaskId}>
+            <Button type="button" variant="danger" onClick={stopRender} disabled={!activeTaskId}>
               停止任务
-            </button>
+            </Button>
             {!isReconstructMode ? (
-              <button type="button" className="theme-toggle" onClick={convertOutputs}>
+              <Button type="button" onClick={convertOutputs}>
                 转换 EXR
-              </button>
+              </Button>
             ) : null}
           </div>
         </section>

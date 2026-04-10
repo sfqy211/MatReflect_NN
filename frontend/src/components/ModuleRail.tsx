@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import type { ModuleKey } from '../types/api'
 import type { AnalysisSubView, ModelsSubView } from '../App'
 import { useTrainModels } from '../features/models/useModelsWorkbench'
+import { Button } from './ui/Button'
 
 type ThemeMode = 'dark' | 'light'
 
@@ -204,15 +205,14 @@ export function ModuleRail({ activeModule, onChange, activeAnalysisSubView, onAn
       </div>
 
       <div style={{ marginTop: 'auto', paddingTop: '20px' }}>
-        <button
+        <Button
           type="button"
-          className="theme-toggle"
           onClick={() => onThemeChange(theme === 'dark' ? 'light' : 'dark')}
           style={{ width: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center' }}
           title={theme === 'dark' ? '切换到浅色模式' : '切换到深色模式'}
         >
           {collapsed ? (theme === 'dark' ? '🌙' : '🌞') : (theme === 'dark' ? '🌙 深色模式' : '🌞 浅色模式')}
-        </button>
+        </Button>
       </div>
     </aside>
   )

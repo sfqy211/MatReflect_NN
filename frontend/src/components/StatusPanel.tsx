@@ -1,4 +1,5 @@
 import type { ModuleKey, SystemSummary } from '../types/api'
+import { Card } from './ui/Card'
 
 type StatusPanelProps = {
   activeModule: ModuleKey
@@ -27,22 +28,22 @@ export function StatusPanel({ activeModule, galleryCount, system, isLoading, err
       {error ? <p className="error-text">{error}</p> : null}
 
       <div className="status-metric-grid">
-        <article className="status-metric">
+        <Card variant="status">
           <span className="status-metric__label">当前聚焦</span>
           <strong>{activeModule === 'render' ? 'Render' : activeModule === 'analysis' ? 'Analysis' : 'Models'}</strong>
-        </article>
-        <article className="status-metric">
+        </Card>
+        <Card variant="status">
           <span className="status-metric__label">Mitsuba</span>
           <strong>{system?.mitsuba_exists ? 'Ready' : 'Pending'}</strong>
-        </article>
-        <article className="status-metric">
+        </Card>
+        <Card variant="status">
           <span className="status-metric__label">输出索引</span>
           <strong>{galleryCount}</strong>
-        </article>
-        <article className="status-metric">
+        </Card>
+        <Card variant="status">
           <span className="status-metric__label">模块数</span>
           <strong>{system?.available_modules.length ?? 3}</strong>
-        </article>
+        </Card>
       </div>
 
       <section className="status-section">
