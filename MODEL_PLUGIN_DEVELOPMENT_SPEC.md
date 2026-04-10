@@ -38,7 +38,7 @@ V2 的“网络模型管理”已改为注册表驱动：
 3. `hyper-family`
    - 用于 `.binary -> checkpoint.pt -> 材质参数 .pt -> .fullbin`
    - 支持训练、参数提取、fullbin 解码
-   - ?????HyperBRDF
+   - 典型代表：HyperBRDF 及兼容该脚本协议的同类模型
 
 如果自研模型不满足以上任一流程，就不要直接接入当前系统，先扩展新的适配器。
 
@@ -188,9 +188,7 @@ python main.py \
 此能力通过：
 
 ```json
-"adapter_options": {
-  "adapter_options": {}
-}
+"adapter_options": {}
 ```
 
 来开启。
@@ -259,9 +257,7 @@ MyBRDFModel/
     "extract_script": "MyBRDFModel/test.py",
     "decode_script": "MyBRDFModel/pt_to_fullmerl.py"
   },
-  "adapter_options": {
-    "adapter_options": {}
-  }
+  "adapter_options": {}
 }
 ```
 
