@@ -14,6 +14,7 @@ from backend.core.config import (
     OUTPUTS_ROOT,
     PROJECT_ROOT,
 )
+from backend.core.runtime_logging import configure_runtime_logging, log_runtime
 from backend.core.websocket import websocket_hub
 from backend.services.task_manager import task_manager
 from backend.services.metrics_service import metrics_service
@@ -25,6 +26,7 @@ mimetypes.add_type("text/javascript", ".js")
 mimetypes.add_type("text/javascript", ".mjs")
 mimetypes.add_type("application/json", ".json")
 mimetypes.add_type("application/wasm", ".wasm")
+configure_runtime_logging()
 
 app = FastAPI(title="MatReflect_NN Backend", version="0.1.0")
 FRONTEND_DIST = PROJECT_ROOT / "frontend" / "dist"
@@ -49,10 +51,12 @@ app.mount(
 
 @app.on_event("startup")
 async def startup_event():
+    log_runtime(f"Backend startup. Project root: {PROJECT_ROOT}")
     metrics_service.start()
 
 @app.on_event("shutdown")
 async def shutdown_event():
+    log_runtime("Backend shutdown.")
     metrics_service.stop()
 
 @app.websocket("/ws/system/metrics")

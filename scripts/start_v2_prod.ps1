@@ -39,4 +39,4 @@ finally {
 Set-Location $ProjectDir
 Write-Host "Frontend dist built. Launching backend in production mode..."
 Write-Host "App: http://$BackendHost`:$BackendPort"
-& $CondaBat run -n $BackendEnv python -m uvicorn backend.main:app --host $BackendHost --port $BackendPort
+& $CondaBat run --no-capture-output -n $BackendEnv python -m uvicorn backend.main:app --host $BackendHost --port $BackendPort

@@ -12,6 +12,7 @@ from typing import Optional, Union
 
 from backend.core.config import LOGS_ROOT, PROJECT_ROOT
 from backend.core.paths import SAFE_PATHS, get_mitsuba_paths
+from backend.core.runtime_logging import log_task_message
 from backend.models.common import TaskDetailResponse
 from backend.models.system import SystemCompileDefaults, SystemCompileRequest, SystemSummaryResponse
 from backend.services.task_manager import task_manager
@@ -141,6 +142,7 @@ class SystemService:
         clean_message = message.replace("\r", "").replace("\b", "")
         with log_path.open("a", encoding="utf-8") as handle:
             handle.write(clean_message + "\n")
+        log_task_message("system", task_id, clean_message)
         await task_manager.update(
             task_id,
             status=status,

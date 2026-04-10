@@ -11,6 +11,7 @@ from typing import Any, Optional, Dict, Union
 
 from backend.core.conda import build_python_runner
 from backend.core.config import LOGS_ROOT, PROJECT_ROOT
+from backend.core.runtime_logging import format_command, log_task_message
 from backend.models.common import TaskDetailResponse
 from backend.models.train import (
     HyperDecodeRequest,
@@ -230,6 +231,7 @@ class TrainService:
         clean_message = message.replace("\r", "").replace("\b", "")
         with log_path.open("a", encoding="utf-8") as handle:
             handle.write(clean_message + "\n")
+        log_task_message("train", task_id, clean_message)
         await task_manager.update(
             task_id,
             status=status,
@@ -254,6 +256,7 @@ class TrainService:
         cancel_event: Optional[asyncio.Event] = None,
     ) -> int:
         await self._write_log(task_id, log_path, start_message, status="running", progress=progress)
+        await self._write_log(task_id, log_path, format_command(cmd, cwd=cwd, use_shell=use_shell), progress=progress)
         if use_shell:
             process = await asyncio.create_subprocess_shell(
                 subprocess.list2cmdline(cmd),

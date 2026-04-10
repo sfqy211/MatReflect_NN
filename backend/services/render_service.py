@@ -14,6 +14,7 @@ from typing import Optional, Union
 from backend.core.conda import build_python_runner
 from backend.core.config import LOGS_ROOT, OUTPUTS_ROOT, PROJECT_ROOT, RUNTIME_ROOT
 from backend.core.paths import get_mitsuba_paths
+from backend.core.runtime_logging import format_command, log_task_message
 from backend.models.common import FileListItem, TaskDetailResponse
 from backend.models.render import (
     RenderBatchRequest,
@@ -417,6 +418,7 @@ class RenderService:
         clean_message = message.replace("\r", "").replace("\b", "")
         with log_path.open("a", encoding="utf-8") as handle:
             handle.write(clean_message + "\n")
+        log_task_message("render", task_id, clean_message)
         await task_manager.update(task_id, status=status, progress=progress, message=clean_message, log_path=str(log_path), result_payload=result_payload, event=event)
 
     async def _run_command(
@@ -433,6 +435,7 @@ class RenderService:
         cancel_event: Optional[asyncio.Event] = None,
     ) -> int:
         await self._write_log(task_id, log_path, start_message, status="running", progress=progress)
+        await self._write_log(task_id, log_path, format_command(cmd, cwd=cwd, use_shell=use_shell), progress=progress)
         if use_shell:
             process = await asyncio.create_subprocess_shell(subprocess.list2cmdline(cmd), stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT, cwd=str(cwd), env=env)
         else:
@@ -642,6 +645,7 @@ class RenderService:
             env = os.environ.copy()
             env["PYTHONUNBUFFERED"] = "1"
             env["PATH"] = str(mitsuba_dir) + os.pathsep + env.get("PATH", "")
+            await self._write_log(task_id, log_path, format_command(cmd, cwd=mitsuba_dir, use_shell=False), progress=progress_offset, result_payload=result_payload)
             process = await asyncio.create_subprocess_exec(*cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT, env=env)
             self._processes[task_id] = process
             while True:
@@ -658,8 +662,13 @@ class RenderService:
                 return
             await self._write_log(task_id, log_path, f"Rendered {filename} ({selected_type})", result_payload=result_payload)
             if request.auto_convert and exr_out.exists() and mtsutil_exe.exists():
+                convert_cmd = [str(mtsutil_exe), "tonemap", "-o", str(png_out), str(exr_out)]
+                await self._write_log(task_id, log_path, format_command(convert_cmd, cwd=mitsuba_dir, use_shell=False), result_payload=result_payload)
                 convert = await asyncio.create_subprocess_exec(str(mtsutil_exe), "tonemap", "-o", str(png_out), str(exr_out), stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT, env=env)
-                await convert.communicate()
+                stdout, _ = await convert.communicate()
+                convert_text = decode_subprocess_output(stdout).strip()
+                if convert_text:
+                    await self._write_log(task_id, log_path, convert_text, result_payload=result_payload)
                 if png_out.exists():
                     generated_pngs.append(png_out.name)
             await task_manager.update(task_id, status="running", progress=min(99, progress_offset + int((index + 1) / total * progress_span)), message=f"Completed {index + 1}/{total}: {filename}", result_payload=result_payload, event="log")
@@ -682,8 +691,13 @@ class RenderService:
                 return
             for index, entry in enumerate(candidates):
                 png_out = png_dir / f"{entry.stem}.png"
+                convert_cmd = [str(mtsutil_exe), "tonemap", "-o", str(png_out), str(entry)]
+                await self._write_log(task_id, log_path, format_command(convert_cmd, cwd=mtsutil_exe.parent, use_shell=False), progress=min(99, int(index / len(candidates) * 100)))
                 process = await asyncio.create_subprocess_exec(str(mtsutil_exe), "tonemap", "-o", str(png_out), str(entry), stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT)
-                await process.communicate()
+                stdout, _ = await process.communicate()
+                text = decode_subprocess_output(stdout).strip()
+                if text:
+                    await self._write_log(task_id, log_path, text, progress=min(99, int((index + 1) / len(candidates) * 100)))
                 await self._write_log(task_id, log_path, f"Converted {entry.name}", progress=min(99, int((index + 1) / len(candidates) * 100)))
             await self._write_log(task_id, log_path, "EXR to PNG conversion completed", status="success", progress=100, event="done")
         except Exception as exc:
