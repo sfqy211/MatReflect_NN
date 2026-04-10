@@ -1,5 +1,10 @@
 # MatReflect_NN Frontend Rebuild Execution Plan
 
+> 状态说明（2026-04-10）：
+> 本文档为前端重构执行过程文档。
+> V2 重构已完成，V1 / Streamlit 入口已开始从仓库中删除。
+> 文中若出现“暂不删除 app.py / pages / V1”的表述，应视为历史阶段记录，不再代表当前仓库状态。
+
 ## 1. 决策结论
 
 本项目应当**完全重构前端**。

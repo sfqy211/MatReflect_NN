@@ -1,162 +1,182 @@
-# MatReflect\_NN: 基于神经网络的材质反射属性表达方法研究与实现
+# MatReflect_NN
 
-## 🌟 项目简介
+`MatReflect_NN` 是一个运行在 Windows 本机上的材质研究工作台，当前统一采用 V2 架构：
 
-**MatReflect\_NN** 是一个集成传统物理渲染（Mitsuba）与现代深度学习技术（Neural-BRDF / HyperBRDF）的研究平台。当前使用方式为：
+- 前端：React + Vite
+- 后端：FastAPI + WebSocket
+- 训练与推理：Conda 多环境调度
 
-- V2：React + FastAPI 工作台，作为默认且推荐入口
-- V1：仓库内保留的过渡期旧代码，仅用于迁移核对，不再作为公开入口
+项目围绕以下闭环展开：
 
-项目目标仍然是探索高效的材质双向反射分布函数（BRDF）压缩与表达方法，并提供覆盖数据生成、模型训练、权重转换、渲染评估与结果分析的完整工具链。
+1. 使用 Mitsuba 0.6 渲染 MERL / FullBin / NBRDF 材质。
+2. 使用 Neural-BRDF 训练 `.binary -> .npy`。
+3. 使用 HyperBRDF 完成 `.binary -> checkpoint.pt -> .pt -> .fullbin`。
+4. 在工作台内完成渲染预览、量化评估、网格拼图、对比拼图和模型管理。
 
-***
+## 1. 当前入口
 
-## 🏗️ 架构概览
+当前仓库不再保留 V1 / Streamlit 入口，默认只使用 V2：
 
-本项目当前采用 **V2 主工作台 + 多环境隔离 (Multi-Environment)** 结构，以解决不同工具组件之间复杂的依赖冲突（如 Python 2.7 编译环境、TensorFlow 2.4 与 PyTorch 1.8 的共存问题）。仓库中仍保留部分 V1 代码用于迁移期核对，但不再作为日常入口。
-
-### 核心模块
-
-| 模块名称                       | 功能描述                                                                                       | 主要依赖环境                                              |
-| :------------------------- | :----------------------------------------------------------------------------------------- | :-------------------------------------------------- |
-| **🧭 V2 Workspace**        | React + FastAPI 主工作台，覆盖渲染、分析、模型管理与设置页。                                                     | `matreflect`                                        |
-| **🎨 Mitsuba Render Tool** | 批量渲染 MERL 材质、EXR 转 PNG、Mitsuba 源码编译、实时日志监控。                                                | `matreflect` (渲染/转换)`mitsuba-build` (编译)            |
-| **🧠 Model Training**      | **Neural-BRDF**: 基于 MLP 的单材质过拟合训练 (PyTorch/Keras)。**HyperBRDF**: 基于 HyperNetwork 的多材质泛化重建。 | `nbrdf-train` (Neural-BRDF) `hyperbrdf` (HyperBRDF) |
-| **📊 Data Analysis**       | 渲染结果可视化对比、PSNR/SSIM/Delta E 量化评估、拼图生成。                                                     | `matreflect`                                        |
-
-***
-
-## 🛠️ 环境配置指南 (关键)
-
-由于集成了多个异构系统，本项目**强烈建议**使用 Conda 进行环境管理。当前建议准备 **5 个** 关键环境，其中训练相关环境必须彼此隔离。
-
-### 1. 主环境: `matreflect` (V2 Backend / Analysis / Render)
-
-这是当前默认工作环境，用于运行 V2 backend，以及分析和渲染集成能力。
-
-```bash
-# 1. 创建环境 (Python 3.9)
-conda create -n matreflect -c conda-forge python=3.9 mamba -y
-conda activate matreflect
-
-# 2. 安装 PyEXR (必须通过 Conda 安装以获取 OpenEXR 库支持)
-mamba install -c conda-forge pyexr -y
-
-# 3. 安装其余 Python 依赖
-pip install -r requirements.txt
+```powershell
+scripts\start_v2_dev.ps1
+scripts\start_v2_prod.ps1
 ```
 
-### 2. 编译环境: `mitsuba-build` (Mitsuba SCons)
+更多说明见：
 
-仅用于编译 Mitsuba 0.6 源码（因其构建脚本依赖 Python 2.7）。
+- [V2_QUICK_START.md](/d:/AHEU/GP/MatReflect_NN/V2_QUICK_START.md)
+- [V2_CUTOVER_GUIDE.md](/d:/AHEU/GP/MatReflect_NN/V2_CUTOVER_GUIDE.md)
+- [V1_V2_COMPARISON.md](/d:/AHEU/GP/MatReflect_NN/V1_V2_COMPARISON.md)
 
-```bash
-# 创建 Python 2.7 环境并安装 SCons 构建工具
+## 2. 关键环境
+
+推荐使用 Conda，多环境隔离如下：
+
+### `matreflect`
+
+用于：
+
+- V2 backend
+- 渲染调度
+- 分析模块
+
+建议安装：
+
+```powershell
+conda create -n matreflect -c conda-forge python=3.9 mamba -y
+conda activate matreflect
+mamba install -c conda-forge pyexr -y
+pip install -r requirements.txt
+pip install -r backend/requirements.txt
+```
+
+### `mitsuba-build`
+
+用于 Mitsuba 0.6 的 SCons 编译：
+
+```powershell
 conda create -n mitsuba-build python=2.7 scons -y
 ```
 
-### 3. 训练环境 A: `nbrdf-train` (Neural-BRDF)
+### `nbrdf-train`
 
-专用于 Neural-BRDF (Sztrajman et al. 2021) 的训练，需兼容旧版 TensorFlow 2.x 和 Keras。
+用于 Neural-BRDF 训练与 `h5 -> npy` 转换：
 
-```bash
-# 1. 创建环境 (Python 3.8)
+```powershell
 conda create -n nbrdf-train python=3.8 -y
 conda activate nbrdf-train
-
-# 2. 安装指定版本的依赖 (顺序很重要)
-pip install numpy==1.19.5 tensorflow==2.4.1 keras==2.4.3 pandas matplotlib scikit-learn pillow scipy -i https://pypi.tuna.tsinghua.edu.cn/simple
+pip install numpy==1.19.5 tensorflow==2.4.1 keras==2.4.3 pandas matplotlib scikit-learn pillow scipy
 ```
 
-### 4. 训练环境 B: `hyperbrdf` (HyperBRDF)
+### `hyperbrdf`
 
-专用于 HyperBRDF (Gokbudak et al. 2024) 的训练与推理，需 PyTorch 和 TorchMeta 支持。
+用于 HyperBRDF 训练、参数提取与解码：
 
-```bash
-# 1. 创建环境 (Python 3.8)
+```powershell
 conda create -n hyperbrdf python=3.8 -y
 conda activate hyperbrdf
-
-# 2. 安装 PyTorch (根据您的 CUDA 版本选择，以下为 CPU 示例)
-# 如需 GPU: pip install torch==1.8.1+cu111 torchvision==0.9.1+cu111 ...
 pip install torch==1.8.1+cpu torchvision==0.9.1+cpu -f https://download.pytorch.org/whl/torch_stable.html
-
-# 3. 安装其余依赖
 pip install matplotlib==3.3.4 numpy==1.21.6 pandas==1.2.2 scikit_learn==1.1.3 PyYAML==6.0 torchmeta==1.8.0
 ```
 
-## 🚀 启动与使用
+## 3. 启动方式
 
-### 启动 V2 工作台
-
-推荐直接使用统一脚本：
+### 开发模式
 
 ```powershell
 scripts\start_v2_dev.ps1
 ```
 
-生产模式：
+作用：
+
+- 启动 FastAPI 后端
+- 启动 Vite 前端开发服务器
+
+默认地址：
+
+- 前端：`http://127.0.0.1:5173`
+- API：`http://127.0.0.1:8000/api/v1`
+- 文档：`http://127.0.0.1:8000/docs`
+
+### 生产模式
 
 ```powershell
 scripts\start_v2_prod.ps1
 ```
 
-更多切换说明见：
+作用：
 
-- `V2_QUICK_START.md`
-- `V2_CUTOVER_GUIDE.md`
-- `V1_V2_COMPARISON.md`
+1. 构建 `frontend/dist`
+2. 启动 FastAPI
+3. 由后端直接托管前端静态资源
 
-当前文档不再提供 V1 / Streamlit 启动方式。历史代码仍保留在仓库中用于迁移核对，但默认使用流程统一以 V2 为准。Mitsuba 编译辅助现已迁入 V2 设置页。
+默认地址：
 
-### 功能使用流程
+- 应用：`http://127.0.0.1:8000`
+- 文档：`http://127.0.0.1:8000/docs`
 
-1. **准备数据**:
-   - 将 `.binary` 格式的 MERL 材质文件放入 `data/inputs/binary`。
-   - (可选) 将 `.fullbin` 采样文件放入 `data/inputs/fullbin`。
-2. **渲染基准图 (Ground Truth)**:
-   - 优先进入 V2 的 **渲染可视化** 模块。
-   - 使用“批量选择工具”选中材质文件。
-   - 点击“开始批量渲染”生成参考图像。
-3. **训练神经材质**:
-   - 优先进入 V2 的 **网络模型管理** 模块。
-   - **Neural-BRDF**: 选择材质 -> 点击“开始 PyTorch 训练” -> 生成 `.npy` 权重。
-   - **HyperBRDF**: 训练或选择 checkpoint -> 点击“启动参数提取” -> 生成 `.pt` 参数 -> 点击“执行重建转换” -> 生成 `.fullbin`。
-4. **评估与分析**:
-   - 优先进入 V2 的 **材质表达结果分析** 模块。
-   - 选择参考图与预测图。
-   - 查看 PSNR/SSIM 指标与误差热力图。
+## 4. 主要功能
 
-***
+### 网络模型管理
 
-## 📁 目录结构说明
+- 内置 Neural-BRDF / HyperBRDF 模型注册项
+- 支持自定义模型注册与删除
+- 支持训练任务、参数提取、`pt -> fullbin`
+- 支持独立 `H5 -> NPY` 转换
+- 支持模型运行记录扫描
 
-```
+### 渲染可视化
+
+- 支持 `.binary`、`.fullbin`、`.npy` 三类输入
+- 支持 Mitsuba XML 场景切换
+- 支持 EXR -> PNG 自动转换
+- 支持一键重建后渲染
+
+### 材质表达结果分析
+
+- 图片预览
+- 图片删除与对应 EXR 清理
+- PSNR / SSIM / Delta E 量化评估
+- 网格拼图
+- 对比拼图
+- 自定义分析目录与输出目录
+
+### 设置页
+
+- 深浅主题切换
+- 系统摘要
+- Mitsuba 编译辅助入口
+
+## 5. 目录结构
+
+```text
 MatReflect_NN/
-├── frontend/               # V2 React 前端
-├── backend/                # V2 FastAPI 后端
-├── app.py                  # V1 旧入口（迁移期保留）
-├── requirements.txt        # 主环境依赖列表
-├── pages/                  # V1 旧页面代码（迁移期保留）
-│   ├── 1_Mitsuba_Render_Tool.py
-│   ├── 2_Model_Training.py
-│   ├── 3_Data_Analysis.py
-│   └── _modules/           # V1 页面共享逻辑与后端 Action
-├── data/                   # 数据存放区
-│   ├── inputs/             # 输入数据 (brdfs, fullbin, npy)
-│   └── outputs/            # 输出结果 (renderings, weights)
-├── scene/                  # Mitsuba 场景文件与配置
-├── Neural-BRDF/            # Neural-BRDF 子模块源码
-└── HyperBRDF/              # HyperBRDF 子模块源码
+├── frontend/                 # V2 React 前端
+├── backend/                  # V2 FastAPI 后端
+├── scripts/                  # 启动脚本、桌面封装脚本等
+├── data/                     # 输入数据与输出结果
+├── scene/                    # Mitsuba 场景资源
+├── Neural-BRDF/              # Neural-BRDF 上游代码
+├── HyperBRDF/                # HyperBRDF 上游代码
+├── README.md
+├── V2_QUICK_START.md
+├── V2_CUTOVER_GUIDE.md
+└── V1_V2_COMPARISON.md
 ```
 
-## ❓ 常见问题 (FAQ)
+## 6. 常见问题
 
-**Q: 为什么需要这么多环境？**
-A: 本项目整合了不同时期的研究代码。Mitsuba 0.6 需要 Python 2.7；Neural-BRDF 基于 TensorFlow 2.4；HyperBRDF 基于 PyTorch 1.8。为了保证代码的原始复现性与稳定性，使用独立环境是最安全的策略。
+### 默认应该使用哪个入口？
 
-**Q: 现在默认该用哪个入口？**
-A: 默认使用 V2，即 `scripts\start_v2_dev.ps1` 或 `scripts\start_v2_prod.ps1`。仓库中的 V1 代码仅作为迁移期保留内容，不再作为推荐入口。
+默认只使用 V2：
 
-**Q: 渲染器未检测到怎么办？**
-A: 请先在 V2 的“设置”页检查后端状态与路径信息，确认 `mitsuba.exe` 是否可被检测到，或者将其添加到系统环境变量中。默认路径检测位置为项目目录下的 `mitsuba/dist/mitsuba.exe`。
+- `scripts\start_v2_dev.ps1`
+- `scripts\start_v2_prod.ps1`
+
+### 为什么需要多个 Conda 环境？
+
+因为 Mitsuba 编译、Neural-BRDF、HyperBRDF 依赖栈差异很大，强行放在同一个环境里会导致版本冲突和不可复现问题。
+
+### 如果 Mitsuba 没有被检测到怎么办？
+
+先打开 V2 的设置页，检查系统摘要和路径状态。默认检测位置为项目目录下的 `mitsuba/dist/mitsuba.exe`。
