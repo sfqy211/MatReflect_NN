@@ -6,6 +6,7 @@ import {
   useRenderGallery,
   useSystemSummary,
 } from "./features/system/useSystemSummary";
+import { StatusBar } from "./components/StatusBar";
 import type { ModuleKey } from "./types/api";
 
 type ThemeMode = "dark" | "light";
@@ -79,6 +80,7 @@ export function App() {
           />
         </main>
       </div>
+      <StatusBar />
     </div>
   );
 }
