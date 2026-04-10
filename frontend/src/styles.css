@@ -1261,6 +1261,12 @@ button {
   gap: 4px;
 }
 
+.gallery-item__timestamp {
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  line-height: 1.2;
+}
+
 .status-panel {
   display: flex;
   flex-direction: column;

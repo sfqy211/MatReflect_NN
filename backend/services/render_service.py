@@ -607,7 +607,7 @@ class RenderService:
         generated_pngs: list[str] = []
         result_payload = {"render_mode": request.render_mode, "output_path_key": self._output_path_key(request.render_mode), "generated_pngs": generated_pngs, **(result_payload_extra or {})}
         await self._write_log(task_id, log_path, start_message, status="running", progress=progress_offset, result_payload=result_payload)
-        timestamp = datetime.now().strftime("%d_%H%M%S")
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
         for index, filename in enumerate(request.selected_files):
             file_path = input_dir / filename

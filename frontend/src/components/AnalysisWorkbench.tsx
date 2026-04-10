@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 
 import { toBackendUrl } from '../lib/api'
+import { normalizeMaterialName } from '../lib/fileNames'
 import type { AnalysisImageSet, FileListItem } from '../types/api'
 import { FeedbackPanel } from './FeedbackPanel'
 import { GalleryPreview } from './GalleryPreview'
@@ -40,11 +41,6 @@ const IMAGE_SET_LABELS: Record<AnalysisImageSet, string> = {
 
 const DEFAULT_GRID_OUTPUT_DIR = 'data/outputs/grids'
 const DEFAULT_COMPARISON_OUTPUT_DIR = 'data/outputs/comparisons'
-
-
-function normalizeMaterialName(fileName: string) {
-  return fileName.replace(/(_\d{1,2}_\d{6})?(_fc1)?(\.fullbin)?(\.binary)?\.png$/i, '')
-}
 
 
 function buildMaterialMap(items: FileListItem[]) {

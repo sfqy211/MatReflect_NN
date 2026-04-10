@@ -41,7 +41,7 @@ DEFAULT_SET_LABELS: dict[AnalysisImageSet, str] = {
 
 def normalize_material_name(file_name: str) -> str:
     stem = Path(file_name).stem
-    stem = re.sub(r"_\d{1,2}_\d{6}$", "", stem)
+    stem = re.sub(r"_(?:\d{8}|\d{1,2})_\d{6}$", "", stem)
     stem = re.sub(r"_fc1$", "", stem, flags=re.IGNORECASE)
     stem = re.sub(r"\.fullbin$", "", stem, flags=re.IGNORECASE)
     stem = re.sub(r"\.binary$", "", stem, flags=re.IGNORECASE)

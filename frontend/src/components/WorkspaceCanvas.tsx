@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 
 import { BACKEND_ORIGIN } from '../lib/api'
+import { parseAssetName } from '../lib/fileNames'
 import type { FileListItem, ModuleKey, SystemSummary } from '../types/api'
 import type { TaskEvent } from '../types/api'
 import { useStartSystemCompile, useStopSystemCompile, useSystemCompileTaskDetail } from '../features/system/useSystemSummary'
@@ -403,14 +404,18 @@ function ModulePlaceholder({
 
       <div className="mini-output-list">
         {previewItems.length > 0 ? (
-          previewItems.map((item) => (
-            <article key={item.path} className="mini-output">
-              <div className="gallery-item__thumb" />
-              <div>
-                <strong>{item.name}</strong>
-              </div>
-            </article>
-          ))
+          previewItems.map((item) => {
+            const parsedName = parseAssetName(item.name)
+            return (
+              <article key={item.path} className="mini-output">
+                <div className="gallery-item__thumb" />
+                <div>
+                  <strong>{parsedName.materialName}</strong>
+                  {parsedName.timestampDisplay ? <div className="muted">{parsedName.timestampDisplay}</div> : null}
+                </div>
+              </article>
+            )
+          })
         ) : (
           <article className="mini-output mini-output--empty">
             <div className="gallery-item__thumb" />
