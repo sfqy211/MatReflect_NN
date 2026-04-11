@@ -2,7 +2,11 @@ import { useEffect, useMemo, useState } from "react";
 
 import { useQueryClient } from "@tanstack/react-query";
 
-import type { AnalysisSubView, ModelsSubView } from "../App";
+import type {
+  AnalysisSubView,
+  ModelsSubView,
+  ThemeMode,
+} from "../App";
 import { BACKEND_ORIGIN } from "../lib/api";
 import { parseAssetName } from "../lib/fileNames";
 import type {
@@ -41,7 +45,26 @@ type WorkspaceCanvasProps = {
   system?: SystemSummary;
   systemError?: string;
   systemLoading: boolean;
+  theme: ThemeMode;
+  onThemeChange: (theme: ThemeMode) => void;
+  fontSize: number;
+  onFontSizeChange: (fontSize: number) => void;
 };
+
+const MIN_FONT_SIZE = 11;
+const MAX_FONT_SIZE = 20;
+const FONT_SIZE_STEP = 0.25;
+
+function clampFontSize(value: number) {
+  if (Number.isNaN(value)) {
+    return 13;
+  }
+  return Math.min(MAX_FONT_SIZE, Math.max(MIN_FONT_SIZE, value));
+}
+
+function formatFontSize(value: number) {
+  return Number.isInteger(value) ? `${value}` : value.toFixed(2).replace(/0+$/, "").replace(/\.$/, "");
+}
 
 type ActionSpec = {
   key: string;
@@ -180,9 +203,20 @@ function SettingsCanvas({
   systemError,
   systemLoading,
   galleryCount,
+  theme,
+  onThemeChange,
+  fontSize,
+  onFontSizeChange,
 }: Pick<
   WorkspaceCanvasProps,
-  "system" | "systemError" | "systemLoading" | "galleryCount"
+  | "system"
+  | "systemError"
+  | "systemLoading"
+  | "galleryCount"
+  | "theme"
+  | "onThemeChange"
+  | "fontSize"
+  | "onFontSizeChange"
 >) {
   const queryClient = useQueryClient();
   const compileDefaults = system?.compile_defaults;
@@ -484,6 +518,84 @@ function SettingsCanvas({
     <section className="workspace-canvas" style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       <div style={{ flex: 1, overflowY: 'auto', paddingRight: 4, paddingBottom: 16 }}>
         <div className="settings-grid">
+          <Card variant="settings" className="settings-card--wide">
+            <span className="eyebrow">界面显示</span>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
+                gap: "12px 24px",
+              }}
+            >
+              <Field label="主题模式">
+                <div
+                  style={{
+                    display: "flex",
+                    gap: "8px",
+                    flexWrap: "wrap",
+                    width: "100%",
+                  }}
+                >
+                  <Button
+                    type="button"
+                    variant={theme === "dark" ? "primary" : "default"}
+                    className={
+                      theme === "dark" ? "settings-toggle-button settings-toggle-button--active" : "settings-toggle-button"
+                    }
+                    onClick={() => onThemeChange("dark")}
+                  >
+                    深色
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={theme === "light" ? "primary" : "default"}
+                    className={
+                      theme === "light" ? "settings-toggle-button settings-toggle-button--active" : "settings-toggle-button"
+                    }
+                    onClick={() => onThemeChange("light")}
+                  >
+                    浅色
+                  </Button>
+                </div>
+              </Field>
+              <Field label="字体大小">
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "minmax(0, 1fr) 88px",
+                    gap: "10px",
+                    alignItems: "center",
+                    width: "100%",
+                  }}
+                >
+                  <input
+                    type="range"
+                    min={MIN_FONT_SIZE}
+                    max={MAX_FONT_SIZE}
+                    step={FONT_SIZE_STEP}
+                    value={fontSize}
+                    onChange={(event) =>
+                      onFontSizeChange(clampFontSize(Number(event.target.value)))
+                    }
+                  />
+                  <input
+                    type="number"
+                    min={MIN_FONT_SIZE}
+                    max={MAX_FONT_SIZE}
+                    step={FONT_SIZE_STEP}
+                    value={fontSize}
+                    onChange={(event) =>
+                      onFontSizeChange(clampFontSize(Number(event.target.value)))
+                    }
+                  />
+                </div>
+              </Field>
+            </div>
+            <p className="muted" style={{ margin: 0, fontSize: "0.85rem" }}>
+              当前 {formatFontSize(fontSize)} px，可连续调节；修改后会立即应用到整个工作台，并保存在当前浏览器本地。
+            </p>
+          </Card>
+
           <Card variant="settings" className="settings-card--wide">
           <span className="eyebrow">系统状态</span>
           {systemLoading ? (
@@ -936,6 +1048,10 @@ export function WorkspaceCanvas({
   system,
   systemError,
   systemLoading,
+  theme,
+  onThemeChange,
+  fontSize,
+  onFontSizeChange,
 }: WorkspaceCanvasProps) {
   if (activeModule === "render") {
     return <RenderWorkbench />;
@@ -966,6 +1082,10 @@ export function WorkspaceCanvas({
         systemError={systemError}
         systemLoading={systemLoading}
         galleryCount={galleryCount}
+        theme={theme}
+        onThemeChange={onThemeChange}
+        fontSize={fontSize}
+        onFontSizeChange={onFontSizeChange}
       />
     );
   }

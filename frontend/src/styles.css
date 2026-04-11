@@ -2,6 +2,7 @@
   color-scheme: dark;
   --font-display: "Bahnschrift", "PingFang SC", "Microsoft YaHei", sans-serif;
   --font-body: "Aptos", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --app-font-size: 13px;
   --page-bg: oklch(0.16 0.01 250);
   --surface: color-mix(in oklab, oklch(0.2 0.02 255) 88%, oklch(0.33 0.03 255));
   --surface-soft: color-mix(in oklab, var(--surface) 86%, transparent);
@@ -59,13 +60,17 @@ body,
   overflow: hidden;
 }
 
+html {
+  font-size: var(--app-font-size);
+}
+
 body {
   margin: 0;
   min-width: 320px;
   background: var(--page-bg);
   color: var(--text-strong);
   font-family: var(--font-body);
-  font-size: 13px;
+  font-size: 1rem;
   line-height: 1.3;
 }
 
@@ -275,7 +280,7 @@ button {
 .workspace-grid {
   display: grid;
   grid-template-columns: 230px minmax(0, 1fr);
-  gap: 8px;
+  gap: 0;
   align-items: stretch;
   transition: grid-template-columns 0.4s cubic-bezier(0.16, 1, 0.3, 1);
   flex: 1;
@@ -316,6 +321,10 @@ button {
 .status-panel,
 .workspace-canvas {
   padding: 22px;
+}
+
+.workspace-canvas {
+  padding-left: 0;
 }
 
 .module-rail {
@@ -1292,6 +1301,15 @@ button {
   word-break: break-word;
 }
 
+.settings-toggle-button {
+  min-width: 88px;
+  justify-content: center;
+}
+
+.settings-toggle-button--active {
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--accent) 45%, transparent);
+}
+
 .status-metric,
 .mini-output,
 .gallery-item {
@@ -1503,6 +1521,10 @@ button {
   .gallery-panel {
     padding: 18px;
     border-radius: 4px;
+  }
+
+  .workspace-canvas {
+    padding-left: 0;
   }
 
   .status-metric-grid {

@@ -9,7 +9,20 @@ import {
 import { StatusBar } from "./components/StatusBar";
 import type { ModuleKey } from "./types/api";
 
-type ThemeMode = "dark" | "light";
+export type ThemeMode = "dark" | "light";
+
+const THEME_STORAGE_KEY = "matreflect-theme";
+const FONT_SIZE_STORAGE_KEY = "matreflect-font-size";
+const DEFAULT_FONT_SIZE = 13;
+const MIN_FONT_SIZE = 11;
+const MAX_FONT_SIZE = 20;
+
+function clampFontSize(value: number) {
+  if (Number.isNaN(value)) {
+    return DEFAULT_FONT_SIZE;
+  }
+  return Math.min(MAX_FONT_SIZE, Math.max(MIN_FONT_SIZE, value));
+}
 
 export type AnalysisSubView = 'evaluate' | 'compare' | 'grid' | 'compare-grid'
 export type ModelsSubView = string
@@ -24,7 +37,7 @@ export function App() {
       return "dark";
     }
 
-    const stored = window.localStorage.getItem("matreflect-theme");
+    const stored = window.localStorage.getItem(THEME_STORAGE_KEY);
     if (stored === "light" || stored === "dark") {
       return stored;
     }
@@ -32,6 +45,18 @@ export function App() {
     return window.matchMedia("(prefers-color-scheme: light)").matches
       ? "light"
       : "dark";
+  });
+  const [fontSize, setFontSize] = useState<number>(() => {
+    if (typeof window === "undefined") {
+      return DEFAULT_FONT_SIZE;
+    }
+
+    const stored = window.localStorage.getItem(FONT_SIZE_STORAGE_KEY);
+    if (!stored) {
+      return DEFAULT_FONT_SIZE;
+    }
+
+    return clampFontSize(Number.parseFloat(stored));
   });
   const systemQuery = useSystemSummary();
   const galleryQuery = useRenderGallery();
@@ -47,8 +72,20 @@ export function App() {
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
-    window.localStorage.setItem("matreflect-theme", theme);
+    window.localStorage.setItem(THEME_STORAGE_KEY, theme);
   }, [theme]);
+
+  useEffect(() => {
+    const normalizedFontSize = clampFontSize(fontSize);
+    document.documentElement.style.setProperty(
+      "--app-font-size",
+      `${normalizedFontSize}px`,
+    );
+    window.localStorage.setItem(
+      FONT_SIZE_STORAGE_KEY,
+      normalizedFontSize.toString(),
+    );
+  }, [fontSize]);
 
   return (
     <div className="app-shell">
@@ -62,8 +99,6 @@ export function App() {
           onModelsSubViewChange={setActiveModelsSubView}
           collapsed={railCollapsed}
           onToggleCollapse={() => setRailCollapsed((current) => !current)}
-          theme={theme}
-          onThemeChange={setTheme}
         />
         <main className="center-stack">
           <WorkspaceCanvas
@@ -77,6 +112,10 @@ export function App() {
             system={systemQuery.data}
             systemError={statusError}
             systemLoading={systemQuery.isLoading}
+            theme={theme}
+            onThemeChange={setTheme}
+            fontSize={fontSize}
+            onFontSizeChange={setFontSize}
           />
         </main>
       </div>

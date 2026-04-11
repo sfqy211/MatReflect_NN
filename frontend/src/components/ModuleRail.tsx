@@ -2,9 +2,6 @@ import { useEffect } from 'react'
 import type { ModuleKey } from '../types/api'
 import type { AnalysisSubView, ModelsSubView } from '../App'
 import { useTrainModels } from '../features/models/useModelsWorkbench'
-import { Button } from './ui/Button'
-
-type ThemeMode = 'dark' | 'light'
 
 type ModuleRailProps = {
   activeModule: ModuleKey
@@ -15,8 +12,6 @@ type ModuleRailProps = {
   onModelsSubViewChange: (view: ModelsSubView) => void
   collapsed: boolean
   onToggleCollapse: () => void
-  theme: ThemeMode
-  onThemeChange: (theme: ThemeMode) => void
 }
 
 const modules: Array<{ key: ModuleKey; label: string; shortLabel: string }> = [
@@ -33,7 +28,7 @@ const analysisSubViews: Array<{ key: AnalysisSubView; label: string }> = [
   { key: 'compare-grid', label: '对比拼图' },
 ]
 
-export function ModuleRail({ activeModule, onChange, activeAnalysisSubView, onAnalysisSubViewChange, activeModelsSubView, onModelsSubViewChange, collapsed, onToggleCollapse, theme, onThemeChange }: ModuleRailProps) {
+export function ModuleRail({ activeModule, onChange, activeAnalysisSubView, onAnalysisSubViewChange, activeModelsSubView, onModelsSubViewChange, collapsed, onToggleCollapse }: ModuleRailProps) {
   const modelQuery = useTrainModels()
   const models = modelQuery.data?.items ?? []
 
@@ -172,16 +167,6 @@ export function ModuleRail({ activeModule, onChange, activeAnalysisSubView, onAn
         ))}
       </div>
 
-      <div style={{ marginTop: 'auto', paddingTop: '20px' }}>
-        <Button
-          type="button"
-          onClick={() => onThemeChange(theme === 'dark' ? 'light' : 'dark')}
-          style={{ width: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center' }}
-          title={theme === 'dark' ? '切换到浅色模式' : '切换到深色模式'}
-        >
-          {collapsed ? (theme === 'dark' ? '🌙' : '🌞') : (theme === 'dark' ? '🌙 深色模式' : '🌞 浅色模式')}
-        </Button>
-      </div>
     </aside>
   )
 }
