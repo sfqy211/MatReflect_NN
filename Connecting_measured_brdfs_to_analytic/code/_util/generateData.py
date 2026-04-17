@@ -8,7 +8,6 @@ import scipy.io as sio
 
 from merlFunctions import *
 from coordinateFunctions import *
-from brdfModel import *
 
 brdfShape = (180, 90, 90)
 brdfEntryNum = np.prod(brdfShape)
@@ -60,9 +59,19 @@ volumnWeight = np.sin(rusinkCoords[:, 2]) * np.sqrt(rusinkCoords[:, 1] * (np.cos
 sio.savemat('%s/volumnWeight.mat'%dataDir, {'volumnWeight': volumnWeight[:, np.newaxis]})
 
 # %% 6. Precompute MERL BRDFs
-originalImages = np.zeros((250, 250, 3, 100))
-for i, brdfname in enumerate(brdfList):
-    brdfRaw = readMERLBRDF('%s/%s.binary'%(brdfDir, brdfname))
-    brdf = brdfRaw.reshape((-1, 3))[maskMap]
-    originalImages[:, :, :, i] = saveBrdfImage('original.png', brdf)
-np.save('%s/originalImages.npy'%dataDir, originalImages)
+requiredWeightFiles = [
+    renderWeightDir + '/brdfBias.npy',
+    renderWeightDir + '/brdfWeightR.npz',
+    renderWeightDir + '/brdfWeightG.npz',
+    renderWeightDir + '/brdfWeightB.npz',
+]
+
+if all(os.path.exists(weightFile) for weightFile in requiredWeightFiles):
+    originalImages = np.zeros((250, 250, 3, 100))
+    for i, brdfname in enumerate(brdfList):
+        brdfRaw = readMERLBRDF('%s/%s.binary'%(brdfDir, brdfname))
+        brdf = brdfRaw.reshape((-1, 3))[maskMap]
+        originalImages[:, :, :, i] = saveBrdfImage('original.png', brdf)
+    np.save('%s/originalImages.npy'%dataDir, originalImages)
+else:
+    print 'Skipping originalImages.npy because fast render weights are missing.'

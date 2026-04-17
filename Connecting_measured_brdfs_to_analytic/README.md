@@ -69,7 +69,11 @@ python generateData.py
 - `code\_util\data\cosMap.npy`
 - `code\_util\data\cosMap.mat`
 - `code\_util\data\volumnWeight.mat`
-- `code\_util\data\originalImages.npy`
+
+说明：
+
+- 首次运行会先生成上述基础文件。
+- 如果 `fastrender\weights` 还不存在，脚本会跳过 `originalImages.npy`。
 
 ### 2. 生成渲染权重
 
@@ -93,7 +97,20 @@ python -c "from transform import load_sparse_csr, save_sparse_csr; R=load_sparse
 python slice.py
 ```
 
-### 4. 跑 `diffspec`
+### 4. 回到 `_util` 补 `originalImages.npy`
+
+权重生成后，再跑一次：
+
+```powershell
+cd D:\AHEU\GP\MatReflect_NN\Connecting_measured_brdfs_to_analytic\code\_util
+python generateData.py
+```
+
+这次会补出：
+
+- `code\_util\data\originalImages.npy`
+
+### 5. 跑 `diffspec`
 
 ```powershell
 cd D:\AHEU\GP\MatReflect_NN\Connecting_measured_brdfs_to_analytic\code\diffspec
@@ -124,7 +141,7 @@ colorPsnrVals.item()['image1'].mean()
 colorPsnrVals.item()['image2'].mean()
 ```
 
-### 5. 跑 `pca`
+### 6. 跑 `pca`
 
 ```powershell
 cd D:\AHEU\GP\MatReflect_NN\Connecting_measured_brdfs_to_analytic\code\pca
@@ -141,14 +158,14 @@ writeBrdf[maskMap] = diffPcaRecon1[:, index:index+1].dot(colorAll[:1, :, index])
 saveMERLBRDF('%s_diff1spec3.binary'%brdfList[index], writeBrdf)
 ```
 
-### 6. 跑 `connect`
+### 7. 跑 `connect`
 
 ```powershell
 cd D:\AHEU\GP\MatReflect_NN\Connecting_measured_brdfs_to_analytic\code\connect
 python connect.py
 ```
 
-### 7. 跑 `edit`
+### 8. 跑 `edit`
 
 ```powershell
 cd D:\AHEU\GP\MatReflect_NN\Connecting_measured_brdfs_to_analytic\code\edit
