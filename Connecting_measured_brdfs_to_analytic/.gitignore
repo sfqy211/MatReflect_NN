@@ -1,0 +1,41 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+eggs/
+*.egg
+
+# Virtual environments
+venv/
+env/
+.venv/
+
+# NumPy / SciPy data files
+*.npy
+*.npz
+*.mat (except HEADER)
+
+# MATLAB
+*.asv
+*.prj
+matlab.prj~
+Octave垃圾箱/
+
+# Output / results
+results/
+output/
+figures/
+plots/
+
+# MERL database (large binary files)
+*.brdf/
+merl/
+
+# OS
+.DS_Store
+Thumbs.db
