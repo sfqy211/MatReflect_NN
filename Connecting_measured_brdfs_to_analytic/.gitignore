@@ -19,6 +19,7 @@ env/
 *.npy
 *.npz
 *.mat (except HEADER)
+*.binary
 
 # MATLAB
 *.asv
