@@ -54,6 +54,8 @@ python -c "import matlab.engine; print('matlab engine ok')"
 
 ## 运行顺序
 
+如果前四步已经完成，可以直接从第 5 步继续。
+
 ### 1. 生成基础数据
 
 ```powershell
@@ -113,33 +115,15 @@ python generateData.py
 ### 5. 跑 `diffspec`
 
 ```powershell
+conda activate measured-brdf-py27
 cd D:\AHEU\GP\MatReflect_NN\Connecting_measured_brdfs_to_analytic\code\diffspec
 python diffspecSeparation.py
 ```
 
-首次运行前需要先改两处：
+说明：
 
-- 把
-
-```python
-colorPsnrVals = np.load('%s/colorPsnrVals.npy'%(writeDataDir)).item()
-```
-
-- 改成
-
-```python
-colorPsnrVals = {}
-```
-
-- 注释掉文件末尾这几行：
-
-```python
-colorPsnrVals = np.load('%s/colorPsnrVals.npy'%(writeDataDir))
-colorPsnrVals.item()['brdf1'].mean()
-colorPsnrVals.item()['brdf2'.mean()
-colorPsnrVals.item()['image1'].mean()
-colorPsnrVals.item()['image2'].mean()
-```
+- `diffspecSeparation.py` 中首次运行读取不存在的 `colorPsnrVals.npy` 问题已修复。
+- 文件末尾残留的调试语法错误已移除。
 
 ### 6. 跑 `pca`
 
@@ -148,15 +132,9 @@ cd D:\AHEU\GP\MatReflect_NN\Connecting_measured_brdfs_to_analytic\code\pca
 python pcaAnalysis.py
 ```
 
-运行前处理一处：
+说明：
 
-- 注释掉这几行，或者先补 `writeBrdf` 定义：
-
-```python
-index = brdfList.index('specular-orange-phenolic')
-writeBrdf[maskMap] = diffPcaRecon1[:, index:index+1].dot(colorAll[:1, :, index]) + specMapPcaRecon3[:, index:index+1].dot(colorAll[1:, :, index])
-saveMERLBRDF('%s_diff1spec3.binary'%brdfList[index], writeBrdf)
-```
+- `pcaAnalysis.py` 中未定义 `writeBrdf` 的可选导出示例已禁用。
 
 ### 7. 跑 `connect`
 

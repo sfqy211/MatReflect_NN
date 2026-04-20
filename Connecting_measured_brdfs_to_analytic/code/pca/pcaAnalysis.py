@@ -88,9 +88,11 @@ diffPcaRecon1 = diffPcaComponents[:, :1].dot(diffPcaReconCoeff[:1, :])
 specMapPcaRecon3 = UnmapBRDF(specMapPcaComponents[:, :3].dot(specMapPcaReconCoeff[:3, :]) + specMapMean) / cosMap
 specMapPcaRecon5 = UnmapBRDF(specMapPcaComponents[:, :5].dot(specMapPcaReconCoeff[:5, :]) + specMapMean) / cosMap
 
-index = brdfList.index('specular-orange-phenolic')
-writeBrdf[maskMap] = diffPcaRecon1[:, index:index+1].dot(colorAll[:1, :, index]) + specMapPcaRecon3[:, index:index+1].dot(colorAll[1:, :, index])
-saveMERLBRDF('%s_diff1spec3.binary'%brdfList[index], writeBrdf)
+# Optional export example from the paper code. Disabled to keep the main PCA
+# pipeline runnable without requiring an extra scratch MERL buffer here.
+# index = brdfList.index('specular-orange-phenolic')
+# writeBrdf[maskMap] = diffPcaRecon1[:, index:index+1].dot(colorAll[:1, :, index]) + specMapPcaRecon3[:, index:index+1].dot(colorAll[1:, :, index])
+# saveMERLBRDF('%s_diff1spec3.binary'%brdfList[index], writeBrdf)
 
 for i, brdfname in enumerate(brdfList):
     brdfRaw = readMERLBRDF('%s/%s.binary'%(brdfDir, brdfname))

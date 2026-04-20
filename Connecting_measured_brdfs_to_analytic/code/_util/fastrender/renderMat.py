@@ -9,12 +9,13 @@ from transform import *
 
 # parameters
 resolution = 250
-pixelSampleNum = 256
-lightSampleNum = 256
-materialSampleNum = 256
+# Reduced sampling for faster weight precomputation during workflow testing.
+pixelSampleNum = 64
+lightSampleNum = 64
+materialSampleNum = 64
 brdfLen = 1098594
 
-threadsNum = 20
+threadsNum = 12
 
 # camera 
 radius = 1.1

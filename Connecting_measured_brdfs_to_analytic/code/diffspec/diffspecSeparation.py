@@ -150,7 +150,7 @@ if not os.path.exists(writeBrdfImageDir):
     os.makedirs(writeBrdfImageDir)
 
 separationMetric = 'log2'
-colorPsnrVals = np.load('%s/colorPsnrVals.npy'%(writeDataDir)).item()
+colorPsnrVals = {}
 for metric in ['image2', 'brdf2']:
     diffAll = np.load('%s/diffAll_%s.npy'%(writeDataDir, separationMetric))
     specAll = np.load('%s/specAll_%s.npy'%(writeDataDir, separationMetric))
@@ -185,12 +185,6 @@ for metric in ['image2', 'brdf2']:
     np.save('%s/colorAll_%s.npy'%(writeDataDir, metric), colorAll)
 
 np.save('%s/colorPsnrVals.npy'%(writeDataDir), colorPsnrVals)
-
-colorPsnrVals = np.load('%s/colorPsnrVals.npy'%(writeDataDir))
-colorPsnrVals.item()['brdf1'].mean()
-colorPsnrVals.item()['brdf2'.mean()
-colorPsnrVals.item()['image1'].mean()
-colorPsnrVals.item()['image2'].mean()
 
 # plt.plot(colorPsnrVals.item()['brdf1'])
 # plt.plot(colorPsnrVals.item()['image1'])
