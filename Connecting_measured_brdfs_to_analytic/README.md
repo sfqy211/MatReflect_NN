@@ -122,8 +122,9 @@ python diffspecSeparation.py
 
 说明：
 
-- `diffspecSeparation.py` 中首次运行读取不存在的 `colorPsnrVals.npy` 问题已修复。
-- 文件末尾残留的调试语法错误已移除。
+- 支持断点续传：重新运行会自动跳过已处理的材质（检查输出图片是否存在）
+- 三个步骤会依次执行：Analytic Fit → DiffSpec Separation → Color Restoration
+- 中途中断后重新运行，会从中断处继续
 
 ### 6. 跑 `pca`
 

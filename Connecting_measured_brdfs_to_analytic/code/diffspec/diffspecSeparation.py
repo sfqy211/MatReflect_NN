@@ -38,17 +38,52 @@ writeBrdfImageDir = 'brdfimage/1-analyticOpt'
 if not os.path.exists(writeBrdfImageDir):
     os.makedirs(writeBrdfImageDir)
 
+# Check if all results already exist
+allAnalyticDone = os.path.exists('%s/analyticPsnrVals.npy'%writeDataDir)
+
 analyticPsnrVals = {}
 for metric in ['log1', 'log2', 'cubicRoot', 'weightSquare']:
 
     print metric, " optimzing"
-    diffParamAll = np.zeros((1, len(brdfList)))
-    specParamAll = np.zeros((3, len(brdfList)))
-    diffAnalyticAll = np.zeros((brdfValNum, len(brdfList)))
-    specAnalyticAll = np.zeros((brdfValNum, len(brdfList)))
-    analyticPsnrVals[metric] = np.zeros((len(brdfList), ))
+
+    # Check if this metric is already done
+    metricDone = os.path.exists('%s/diffParamAll_%s.npy'%(writeDataDir, metric)) and \
+                 os.path.exists('%s/specParamAll_%s.npy'%(writeDataDir, metric)) and \
+                 os.path.exists('%s/diffAnalyticAll_%s.npy'%(writeDataDir, metric)) and \
+                 os.path.exists('%s/specAnalyticAll_%s.npy'%(writeDataDir, metric))
+
+    if metricDone:
+        print "  Skipping (already done)"
+        continue
+
+    # Initialize or load existing data for resumption
+    diffParamAllPath = '%s/diffParamAll_%s.npy'%(writeDataDir, metric)
+    specParamAllPath = '%s/specParamAll_%s.npy'%(writeDataDir, metric)
+    diffAnalyticAllPath = '%s/diffAnalyticAll_%s.npy'%(writeDataDir, metric)
+    specAnalyticAllPath = '%s/specAnalyticAll_%s.npy'%(writeDataDir, metric)
+    analyticPsnrValsPath = '%s/analyticPsnrVals_%s.npy'%(writeDataDir, metric)
+
+    if os.path.exists(diffParamAllPath):
+        diffParamAll = np.load(diffParamAllPath)
+        specParamAll = np.load(specParamAllPath)
+        diffAnalyticAll = np.load(diffAnalyticAllPath)
+        specAnalyticAll = np.load(specAnalyticAllPath)
+        analyticPsnrVals[metric] = np.load(analyticPsnrValsPath)
+        print "  Loaded existing data for resumption"
+    else:
+        diffParamAll = np.zeros((1, len(brdfList)))
+        specParamAll = np.zeros((3, len(brdfList)))
+        diffAnalyticAll = np.zeros((brdfValNum, len(brdfList)))
+        specAnalyticAll = np.zeros((brdfValNum, len(brdfList)))
+        analyticPsnrVals[metric] = np.zeros((len(brdfList), ))
 
     for i, brdfname in enumerate(brdfList):
+        # Check if this material is already processed
+        combineImgPath = '%s/%s_combineanalytic_%s.png'%(writeBrdfImageDir, brdfname, metric)
+        if os.path.exists(combineImgPath) and diffParamAll[0, i] != 0:
+            print "  Skipping", brdfname, "(already done)"
+            continue
+
         brdfRaw = readMERLBRDF('%s/%s.binary'%(brdfDir, brdfname))
         brdf = brdfRaw.reshape((-1, 3))[maskMap]
         brdfMean = np.mean(brdf, axis=1)
@@ -70,12 +105,20 @@ for metric in ['log1', 'log2', 'cubicRoot', 'weightSquare']:
         specAnalyticAll[:, i] = specAnalytic
         analyticPsnrVals[metric][i] = psnr(originalImage, analyticImage)
 
+        # Save intermediate results for resumption
+        np.save(diffParamAllPath, diffParamAll)
+        np.save(specParamAllPath, specParamAll)
+        np.save(diffAnalyticAllPath, diffAnalyticAll)
+        np.save(specAnalyticAllPath, specAnalyticAll)
+        np.save(analyticPsnrValsPath, analyticPsnrVals[metric])
+
     np.save('%s/diffParamAll_%s.npy'%(writeDataDir, metric), diffParamAll)
     np.save('%s/specParamAll_%s.npy'%(writeDataDir, metric), specParamAll)
     np.save('%s/diffAnalyticAll_%s.npy'%(writeDataDir, metric), diffAnalyticAll)
     np.save('%s/specAnalyticAll_%s.npy'%(writeDataDir, metric), specAnalyticAll)
 
-np.save('%s/analyticPsnrVals.npy'%(writeDataDir), analyticPsnrVals)
+if not allAnalyticDone:
+    np.save('%s/analyticPsnrVals.npy'%(writeDataDir), analyticPsnrVals)
 
 analyticPsnrVals = np.load('%s/analyticPsnrVals.npy'%(writeDataDir))
 analyticPsnrVals.item()['log1'].mean()
@@ -96,17 +139,46 @@ writeBrdfImageDir = 'brdfimage/2-diffSpecOpt'
 if not os.path.exists(writeBrdfImageDir):
     os.makedirs(writeBrdfImageDir)
 
-f = open('log.txt', 'w')
+# Check if all results already exist
+allSeparationDone = os.path.exists('%s/separationPsnrVals.npy'%writeDataDir)
+
+f = open('log.txt', 'a')  # Use append mode to preserve previous logs
 separationPsnrVals = {}
 for metric in ['log1', 'log2', 'cubicRoot']:
 
+    # Check if this metric is already done
+    metricDone = os.path.exists('%s/diffAll_%s.npy'%(writeDataDir, metric)) and \
+                 os.path.exists('%s/specAll_%s.npy'%(writeDataDir, metric))
+
+    if metricDone:
+        print "Skipping", metric, "(already done)"
+        continue
+
     diffAnalyticAll = np.load('%s/diffAnalyticAll_%s.npy'%(writeDataDir, metric))
     specAnalyticAll = np.load('%s/specAnalyticAll_%s.npy'%(writeDataDir, metric))
-    diffAll = np.zeros((brdfValNum, len(brdfList)))
-    specAll = np.zeros((brdfValNum, len(brdfList)))
-    separationPsnrVals[metric] = np.zeros((len(brdfList), ))
+
+    # Initialize or load existing data for resumption
+    diffAllPath = '%s/diffAll_%s.npy'%(writeDataDir, metric)
+    specAllPath = '%s/specAll_%s.npy'%(writeDataDir, metric)
+    separationPsnrValsPath = '%s/separationPsnrVals_%s.npy'%(writeDataDir, metric)
+
+    if os.path.exists(diffAllPath):
+        diffAll = np.load(diffAllPath)
+        specAll = np.load(specAllPath)
+        separationPsnrVals[metric] = np.load(separationPsnrValsPath)
+        print "Loaded existing data for", metric, "resumption"
+    else:
+        diffAll = np.zeros((brdfValNum, len(brdfList)))
+        specAll = np.zeros((brdfValNum, len(brdfList)))
+        separationPsnrVals[metric] = np.zeros((len(brdfList), ))
 
     for i, brdfname in enumerate(brdfList):
+        # Check if this material is already processed (check if data is non-zero)
+        combineImgPath = '%s/%s_combine_%s.png'%(writeBrdfImageDir, brdfname, metric)
+        if os.path.exists(combineImgPath) and np.any(diffAll[:, i] != 0):
+            print "Skipping", brdfname, metric, "(already done)"
+            continue
+
         brdfRaw = readMERLBRDF('%s/%s.binary'%(brdfDir, brdfname))
         brdf = brdfRaw.reshape((-1, 3))[maskMap]
         brdfMean = np.mean(brdf, axis=1)
@@ -115,6 +187,7 @@ for metric in ['log1', 'log2', 'cubicRoot']:
         out = StringIO.StringIO()
         diff, spec = eng.diffSpecOpt(brdfMean.flatten().tolist(), diffAnalyticAll[:, i].flatten().tolist(), specAnalyticAll[:, i].flatten().tolist(), 0.9, 0.8, nargout=2, stdout=out)
         f.write('=====%s %s=====\n%s'%(metric, brdfname, out.getvalue()))
+        f.flush()  # Flush after each write
         diff = np.array(diff).reshape((-1, ))
         spec = np.array(spec).reshape((-1, ))
 
@@ -126,11 +199,17 @@ for metric in ['log1', 'log2', 'cubicRoot']:
         specAll[:, i] = spec
         separationPsnrVals[metric][i] = psnr(originalImage, separationImage)
 
+        # Save intermediate results for resumption
+        np.save(diffAllPath, diffAll)
+        np.save(specAllPath, specAll)
+        np.save(separationPsnrValsPath, separationPsnrVals[metric])
+
     np.save('%s/diffAll_%s.npy'%(writeDataDir, metric), diffAll)
     np.save('%s/specAll_%s.npy'%(writeDataDir, metric), specAll)
 
 f.close()
-np.save('%s/separationPsnrVals.npy'%(writeDataDir), separationPsnrVals)
+if not allSeparationDone:
+    np.save('%s/separationPsnrVals.npy'%(writeDataDir), separationPsnrVals)
 
 separationPsnrVals = np.load('%s/separationPsnrVals.npy'%(writeDataDir))
 separationPsnrVals.item()['log1'].mean()
@@ -149,15 +228,44 @@ writeBrdfImageDir = 'brdfimage/3-colorOpt'
 if not os.path.exists(writeBrdfImageDir):
     os.makedirs(writeBrdfImageDir)
 
+# Check if all results already exist
+allColorDone = os.path.exists('%s/colorPsnrVals.npy'%writeDataDir)
+
 separationMetric = 'log2'
 colorPsnrVals = {}
 for metric in ['image2', 'brdf2']:
+
+    # Check if this metric is already done
+    metricDone = os.path.exists('%s/colorAll_%s.npy'%(writeDataDir, metric))
+
+    if metricDone:
+        print "Skipping", metric, "(already done)"
+        continue
+
     diffAll = np.load('%s/diffAll_%s.npy'%(writeDataDir, separationMetric))
     specAll = np.load('%s/specAll_%s.npy'%(writeDataDir, separationMetric))
-    colorAll = np.zeros((2, 3, len(brdfList)))
-    colorPsnrVals[metric] = np.zeros((len(brdfList), ))
+
+    # Initialize or load existing data for resumption
+    colorAllPath = '%s/colorAll_%s.npy'%(writeDataDir, metric)
+    colorPsnrPath = '%s/colorPsnrVals_%s.npy'%(writeDataDir, metric)
+    if os.path.exists(colorAllPath):
+        print "Loading existing colorAll for resumption..."
+        colorAll = np.load(colorAllPath)
+    else:
+        colorAll = np.zeros((2, 3, len(brdfList)))
+
+    if os.path.exists(colorPsnrPath):
+        colorPsnrVals[metric] = np.load(colorPsnrPath)
+    else:
+        colorPsnrVals[metric] = np.zeros((len(brdfList), ))
 
     for i, brdfname in enumerate(brdfList):
+        # Check if this material is already processed (has valid color data)
+        combineImgPath = '%s/%s_combine_%s.png'%(writeBrdfImageDir, brdfname, metric)
+        if os.path.exists(combineImgPath) and np.any(colorAll[:, :, i] != 0):
+            print "Skipping", brdfname, metric, "(already done)"
+            continue
+
         brdfRaw = readMERLBRDF('%s/%s.binary'%(brdfDir, brdfname))
         brdf = brdfRaw.reshape((-1, 3))[maskMap]
         originalImage = saveBrdfImage('%s/%s.png'%(writeBrdfImageDir, brdfname), brdf)
@@ -180,11 +288,16 @@ for metric in ['image2', 'brdf2']:
 
         colorAll[:, :, i] = color
         colorPsnrVals[metric][i] = psnr(originalImage, colorImage)
-        print metric, brdfname, colorPsnrVals['image2'][i], colorPsnrVals[metric][i]
-    print metric, colorPsnrVals[metric].mean()
-    np.save('%s/colorAll_%s.npy'%(writeDataDir, metric), colorAll)
+        print metric, brdfname, colorPsnrVals[metric][i]
 
-np.save('%s/colorPsnrVals.npy'%(writeDataDir), colorPsnrVals)
+        # Save intermediate results for resumption
+        np.save(colorAllPath, colorAll)
+        np.save(colorPsnrPath, colorPsnrVals[metric])
+
+    print metric, colorPsnrVals[metric].mean()
+
+if not allColorDone:
+    np.save('%s/colorPsnrVals.npy'%(writeDataDir), colorPsnrVals)
 
 # plt.plot(colorPsnrVals.item()['brdf1'])
 # plt.plot(colorPsnrVals.item()['image1'])
