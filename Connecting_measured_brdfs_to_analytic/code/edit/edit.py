@@ -67,7 +67,7 @@ for i in range(5):
         saveMERLBRDF('%s/%s_Hue%s_Saturation%s.binary'%(writeBrdfDir, brdfList[index], i, j), writeBrdf)
 
 # %% 2. Edit specular color
-index = brdfList.index('blue-metallic-paint1')
+index = brdfList.index('blue-metallic-paint')
 specularColor = colorAll[1:, :, index]
 I, S, H = RGBtoHSI(specularColor)
 step = 36

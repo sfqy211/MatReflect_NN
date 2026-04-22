@@ -35,6 +35,7 @@ diffAll = np.load('%s/diffAll_%s.npy'%(brdfDataDir, metric))
 specAll = np.load('%s/specAll_%s.npy'%(brdfDataDir, metric))
 colorAll = np.load('%s/colorAll_image2.npy'%brdfDataDir)
 colorAllBrdf = np.load('%s/colorAll_brdf2.npy'%brdfDataDir)
+originalImages = np.load('%s/originalImages.npy'%utilDataPath)
 
 def MapBRDF(brdfData):
     return np.log(brdfData+0.001) #Our mapping
@@ -99,6 +100,7 @@ for i, brdfname in enumerate(brdfList):
     brdf = brdfRaw.reshape((-1, 3))[maskMap]
     saveBrdfImage('%s/%s.png'%(writeBrdfImageDir, brdfname), brdf)
 
+    saveBrdfImage('%s/%s_diff.png'%(writeBrdfImageDir, brdfname), diffPcaRecon1[:, i:i+1].dot(colorAll[:1, :, i]))
     saveBrdfImage('%s/%s_combine_diff1spec3.png'%(writeBrdfImageDir, brdfname), diffPcaRecon1[:, i:i+1].dot(colorAll[:1, :, i]) + specMapPcaRecon3[:, i:i+1].dot(colorAll[1:, :, i]))
     saveBrdfImage('%s/%s_combine_diff1spec5.png'%(writeBrdfImageDir, brdfname), diffPcaRecon1[:, i:i+1].dot(colorAll[:1, :, i]) + specMapPcaRecon5[:, i:i+1].dot(colorAll[1:, :, i]))
 
@@ -148,34 +150,38 @@ print oursPsnrVals_Diff.mean(axis=0)
 
 
 # %% 5. [Compare] Jannik's method
-maskMap_old = np.load('%s/maskMap_old.npy'%utilDataPath)
-cosMap_old = np.load('%s/cosMap_old.npy'%utilDataPath)
+# Skip if required files don't exist
+if os.path.exists('%s/maskMap_old.npy'%utilDataPath) and os.path.exists('%s/cosMap_old.npy'%utilDataPath):
+    maskMap_old = np.load('%s/maskMap_old.npy'%utilDataPath)
+    cosMap_old = np.load('%s/cosMap_old.npy'%utilDataPath)
 
-brdfAll = np.zeros((maskMap_old.sum(), 3 * len(brdfList)))
-for i, brdfname in enumerate(brdfList):
-    brdfAll[:, 3*i:3*(i+1)] = readMERLBRDF('%s/%s.binary'%(brdfDir, brdfname)).reshape((-1, 3))[maskMap_old]
-
-brdfMap = MapBRDF(brdfAll * cosMap_old)
-brdfMapMean = np.mean(brdfMap, axis=1, keepdims=True)
-np.save('%s/NielsenMapMean.npy'%writeDataDir, brdfMapMean)
-
-brdfMapPca = PCA(n_components=10).fit((brdfMap - brdfMapMean).T)
-print brdfMapPca.explained_variance_ratio_
-Q = brdfMapPca.components_.T
-brdfMapPcaReconCoeff = inv(Q.T.dot(Q)).dot(Q.T.dot(brdfMap - brdfMapMean))
-np.save('%s/NielsenMapPcaReconCoeff.npy'%writeDataDir, brdfMapPcaReconCoeff)
-np.save('%s/NielsenMapPcaComponents.npy'%writeDataDir, Q)
-
-testPcNum = 10
-NielsenPsnrVals = np.zeros((len(brdfList), testPcNum))
-writeBrdf = np.zeros((len(maskMap_old), 3))
-for pcNum in range(testPcNum):
-    brdfPcaRecon = UnmapBRDF(Q[:, :pcNum+1].dot(brdfMapPcaReconCoeff[:pcNum+1, :]) + brdfMapMean) / cosMap_old
+    brdfAll = np.zeros((maskMap_old.sum(), 3 * len(brdfList)))
     for i, brdfname in enumerate(brdfList):
-        writeBrdf[maskMap_old] = brdfPcaRecon[:, 3*i:3*(i+1)]
-        reconImage = saveBrdfImage('recon.png',  writeBrdf[maskMap, :])
-        NielsenPsnrVals[i, pcNum] = psnr(originalImages[:, :, :, i], reconImage)
+        brdfAll[:, 3*i:3*(i+1)] = readMERLBRDF('%s/%s.binary'%(brdfDir, brdfname)).reshape((-1, 3))[maskMap_old]
 
-np.save('%s/NielsenPsnrVals.npy'%writeDataDir, NielsenPsnrVals)
-NielsenPsnrVals = np.load('%s/NielsenPsnrVals.npy'%writeDataDir)
-print NielsenPsnrVals.mean(axis=0)
+    brdfMap = MapBRDF(brdfAll * cosMap_old)
+    brdfMapMean = np.mean(brdfMap, axis=1, keepdims=True)
+    np.save('%s/NielsenMapMean.npy'%writeDataDir, brdfMapMean)
+
+    brdfMapPca = PCA(n_components=10).fit((brdfMap - brdfMapMean).T)
+    print brdfMapPca.explained_variance_ratio_
+    Q = brdfMapPca.components_.T
+    brdfMapPcaReconCoeff = inv(Q.T.dot(Q)).dot(Q.T.dot(brdfMap - brdfMapMean))
+    np.save('%s/NielsenMapPcaReconCoeff.npy'%writeDataDir, brdfMapPcaReconCoeff)
+    np.save('%s/NielsenMapPcaComponents.npy'%writeDataDir, Q)
+
+    testPcNum = 10
+    NielsenPsnrVals = np.zeros((len(brdfList), testPcNum))
+    writeBrdf = np.zeros((len(maskMap_old), 3))
+    for pcNum in range(testPcNum):
+        brdfPcaRecon = UnmapBRDF(Q[:, :pcNum+1].dot(brdfMapPcaReconCoeff[:pcNum+1, :]) + brdfMapMean) / cosMap_old
+        for i, brdfname in enumerate(brdfList):
+            writeBrdf[maskMap_old] = brdfPcaRecon[:, 3*i:3*(i+1)]
+            reconImage = saveBrdfImage('recon.png',  writeBrdf[maskMap, :])
+            NielsenPsnrVals[i, pcNum] = psnr(originalImages[:, :, :, i], reconImage)
+
+    np.save('%s/NielsenPsnrVals.npy'%writeDataDir, NielsenPsnrVals)
+    NielsenPsnrVals = np.load('%s/NielsenPsnrVals.npy'%writeDataDir)
+    print NielsenPsnrVals.mean(axis=0)
+else:
+    print "Skipping Nielsen comparison (maskMap_old.npy or cosMap_old.npy not found)"
