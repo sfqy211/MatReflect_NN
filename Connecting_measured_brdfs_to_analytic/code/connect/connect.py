@@ -392,13 +392,38 @@ saveBrdfImage('specular-blue-phenolic_spec_log2.png', specAnalyticAll_log2[:, in
 
 testNum = 5
 paramLen = 1 + 3 + 2 * 3 + 3
-twoLobeNaivePsnrVals_log2 = np.zeros((len(brdfList), testNum))
-twoLobeNaiveTime_log2 = np.zeros((len(brdfList), testNum))
-twoLobeNaiveParam_log2 = np.zeros((len(brdfList), testNum, paramLen))
-twoLobeNaivePsnrVals_cubicRoot = np.zeros((len(brdfList), testNum))
-twoLobeNaiveTime_cubicRoot = np.zeros((len(brdfList), testNum))
-twoLobeNaiveParam_cubicRoot = np.zeros((len(brdfList), testNum, paramLen))
+
+# Initialize or load existing data for resumption
+twoLobeNaivePsnrVals_log2_path = '%s/twoLobeNaivePsnrVals_log2.npy'%writeDataDir
+twoLobeNaiveTime_log2_path = '%s/twoLobeNaiveTime_log2.npy'%writeDataDir
+twoLobeNaiveParam_log2_path = '%s/twoLobeNaiveParam_log2.npy'%writeDataDir
+twoLobeNaivePsnrVals_cubicRoot_path = '%s/twoLobeNaivePsnrVals_cubicRoot.npy'%writeDataDir
+twoLobeNaiveTime_cubicRoot_path = '%s/twoLobeNaiveTime_cubicRoot.npy'%writeDataDir
+twoLobeNaiveParam_cubicRoot_path = '%s/twoLobeNaiveParam_cubicRoot.npy'%writeDataDir
+
+if os.path.exists(twoLobeNaivePsnrVals_log2_path):
+    print "Loading existing data for Two Lobe Naive resumption..."
+    twoLobeNaivePsnrVals_log2 = np.load(twoLobeNaivePsnrVals_log2_path)
+    twoLobeNaiveTime_log2 = np.load(twoLobeNaiveTime_log2_path)
+    twoLobeNaiveParam_log2 = np.load(twoLobeNaiveParam_log2_path)
+    twoLobeNaivePsnrVals_cubicRoot = np.load(twoLobeNaivePsnrVals_cubicRoot_path)
+    twoLobeNaiveTime_cubicRoot = np.load(twoLobeNaiveTime_cubicRoot_path)
+    twoLobeNaiveParam_cubicRoot = np.load(twoLobeNaiveParam_cubicRoot_path)
+else:
+    twoLobeNaivePsnrVals_log2 = np.zeros((len(brdfList), testNum))
+    twoLobeNaiveTime_log2 = np.zeros((len(brdfList), testNum))
+    twoLobeNaiveParam_log2 = np.zeros((len(brdfList), testNum, paramLen))
+    twoLobeNaivePsnrVals_cubicRoot = np.zeros((len(brdfList), testNum))
+    twoLobeNaiveTime_cubicRoot = np.zeros((len(brdfList), testNum))
+    twoLobeNaiveParam_cubicRoot = np.zeros((len(brdfList), testNum, paramLen))
+
 for i, brdfname in enumerate(brdfList):
+    # Check if this material is already processed (check if last test image exists and data is non-zero)
+    lastImgPath = '%s/%s_analytic_2lobe_naive_cubicRoot_4.png'%(brdfImageDir, brdfname)
+    if os.path.exists(lastImgPath) and np.any(twoLobeNaiveParam_log2[i, 0, :] != 0):
+        print "Skipping", brdfname, "(already done)"
+        continue
+
     brdfRaw = readMERLBRDF('%s/%s.binary'%(brdfDir, brdfname))
     brdf = brdfRaw.reshape((-1, 3))[maskMap]
 
@@ -440,6 +465,15 @@ for i, brdfname in enumerate(brdfList):
                 twoLobeNaivePsnrVals_cubicRoot[i, j] = psnr(analyticBrdfImage, originalImages[:, :, :, i])
                 twoLobeNaiveTime_cubicRoot[i, j] = end - start
                 twoLobeNaiveParam_cubicRoot[i, j, :] = np.r_[diffParam.flatten(), diffColor.flatten(), specParam1.flatten(), specParam2.flatten(), specColor.flatten()]
+
+    # Save intermediate results after each material
+    np.save(twoLobeNaivePsnrVals_log2_path, twoLobeNaivePsnrVals_log2)
+    np.save(twoLobeNaiveTime_log2_path, twoLobeNaiveTime_log2)
+    np.save(twoLobeNaiveParam_log2_path, twoLobeNaiveParam_log2)
+    np.save(twoLobeNaivePsnrVals_cubicRoot_path, twoLobeNaivePsnrVals_cubicRoot)
+    np.save(twoLobeNaiveTime_cubicRoot_path, twoLobeNaiveTime_cubicRoot)
+    np.save(twoLobeNaiveParam_cubicRoot_path, twoLobeNaiveParam_cubicRoot)
+    print brdfname, "completed", i+1, "/", len(brdfList)
 
 np.save('%s/twoLobeNaivePsnrVals_log2.npy'%writeDataDir, twoLobeNaivePsnrVals_log2)
 np.save('%s/twoLobeNaiveTime_log2.npy'%writeDataDir, twoLobeNaiveTime_log2)
