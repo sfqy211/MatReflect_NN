@@ -38,18 +38,6 @@ frontend\node_modules\.bin\tsc.cmd --noEmit
 - 量化评估是否还能匹配 GT / FullBin / NPY
 - 拼图是否还能处理新旧时间戳格式
 
-### 桌面模式
-
-```powershell
-scripts/start_v2_desktop.ps1
-```
-
-若桌面打不开，优先检查：
-1. `frontend/dist` 是否存在
-2. `desktop/requirements.txt` 依赖
-3. WebView2 运行时
-4. `desktop/launcher.py` 报错
-
 ## 编辑约束
 
 - 路径优先 `pathlib.Path`
@@ -64,7 +52,7 @@ scripts/start_v2_desktop.ps1
 
 - `frontend/src/components/`、`frontend/src/features/`、`frontend/src/lib/`、`frontend/src/types/`
 - `backend/api/v1/`、`backend/services/`、`backend/models/`、`backend/core/`
-- `desktop/`、`scripts/start_v2_*.ps1`
+- `scripts/start_v2_*.ps1`
 
 不要优先大改：
 

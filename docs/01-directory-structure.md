@@ -6,8 +6,7 @@
 |---|---|
 | `frontend/` | V2 React 前端 |
 | `backend/` | V2 FastAPI 后端 |
-| `desktop/` | 桌面启动器与打包配置 |
-| `scripts/` | 启动 / 打包脚本 |
+| `scripts/` | 启动脚本 |
 | `scene/` | Mitsuba XML、环境图、OBJ |
 
 ## 上游模型代码（只读对待）
@@ -46,7 +45,6 @@ data/
 - `data/`、`mitsuba/`、`HyperBRDF/`、`Neural-BRDF/`
 - `backend/runtime/`
 - `frontend/node_modules/`、`frontend/dist/`
-- `desktop/build/`、`desktop/dist/`
 
 ## 后端模块文件
 

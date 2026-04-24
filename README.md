@@ -27,17 +27,9 @@ scripts\start_v2_dev.ps1
 scripts\start_v2_prod.ps1
 ```
 
-桌面模式：
-
-```powershell
-scripts\start_v2_desktop.ps1
-scripts\build_v2_desktop.ps1
-```
-
 补充说明：
 
 - 开发模式会分别启动后端和前端两个窗口。
-- 桌面模式会复用现有 `frontend/dist`，并在本地窗口中嵌入当前 V2 前端。
 
 ## 环境准备
 
@@ -132,8 +124,7 @@ MatReflect_NN/
 ├── frontend/                    # V2 React 前端
 ├── backend/                     # V2 FastAPI 后端
 ├── backend/runtime/             # 运行时任务、日志、临时 XML、系统设置
-├── scripts/                     # 启动脚本、桌面封装脚本等
-├── desktop/                     # 桌面封装说明
+├── scripts/                     # 启动脚本
 ├── data/                        # 输入数据与输出结果
 ├── scene/                       # Mitsuba 场景资源
 ├── Neural-BRDF/                 # Neural-BRDF 上游代码
@@ -147,7 +138,6 @@ MatReflect_NN/
 
 - [AGENTS.md](AGENTS.md)
 - [MODEL_PLUGIN_DEVELOPMENT_SPEC.md](MODEL_PLUGIN_DEVELOPMENT_SPEC.md)
-- [desktop/README.md](desktop/README.md)
 
 ## 常见问题
 
@@ -178,8 +168,6 @@ MatReflect_NN/
 
 - `scripts/start_v2_dev.ps1`
 - `scripts/start_v2_prod.ps1`
-- `scripts/start_v2_desktop.ps1`
-- `scripts/build_v2_desktop.ps1`
 - 设置页中的路径输入占位示例
 
 仍然可能保留绝对路径的部分：

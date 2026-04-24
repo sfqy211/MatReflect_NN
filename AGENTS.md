@@ -1,6 +1,6 @@
 # AGENTS.md
 
-`MatReflect_NN` — Windows 本地材质研究集成工作台。React + Vite 前端，FastAPI + WebSocket 后端，pywebview 桌面封装。
+`MatReflect_NN` — Windows 本地材质研究集成工作台。React + Vite 前端，FastAPI + WebSocket 后端。
 
 ## 文档索引
 
@@ -9,8 +9,7 @@
 - [docs/02-render-pipeline.md](docs/02-render-pipeline.md) — 渲染链路（模式、场景、XML 改写、输出命名）
 - [docs/03-train-pipeline.md](docs/03-train-pipeline.md) — 训练链路（内建模型、脚本、API）
 - [docs/04-analysis-pipeline.md](docs/04-analysis-pipeline.md) — 分析链路（评估、拼图、材质名匹配）
-- [docs/05-desktop-packaging.md](docs/05-desktop-packaging.md) — 桌面封装与打包
-- [docs/06-development-guide.md](docs/06-development-guide.md) — 开发验证、编辑约束、架构原则
+- [docs/05-development-guide.md](docs/05-development-guide.md) — 开发验证、编辑约束、架构原则
 
 ## 核心文件速查
 
@@ -28,7 +27,6 @@
 | 路径解析 | `backend/core/paths.py` |
 | 子进程封装 | `backend/core/threaded_subprocess.py` |
 | 系统设置 | `backend/core/system_settings.py` |
-| 桌面启动 | `desktop/launcher.py` |
 
 ## 关键约束
 
