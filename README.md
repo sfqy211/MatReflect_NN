@@ -8,7 +8,7 @@
 
 项目闭环包括：
 
-1. 使用 Mitsuba 0.6 渲染 MERL / FullBin / NBRDF 材质。
+1. 使用 Mitsuba 0.6 渲染 MERL / HyperBRDF / Neural-BRDF 材质。
 2. 使用 Neural-BRDF 完成 `.binary -> .npy`。
 3. 使用 HyperBRDF 完成 `.binary -> checkpoint.pt -> .pt -> .fullbin`。
 4. 在工作台内完成渲染预览、量化评估、拼图分析、模型管理与系统设置。
@@ -86,25 +86,31 @@ pip install matplotlib==3.3.4 numpy==1.21.6 pandas==1.2.2 scikit_learn==1.1.3 Py
 
 - 内置 Neural-BRDF / HyperBRDF 模型注册项（通过 `backend/config/model_registry.json` 中央配置管理）
 - 同适配器新模型只需在 JSON 配置中添加条目；新增适配器才需改代码
+- **自定义模型导入**：通过导入向导添加自定义模型，系统自动创建对应的 Conda 虚拟环境
 - 支持训练任务、参数提取、`pt -> fullbin`
 - 支持独立 `H5 -> NPY` 转换
 - 支持运行记录扫描
+- **训练与重建分离**：训练在训练 Tab，重建在重建 Tab
+- **动态参数表单**：根据模型配置自动渲染可配置参数
+- **PTY 终端**：内嵌 xterm.js 终端，可直接在页面中执行命令
 
 ### 渲染可视化
 
-- 支持 `.binary`、`.fullbin`、`.npy` 三类输入
+- 支持 `.binary`（GT/参考值）、`.fullbin`（HyperBRDF 输出）、`.npy`（Neural-BRDF 输出）三类输入
+- UI 标签按模型来源命名，不使用文件后缀名
 - 支持 Mitsuba XML 场景切换
 - 支持 EXR -> PNG 自动转换
-- 前端当前提供"仅渲染 / 仅重建"两种工作模式
-- 后端保留"重建后继续渲染"的串联能力，但前端当前未直接开放该按钮
+- 渲染工作台仅保留纯渲染功能，重建已迁移至模型管理模块
 
 ### 材质表达结果分析
 
 - 图片预览
-- 图片删除与对应 EXR 清理
+- 图片删除与对应 EXR 清理（删除前有确认对话框）
 - PSNR / SSIM / Delta E 量化评估
 - 网格拼图
 - 对比拼图
+- 三栏并排对比视图
+- 评估结果表格（支持 CSV 导出）
 - 自定义分析目录与输出目录
 
 ### 设置页
@@ -132,6 +138,17 @@ MatReflect_NN/
 ├── README.md
 ```
 
+## 新增 API 端点
+
+- `POST /models/import` — 导入自定义模型
+- `DELETE /models/{model_key}` — 删除自定义模型（仅 built_in=false）
+- `GET /models/{model_key}/config` — 获取模型配置
+- `PUT /models/{model_key}/config` — 更新模型配置
+- `GET /models/{model_key}/env-status` — 查询虚拟环境状态
+- `POST /models/{model_key}/setup-env` — 创建虚拟环境
+- `POST /train/reconstruct` — 启动重建任务
+- `WS /ws/pty/{session_id}` — PTY 终端通信
+
 ## 相关文档
 
 - [AGENTS.md](AGENTS.md)
@@ -155,9 +172,9 @@ MatReflect_NN/
 
 ### 新模型是通过页面添加吗？
 
-不是。
+内置模型通过 JSON 配置（`backend/config/model_registry.json`）管理，同适配器新模型只需在 JSON 中添加条目。
 
-当前版本已将模型注册改为 JSON 配置驱动（`backend/config/model_registry.json`）。同适配器新模型只需在 JSON 中添加条目；新增适配器才需修改代码。
+自定义模型可通过页面上的"导入模型"向导添加，系统会自动创建对应的 Conda 虚拟环境。导入时需指定模型目录、训练/重建脚本路径和参数模板。
 
 ### 为什么项目里仍然会看到绝对路径？
 
