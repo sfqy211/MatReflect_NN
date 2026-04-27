@@ -99,37 +99,36 @@ def has_merl_accelerated(mitsuba_dir: Path) -> bool:
 
 
 def get_scene_search_dirs() -> list[Path]:
-    return [
-        PROJECT_ROOT / "scene" / "dj_xml",
-        PROJECT_ROOT / "scene" / "old_xml",
-    ]
+    assets_dir = PROJECT_ROOT / "scene" / "assets"
+    if not assets_dir.exists():
+        return []
+    subdirs = sorted(d for d in assets_dir.iterdir() if d.is_dir())
+    return [assets_dir] + subdirs
 
 
 def list_scene_xmls() -> list[Path]:
     results: list[Path] = []
     for scene_dir in get_scene_search_dirs():
-        if scene_dir.exists():
+        scene_xml = scene_dir / "scene.xml"
+        if scene_xml.exists():
+            results.append(scene_xml)
+        else:
             results.extend(sorted(scene_dir.glob("*.xml")))
     return results
 
 
 def get_default_scene_path(render_mode: RenderMode = "brdfs") -> Optional[Path]:
+    assets = PROJECT_ROOT / "scene" / "assets"
     preferred_candidates: list[Path] = []
     if render_mode == "fullbin":
-        preferred_candidates.append(PROJECT_ROOT / "scene" / "dj_xml" / "hyperbrdf_ref.xml")
-        preferred_candidates.append(PROJECT_ROOT / "scene" / "dj_xml" / "scene_universal.xml")
+        preferred_candidates.append(assets / "hyperbrdf" / "scene.xml")
+        preferred_candidates.append(assets / "matpreview_universal" / "scene.xml")
     else:
-        preferred_candidates.append(PROJECT_ROOT / "scene" / "dj_xml" / "scene_universal.xml")
+        preferred_candidates.append(assets / "matpreview_universal" / "scene.xml")
         if render_mode == "npy":
-            preferred_candidates.append(PROJECT_ROOT / "scene" / "dj_xml" / "scene_test_nbrdf_npy.xml")
+            preferred_candidates.append(assets / "matpreview_nbrdf" / "scene.xml")
         else:
-            preferred_candidates.append(PROJECT_ROOT / "scene" / "dj_xml" / "scene_test_merl_accelerated.xml")
-    preferred_candidates.extend(
-        [
-            PROJECT_ROOT / "scene" / "old_xml" / "scene_merl.xml",
-            PROJECT_ROOT / "scene" / "scene_merl.xml",
-        ]
-    )
+            preferred_candidates.append(assets / "matpreview_merl" / "scene.xml")
     for candidate in preferred_candidates:
         if candidate.exists():
             return candidate
@@ -163,8 +162,10 @@ def resolve_scene_resource(scene_dir: Path, value: str) -> Path:
     cleaned = value.replace("\\", "/")
     if cleaned.startswith("./"):
         cleaned = cleaned[2:]
+    assets_dir = PROJECT_ROOT / "scene" / "assets"
     candidates = [
         (scene_dir / cleaned).resolve(),
+        (assets_dir / cleaned).resolve(),
         (PROJECT_ROOT / cleaned).resolve(),
         (PROJECT_ROOT / "scene" / cleaned).resolve(),
         (scene_dir / Path(cleaned).name).resolve(),

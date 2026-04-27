@@ -28,11 +28,11 @@
 
 | 渲染模式 | 优先场景 |
 |---|---|
-| `fullbin` | `scene/dj_xml/hyperbrdf_ref.xml` |
-| `npy` | `scene/dj_xml/scene_universal.xml` |
-| `brdfs` | `scene/dj_xml/scene_universal.xml` |
+| `fullbin` | `scene/assets/hyperbrdf/scene.xml` |
+| `npy` | `scene/assets/matpreview_universal/scene.xml` |
+| `brdfs` | `scene/assets/matpreview_universal/scene.xml` |
 
-依次回退到 `scene/dj_xml/*` → `scene/old_xml/*`。
+依次回退到 `scene/assets/*/scene.xml` → `scene/assets/*.xml`。
 
 ## 运行时 XML 改写
 

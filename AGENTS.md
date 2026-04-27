@@ -140,7 +140,7 @@ cd frontend && npm run dev -- --host=127.0.0.1 --port=5173
 2. **路径**：优先 `pathlib.Path`，限制在 `PROJECT_ROOT` 内；设置页允许用户修改路径，避免写死绝对路径
 3. **任务**：持久化到 `backend/runtime/tasks/*.json`，重启后 pending/running 自动标记 failed
 4. **文档与代码不一致时**：信代码
-5. **不可随意清理**：`data/`、`backend/runtime/`、`HyperBRDF/results/`、`mitsuba/dist/`
+5. **不可随意清理**：`data/`、`scene/assets/`、`references/`、`backend/runtime/`、`HyperBRDF/results/`、`mitsuba/dist/`
 6. **不优先大改**：`mitsuba/src/`、`Neural-BRDF/`、`HyperBRDF/`
 7. **命名变更**：同步检查渲染输出、前端 `fileNames.ts`、分析 `normalize_material_name`
 8. **优先改**：`frontend/src/`、`backend/api/`、`backend/services/`、`backend/models/`、`backend/core/`、`scripts/`

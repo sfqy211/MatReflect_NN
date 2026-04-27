@@ -126,7 +126,8 @@ MatReflect_NN/
 ├── backend/runtime/             # 运行时任务、日志、临时 XML、系统设置
 ├── scripts/                     # 启动脚本
 ├── data/                        # 输入数据与输出结果
-├── scene/                       # Mitsuba 场景资源
+├── scene/                       # Mitsuba 场景资源（scene/assets/ 下每场景一子目录，主XML为scene.xml）
+├── references/                  # 只读参考区
 ├── Neural-BRDF/                 # Neural-BRDF 上游代码
 ├── HyperBRDF/                   # HyperBRDF 上游代码
 ├── README.md

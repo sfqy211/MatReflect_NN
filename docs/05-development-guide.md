@@ -22,7 +22,7 @@ frontend\node_modules\.bin\tsc.cmd --noEmit
 
 ### 渲染改动验证
 
-- `scene/dj_xml/*.xml` 中目标材质节点是否仍可定位（`id="Material"` 或兼容类型的 bsdf）
+- `scene/assets/*/scene.xml` 中目标材质节点是否仍可定位（`id="Material"` 或兼容类型的 bsdf）
 - `backend/runtime/render_xml/` 是否生成临时 XML
 - `data/outputs/*/{exr,png}` 是否产生新结果
 - 新命名是否仍被前端和分析模块识别

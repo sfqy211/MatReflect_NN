@@ -7,7 +7,8 @@
 | `frontend/` | V2 React 前端 |
 | `backend/` | V2 FastAPI 后端 |
 | `scripts/` | 启动脚本 |
-| `scene/` | Mitsuba XML、环境图、OBJ |
+| `scene/` | Mitsuba 场景资源（`scene/assets/` 下每个场景一个子目录，主 XML 为 `scene.xml`） |
+| `references/` | 只读参考区（上游文档、论文笔记等） |
 
 ## 上游模型代码（只读对待）
 

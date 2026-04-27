@@ -40,7 +40,7 @@ SAFE_PATHS = {
     "inputs_binary": PROJECT_ROOT / "data" / "inputs" / "binary",
     "inputs_fullbin": PROJECT_ROOT / "data" / "inputs" / "fullbin",
     "inputs_npy": PROJECT_ROOT / "data" / "inputs" / "npy",
-    "scene_xml": PROJECT_ROOT / "scene" / "dj_xml",
+    "scene_xml": PROJECT_ROOT / "scene" / "assets",
 }
 
 
