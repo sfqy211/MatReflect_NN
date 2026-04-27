@@ -11,6 +11,15 @@
       "supports_extract": false,
       "supports_decode": false,
       "supports_runs": false,
+      "supports_reconstruction": true,
+      "model_dir": "models/Neural-BRDF",
+      "requirements_path": "",
+      "commands_doc": "",
+      "render_modes": ["npy"],
+      "parameters": [
+        {"key": "epochs", "label": "训练轮数", "type": "int", "default": 100, "min": 1, "max": 100000},
+        {"key": "device", "label": "训练设备", "type": "select", "default": "cpu", "options": ["cpu", "cuda"]}
+      ],
       "default_paths": {
         "materials_dir": "data/inputs/binary",
         "output_dir": "data/inputs/npy"
@@ -32,6 +41,14 @@
       "supports_extract": false,
       "supports_decode": false,
       "supports_runs": false,
+      "supports_reconstruction": true,
+      "model_dir": "models/Neural-BRDF",
+      "requirements_path": "",
+      "commands_doc": "",
+      "render_modes": ["npy"],
+      "parameters": [
+        {"key": "cuda_device", "label": "CUDA 设备", "type": "str", "default": "0"}
+      ],
       "default_paths": {
         "materials_dir": "data/inputs/binary",
         "h5_output_dir": "models/Neural-BRDF/data/merl_nbrdf",
@@ -55,6 +72,21 @@
       "supports_extract": true,
       "supports_decode": true,
       "supports_runs": true,
+      "supports_reconstruction": true,
+      "model_dir": "models/HyperBRDF",
+      "requirements_path": "",
+      "commands_doc": "",
+      "render_modes": ["fullbin"],
+      "parameters": [
+        {"key": "epochs", "label": "训练轮数", "type": "int", "default": 100, "min": 1, "max": 100000},
+        {"key": "sparse_samples", "label": "稀疏采样点数", "type": "int", "default": 4000, "min": 1, "max": 1000000},
+        {"key": "kl_weight", "label": "KL 权重", "type": "float", "default": 0.1, "min": 0, "max": 100},
+        {"key": "fw_weight", "label": "FW 权重", "type": "float", "default": 0.1, "min": 0, "max": 100},
+        {"key": "lr", "label": "学习率", "type": "float", "default": 0.00005, "min": 0, "max": 1},
+        {"key": "train_subset", "label": "训练材质数", "type": "int", "default": 80, "min": 0, "max": 100},
+        {"key": "train_seed", "label": "随机种子", "type": "int", "default": 42, "min": 0, "max": 999999},
+        {"key": "keepon", "label": "继续训练", "type": "bool", "default": false}
+      ],
       "default_paths": {
         "materials_dir": "data/inputs/binary",
         "results_dir": "models/HyperBRDF/results",

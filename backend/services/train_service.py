@@ -8,6 +8,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Optional, Union
 
+import shlex
+
 from backend.core.conda import build_python_runner
 from backend.core.config import LOGS_ROOT, PROJECT_ROOT
 from backend.core.runtime_logging import format_command, log_task_message
@@ -20,6 +22,7 @@ from backend.models.train import (
     NeuralH5ConvertRequest,
     NeuralKerasTrainRequest,
     NeuralPytorchTrainRequest,
+    ReconstructRequest,
     TrainModelItem,
     TrainModelsResponse,
     TrainRunSummary,
@@ -183,6 +186,18 @@ class TrainService:
         cancel_event = asyncio.Event()
         self._cancel_events[record.task_id] = cancel_event
         asyncio.create_task(self._run_hyper_decode(record.task_id, model, request, log_path, cancel_event))
+        return record
+
+    async def start_reconstruct(self, request: ReconstructRequest):
+        """启动重建任务（从模型管理页调用）。"""
+        model = self._get_model(request.model_key)
+        if not model.supports_reconstruction:
+            raise ValueError(f"模型不支持重建: {model.key}")
+        log_path = LOGS_ROOT / f"reconstruct_{request.model_key}_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.log"
+        record = task_manager.create("reconstruct", f"{model.label} 重建排队中", log_path=str(log_path))
+        cancel_event = asyncio.Event()
+        self._cancel_events[record.task_id] = cancel_event
+        asyncio.create_task(self._run_reconstruct(record.task_id, model, request, log_path, cancel_event))
         return record
 
     def _get_model(self, model_key: str) -> TrainModelItem:
@@ -860,6 +875,194 @@ class TrainService:
             )
         except Exception as exc:
             await self._write_log(task_id, log_path, f"Decode task failed: {exc}", status="failed", progress=100, event="done")
+        finally:
+            self._cancel_events.pop(task_id, None)
+
+    async def _run_reconstruct(
+        self,
+        task_id: str,
+        model: TrainModelItem,
+        request: ReconstructRequest,
+        log_path: Path,
+        cancel_event: asyncio.Event,
+    ) -> None:
+        """执行重建任务。根据模型适配器分派不同的重建逻辑。"""
+        try:
+            merl_dir = Path(request.merl_dir).resolve()
+            ensure_exists(merl_dir)
+            if not request.selected_materials:
+                raise ValueError("未选择材质文件。")
+
+            if model.adapter == "neural-pytorch":
+                output_dir = Path(request.output_dir or "data/inputs/npy").resolve()
+                output_dir.mkdir(parents=True, exist_ok=True)
+
+                train_script = self._resolve_project_path(model.runtime["train_script"], must_exist=True)
+                relative_parent = str(train_script.parent.relative_to(PROJECT_ROOT))
+                env = self._make_env(model, include_script_parent=relative_parent)
+                conda_env = request.conda_env.strip() or model.runtime.get("conda_env", "").strip()
+                runner, _ = self._python_runner(conda_env)
+
+                total = len(request.selected_materials)
+                generated: list[str] = []
+                for index, material in enumerate(request.selected_materials):
+                    material_path = merl_dir / material
+                    ensure_exists(material_path, file_ok=True)
+                    cmd = [
+                        *runner,
+                        str(train_script),
+                        str(material_path),
+                        "--outpath",
+                        str(output_dir),
+                        "--epochs",
+                        str(request.neural_epochs),
+                        "--device",
+                        request.neural_device,
+                    ]
+                    return_code = await self._run_command(
+                        task_id, log_path, cmd,
+                        cwd=self._working_dir_for(model), env=env,
+                        progress=min(95, int(index / total * 100)),
+                        start_message=f"[{index + 1}/{total}] 重建 {model.label}: {material}",
+                        cancel_event=cancel_event,
+                    )
+                    if return_code == -1:
+                        await self._write_log(task_id, log_path, "Task cancelled.", status="cancelled", progress=100, event="done")
+                        return
+                    if return_code != 0:
+                        await self._write_log(task_id, log_path, f"重建失败: {material} (exit code: {return_code})", status="failed", progress=100, event="done")
+                        return
+                    generated.append(material_path.stem)
+
+                await self._write_log(task_id, log_path, f"{model.label} 重建完成。", status="success", progress=100, event="done",
+                    result_payload={"output_dir": str(output_dir), "model_key": model.key, "materials": generated})
+
+            elif model.adapter == "hyper-family":
+                # HyperBRDF 重建 = extract + decode
+                checkpoint_path = Path(request.checkpoint_path).resolve() if request.checkpoint_path else None
+                if not checkpoint_path or not checkpoint_path.exists():
+                    raise ValueError("HyperBRDF 重建需要有效的 Checkpoint 路径")
+
+                extract_dir = Path(model.default_paths.get("extract_dir", "models/HyperBRDF/results/extracted_pts")).resolve()
+                extract_dir.mkdir(parents=True, exist_ok=True)
+                fullbin_output_dir = Path(request.output_dir or "data/inputs/fullbin").resolve()
+                fullbin_output_dir.mkdir(parents=True, exist_ok=True)
+
+                # Step 1: Extract
+                extract_script = self._resolve_project_path(model.runtime["extract_script"], must_exist=True)
+                env = self._make_env(model)
+                conda_env = request.conda_env.strip() or model.runtime.get("conda_env", "").strip()
+                runner, _ = self._python_runner(conda_env)
+
+                total = len(request.selected_materials)
+                pt_files: list[str] = []
+                for index, material in enumerate(request.selected_materials):
+                    binary_path = merl_dir / material
+                    ensure_exists(binary_path, file_ok=True)
+                    cmd = [
+                        *runner, str(extract_script),
+                        "--model", str(checkpoint_path),
+                        "--binary", str(binary_path),
+                        "--destdir", str(extract_dir),
+                        "--dataset", request.dataset,
+                    ]
+                    if self._supports_sparse_samples(model):
+                        cmd.extend(["--sparse_samples", str(request.sparse_samples)])
+                    return_code = await self._run_command(
+                        task_id, log_path, cmd,
+                        cwd=self._working_dir_for(model), env=env,
+                        progress=min(45, int(index / total * 50)),
+                        start_message=f"[{index + 1}/{total}] 提取参数: {material}",
+                        cancel_event=cancel_event,
+                    )
+                    if return_code == -1:
+                        await self._write_log(task_id, log_path, "Task cancelled.", status="cancelled", progress=100, event="done")
+                        return
+                    if return_code != 0:
+                        await self._write_log(task_id, log_path, f"提取失败: {material}", status="failed", progress=100, event="done")
+                        return
+                    pt_name = f"{Path(material).stem}.pt"
+                    pt_files.append(pt_name)
+
+                # Step 2: Decode
+                decode_script = self._resolve_project_path(model.runtime["decode_script"], must_exist=True)
+                env["CUDA_VISIBLE_DEVICES"] = request.cuda_device
+
+                for index, pt_name in enumerate(pt_files):
+                    pt_path = extract_dir / pt_name
+                    if not pt_path.exists():
+                        await self._write_log(task_id, log_path, f"跳过缺失的 PT 文件: {pt_name}", progress=50 + int(index / len(pt_files) * 45))
+                        continue
+                    cmd = [
+                        *runner, str(decode_script),
+                        str(pt_path), str(fullbin_output_dir),
+                        "--dataset", request.dataset,
+                        "--cuda_device", request.cuda_device,
+                    ]
+                    return_code = await self._run_command(
+                        task_id, log_path, cmd,
+                        cwd=self._working_dir_for(model), env=env,
+                        progress=min(95, 50 + int(index / len(pt_files) * 45)),
+                        start_message=f"[{index + 1}/{len(pt_files)}] 解码: {pt_name}",
+                        cancel_event=cancel_event,
+                    )
+                    if return_code == -1:
+                        await self._write_log(task_id, log_path, "Task cancelled.", status="cancelled", progress=100, event="done")
+                        return
+                    if return_code != 0:
+                        await self._write_log(task_id, log_path, f"解码失败: {pt_name}", status="failed", progress=100, event="done")
+                        return
+
+                await self._write_log(task_id, log_path, f"{model.label} 重建完成。", status="success", progress=100, event="done",
+                    result_payload={"output_dir": str(fullbin_output_dir), "model_key": model.key})
+
+            elif model.adapter == "custom-cli":
+                # Custom model reconstruction via command line
+                reconstruct_script = model.runtime.get("reconstruct_script", "").strip()
+                reconstruct_args_template = model.runtime.get("reconstruct_args_template", "").strip()
+                if not reconstruct_script:
+                    raise ValueError(f"自定义模型未配置重建脚本: {model.key}")
+
+                output_dir = Path(request.output_dir).resolve() if request.output_dir else PROJECT_ROOT / "data" / "outputs" / model.key
+                output_dir.mkdir(parents=True, exist_ok=True)
+
+                script_path = self._resolve_project_path(reconstruct_script, must_exist=True)
+                env = self._make_env(model)
+                conda_env = request.conda_env.strip() or model.runtime.get("conda_env", "").strip()
+                runner, _ = self._python_runner(conda_env)
+
+                # Build command from template - use shlex.split for safe argument parsing
+                args_str = reconstruct_args_template
+                for material in request.selected_materials:
+                    material_path = merl_dir / material
+                    # Quote user-supplied values to prevent template injection
+                    safe_kwargs = {
+                        "data_dir": str(merl_dir),
+                        "input": str(material_path),
+                        "output": str(output_dir),
+                        "checkpoint": request.checkpoint_path,
+                        "material": material,
+                    }
+                    cmd_str = args_str.format(**safe_kwargs)
+                    cmd = [*runner, str(script_path)] + shlex.split(cmd_str)
+                    return_code = await self._run_command(
+                        task_id, log_path, cmd,
+                        cwd=self._working_dir_for(model), env=env,
+                        progress=50,
+                        start_message=f"自定义模型重建: {material}",
+                        cancel_event=cancel_event,
+                    )
+                    if return_code != 0:
+                        await self._write_log(task_id, log_path, f"重建失败: {material}", status="failed", progress=100, event="done")
+                        return
+
+                await self._write_log(task_id, log_path, f"{model.label} 重建完成。", status="success", progress=100, event="done",
+                    result_payload={"output_dir": str(output_dir), "model_key": model.key})
+            else:
+                raise ValueError(f"不支持的适配器类型: {model.adapter}")
+
+        except Exception as exc:
+            await self._write_log(task_id, log_path, f"重建任务失败: {exc}", status="failed", progress=100, event="done")
         finally:
             self._cancel_events.pop(task_id, None)
 

@@ -9,6 +9,7 @@ from backend.models.train import (
     NeuralH5ConvertRequest,
     NeuralKerasTrainRequest,
     NeuralPytorchTrainRequest,
+    ReconstructRequest,
     TrainModelsResponse,
     TrainRunsResponse,
     TrainTaskDetailResponse,
@@ -114,6 +115,15 @@ async def train_hyper_extract(request: HyperExtractRequest) -> TrainTaskStartRes
 async def train_hyper_decode(request: HyperDecodeRequest) -> TrainTaskStartResponse:
     try:
         record = await train_service.start_hyper_decode(request)
+    except (KeyError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return TrainTaskStartResponse(task_id=record.task_id, status=record.status)
+
+
+@router.post("/train/reconstruct", response_model=TrainTaskStartResponse)
+async def train_reconstruct(request: ReconstructRequest) -> TrainTaskStartResponse:
+    try:
+        record = await train_service.start_reconstruct(request)
     except (KeyError, ValueError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return TrainTaskStartResponse(task_id=record.task_id, status=record.status)

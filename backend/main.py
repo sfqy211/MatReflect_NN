@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 
-from backend.api.v1 import analysis, fs, render, system, train
+from backend.api.v1 import analysis, fs, models, render, system, terminal, train
 from backend.core.config import (
     API_PREFIX,
     MEDIA_OUTPUTS_PREFIX,
@@ -44,6 +44,8 @@ app.include_router(fs.router, prefix=API_PREFIX)
 app.include_router(render.router, prefix=API_PREFIX)
 app.include_router(train.router, prefix=API_PREFIX)
 app.include_router(analysis.router, prefix=API_PREFIX)
+app.include_router(models.router, prefix=API_PREFIX)
+app.include_router(terminal.router)
 app.mount(
     MEDIA_OUTPUTS_PREFIX, StaticFiles(directory=OUTPUTS_ROOT), name="media-outputs"
 )
