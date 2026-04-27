@@ -53,4 +53,4 @@
 - 动态注册新模型
 - 动态删除模型
 
-如需接入新模型，当前标准做法是修改 `model_registry.py`。
+如需接入同适配器新模型，编辑 `backend/config/model_registry.json` 即可。新增适配器才需修改 `model_registry.py` 和 `train_service.py`。

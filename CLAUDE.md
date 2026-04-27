@@ -121,6 +121,7 @@ When changing naming rules, check all of:
 
 ## Data Directories (gitignored)
 
+- `models/` — Local model pool (Neural-BRDF, HyperBRDF, etc.)
 - `scene/assets/` — Mitsuba scene assets (each scene in a subdirectory with `scene.xml`)
 - `references/` — Read-only reference area
 - `data/inputs/binary/` — MERL `.binary` files

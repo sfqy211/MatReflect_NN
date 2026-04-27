@@ -84,8 +84,8 @@ pip install matplotlib==3.3.4 numpy==1.21.6 pandas==1.2.2 scikit_learn==1.1.3 Py
 
 ### 网络模型管理
 
-- 内置 Neural-BRDF / HyperBRDF 模型注册项
-- 新模型需通过修改代码接入，不再提供 UI 动态注册
+- 内置 Neural-BRDF / HyperBRDF 模型注册项（通过 `backend/config/model_registry.json` 中央配置管理）
+- 同适配器新模型只需在 JSON 配置中添加条目；新增适配器才需改代码
 - 支持训练任务、参数提取、`pt -> fullbin`
 - 支持独立 `H5 -> NPY` 转换
 - 支持运行记录扫描
@@ -95,8 +95,8 @@ pip install matplotlib==3.3.4 numpy==1.21.6 pandas==1.2.2 scikit_learn==1.1.3 Py
 - 支持 `.binary`、`.fullbin`、`.npy` 三类输入
 - 支持 Mitsuba XML 场景切换
 - 支持 EXR -> PNG 自动转换
-- 前端当前提供“仅渲染 / 仅重建”两种工作模式
-- 后端保留“重建后继续渲染”的串联能力，但前端当前未直接开放该按钮
+- 前端当前提供"仅渲染 / 仅重建"两种工作模式
+- 后端保留"重建后继续渲染"的串联能力，但前端当前未直接开放该按钮
 
 ### 材质表达结果分析
 
@@ -128,17 +128,13 @@ MatReflect_NN/
 ├── data/                        # 输入数据与输出结果
 ├── scene/                       # Mitsuba 场景资源（scene/assets/ 下每场景一子目录，主XML为scene.xml）
 ├── references/                  # 只读参考区
-├── Neural-BRDF/                 # Neural-BRDF 上游代码
-├── HyperBRDF/                   # HyperBRDF 上游代码
+├── models/                      # 本地模型池（Neural-BRDF、HyperBRDF 等，gitignore）
 ├── README.md
-├── AGENTS.md
-└── MODEL_PLUGIN_DEVELOPMENT_SPEC.md
 ```
 
 ## 相关文档
 
 - [AGENTS.md](AGENTS.md)
-- [MODEL_PLUGIN_DEVELOPMENT_SPEC.md](MODEL_PLUGIN_DEVELOPMENT_SPEC.md)
 
 ## 常见问题
 
@@ -161,7 +157,7 @@ MatReflect_NN/
 
 不是。
 
-当前版本已经移除“自建模型动态注册”功能。新增模型的标准方式是开发者直接修改代码接入，详见 [MODEL_PLUGIN_DEVELOPMENT_SPEC.md](MODEL_PLUGIN_DEVELOPMENT_SPEC.md)。
+当前版本已将模型注册改为 JSON 配置驱动（`backend/config/model_registry.json`）。同适配器新模型只需在 JSON 中添加条目；新增适配器才需修改代码。
 
 ### 为什么项目里仍然会看到绝对路径？
 

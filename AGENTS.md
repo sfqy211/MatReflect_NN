@@ -75,7 +75,7 @@ cd frontend && npm run dev -- --host=127.0.0.1 --port=5173
   - `system_service` — 系统设置读写、Mitsuba 编译
   - `file_service` — 文件浏览与预览（路径安全校验）
   - `task_manager` — 任务持久化到 `runtime/tasks/*.json`，重启后 pending/running 标记 failed
-  - `model_registry` — 3 个内建模型定义（neural-pytorch, neural-keras, hyperbrdf）
+  - `model_registry` — 模型注册服务（从 `backend/config/model_registry.json` 加载）
 - **Core 层** (`backend/core/`):
   - `config.py` — 环境变量→路径常量（PROJECT_ROOT, RUNTIME_ROOT, OUTPUTS_ROOT 等）
   - `paths.py` — Mitsuba 路径探测 + SAFE_PATHS 安全校验
@@ -140,8 +140,8 @@ cd frontend && npm run dev -- --host=127.0.0.1 --port=5173
 2. **路径**：优先 `pathlib.Path`，限制在 `PROJECT_ROOT` 内；设置页允许用户修改路径，避免写死绝对路径
 3. **任务**：持久化到 `backend/runtime/tasks/*.json`，重启后 pending/running 自动标记 failed
 4. **文档与代码不一致时**：信代码
-5. **不可随意清理**：`data/`、`scene/assets/`、`references/`、`backend/runtime/`、`HyperBRDF/results/`、`mitsuba/dist/`
-6. **不优先大改**：`mitsuba/src/`、`Neural-BRDF/`、`HyperBRDF/`
+5. **不可随意清理**：`data/`、`scene/assets/`、`references/`、`backend/runtime/`、`models/`、`mitsuba/dist/`
+6. **不优先大改**：`mitsuba/src/`、`models/Neural-BRDF/`、`models/HyperBRDF/`
 7. **命名变更**：同步检查渲染输出、前端 `fileNames.ts`、分析 `normalize_material_name`
 8. **优先改**：`frontend/src/`、`backend/api/`、`backend/services/`、`backend/models/`、`backend/core/`、`scripts/`
 9. **前端文案**：以中文为主

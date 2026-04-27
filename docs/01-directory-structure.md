@@ -69,7 +69,7 @@ data/
 | `system_service.py` | 系统设置、Mitsuba 编译 |
 | `file_service.py` | 文件浏览与预览 |
 | `task_manager.py` | 任务持久化与 WebSocket 推送 |
-| `model_registry.py` | 内建模型定义 |
+| `model_registry.py` | 内建模型定义（从 `backend/config/model_registry.json` 加载） |
 
 ### 核心模块 (`backend/core/`)
 

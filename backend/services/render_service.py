@@ -38,8 +38,8 @@ MERL_FULL_FILE_SIZE = 12 + 90 * 90 * 360 * 3 * 8
 TEMP_XML_ROOT = RUNTIME_ROOT / "render_xml"
 TEMP_XML_ROOT.mkdir(parents=True, exist_ok=True)
 
-NEURAL_BRDF_DIR = PROJECT_ROOT / "Neural-BRDF"
-HYPER_BRDF_DIR = PROJECT_ROOT / "HyperBRDF"
+NEURAL_BRDF_DIR = PROJECT_ROOT / "models" / "Neural-BRDF"
+HYPER_BRDF_DIR = PROJECT_ROOT / "models" / "HyperBRDF"
 DATA_INPUTS_NPY = PROJECT_ROOT / "data" / "inputs" / "npy"
 DATA_INPUTS_FULLBIN = PROJECT_ROOT / "data" / "inputs" / "fullbin"
 BINARY_TO_NBRDF_DIR = NEURAL_BRDF_DIR / "binary_to_nbrdf"

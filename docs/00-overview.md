@@ -13,8 +13,8 @@
 ## 主链路
 
 1. MERL `.binary` / NBRDF `.npy` / FullBin `.fullbin` → Mitsuba 渲染
-2. Neural-BRDF `.binary → .h5/.json → .npy` 训练与转换
-3. HyperBRDF 训练、参数提取、`pt → fullbin` 解码
+2. Neural-BRDF `.binary → .h5/.json → .npy` 训练与转换（`models/Neural-BRDF/`）
+3. HyperBRDF 训练、参数提取、`pt → fullbin` 解码（`models/HyperBRDF/`）
 4. 渲染结果的预览、量化评估（PSNR/SSIM/Delta E）、网格拼图、对比拼图
 5. Mitsuba 编译辅助、虚拟环境管理
 

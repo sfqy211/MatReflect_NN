@@ -57,8 +57,8 @@ frontend\node_modules\.bin\tsc.cmd --noEmit
 不要优先大改：
 
 - `mitsuba/src/`、`mitsuba/dist/`
-- `Neural-BRDF/`
-- `HyperBRDF/`
+- `models/Neural-BRDF/`
+- `models/HyperBRDF/`
 
 ## 架构原则
 

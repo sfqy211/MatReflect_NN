@@ -2,8 +2,7 @@ data/
 __pycache__/
 *.log
 mitsuba/
-HyperBRDF/
-Neural-BRDF/
+models/
 .vscode/
 .claude
 .codebuddy/

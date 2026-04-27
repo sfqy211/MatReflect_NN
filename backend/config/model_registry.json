@@ -1,0 +1,73 @@
+{
+  "models": [
+    {
+      "key": "neural-pytorch",
+      "label": "Neural-BRDF / PyTorch",
+      "category": "neural",
+      "adapter": "neural-pytorch",
+      "built_in": true,
+      "description": "Neural-BRDF PyTorch 训练入口，输出 Mitsuba 可用的 .npy 权重。",
+      "supports_training": true,
+      "supports_extract": false,
+      "supports_decode": false,
+      "supports_runs": false,
+      "default_paths": {
+        "materials_dir": "data/inputs/binary",
+        "output_dir": "data/inputs/npy"
+      },
+      "runtime": {
+        "conda_env": "nbrdf-train",
+        "working_dir": "models/Neural-BRDF/binary_to_nbrdf",
+        "train_script": "models/Neural-BRDF/binary_to_nbrdf/pytorch_code/train_NBRDF_pytorch.py"
+      }
+    },
+    {
+      "key": "neural-keras",
+      "label": "Neural-BRDF / Keras",
+      "category": "neural",
+      "adapter": "neural-keras",
+      "built_in": true,
+      "description": "Neural-BRDF Keras 训练入口，先输出 .h5/.json，再转换为 .npy。",
+      "supports_training": true,
+      "supports_extract": false,
+      "supports_decode": false,
+      "supports_runs": false,
+      "default_paths": {
+        "materials_dir": "data/inputs/binary",
+        "h5_output_dir": "models/Neural-BRDF/data/merl_nbrdf",
+        "npy_output_dir": "data/inputs/npy"
+      },
+      "runtime": {
+        "conda_env": "nbrdf-train",
+        "working_dir": "models/Neural-BRDF/binary_to_nbrdf",
+        "train_script": "models/Neural-BRDF/binary_to_nbrdf/binary_to_nbrdf.py",
+        "convert_script": "models/Neural-BRDF/binary_to_nbrdf/h5_to_npy.py"
+      }
+    },
+    {
+      "key": "hyperbrdf",
+      "label": "HyperBRDF",
+      "category": "hyper",
+      "adapter": "hyper-family",
+      "built_in": true,
+      "description": "HyperBRDF 基线模型，支持训练、参数提取和 .fullbin 解码。",
+      "supports_training": true,
+      "supports_extract": true,
+      "supports_decode": true,
+      "supports_runs": true,
+      "default_paths": {
+        "materials_dir": "data/inputs/binary",
+        "results_dir": "models/HyperBRDF/results",
+        "extract_dir": "models/HyperBRDF/results/extracted_pts",
+        "checkpoint": "models/HyperBRDF/results/test/MERL/checkpoint.pt"
+      },
+      "runtime": {
+        "conda_env": "hyperbrdf",
+        "working_dir": "models/HyperBRDF",
+        "train_script": "models/HyperBRDF/main.py",
+        "extract_script": "models/HyperBRDF/test.py",
+        "decode_script": "models/HyperBRDF/pt_to_fullmerl.py"
+      }
+    }
+  ]
+}
