@@ -32,9 +32,9 @@ from backend.services.file_service import build_preview_url, resolve_workspace_p
 
 
 DEFAULT_SET_LABELS: dict[AnalysisImageSet, str] = {
-    "brdfs": "GT / BRDF",
-    "fullbin": "FullBin",
-    "npy": "NPY",
+    "brdfs": "GT / 参考值",
+    "fullbin": "HyperBRDF 输出",
+    "npy": "Neural-BRDF 输出",
     "grids": "Grids",
     "comparisons": "Comparisons",
 }

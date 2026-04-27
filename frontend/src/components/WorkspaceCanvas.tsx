@@ -660,42 +660,42 @@ function SettingsCanvas({
                 placeholder="mitsuba\\dist\\mtsutil.exe"
               />
             </Field>
-            <Field label="MERL 输入">
+            <Field label="GT 参考材质">
               <input
                 value={binaryInputDir}
                 onChange={(event) => setBinaryInputDir(event.target.value)}
                 placeholder="data\\inputs\\binary"
               />
             </Field>
-            <Field label="NPY 输入">
+            <Field label="Neural-BRDF 权重">
               <input
                 value={npyInputDir}
                 onChange={(event) => setNpyInputDir(event.target.value)}
                 placeholder="data\\inputs\\npy"
               />
             </Field>
-            <Field label="FullBin 输入">
+            <Field label="HyperBRDF 权重">
               <input
                 value={fullbinInputDir}
                 onChange={(event) => setFullbinInputDir(event.target.value)}
                 placeholder="data\\inputs\\fullbin"
               />
             </Field>
-            <Field label="BRDF 输出">
+            <Field label="GT 渲染输出">
               <input
                 value={brdfOutputDir}
                 onChange={(event) => setBrdfOutputDir(event.target.value)}
                 placeholder="data\\outputs\\binary"
               />
             </Field>
-            <Field label="NPY 输出">
+            <Field label="Neural-BRDF 渲染输出">
               <input
                 value={npyOutputDir}
                 onChange={(event) => setNpyOutputDir(event.target.value)}
                 placeholder="data\\outputs\\npy"
               />
             </Field>
-            <Field label="FullBin 输出">
+            <Field label="HyperBRDF 渲染输出">
               <input
                 value={fullbinOutputDir}
                 onChange={(event) => setFullbinOutputDir(event.target.value)}

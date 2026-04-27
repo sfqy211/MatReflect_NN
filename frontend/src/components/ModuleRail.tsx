@@ -15,9 +15,9 @@ type ModuleRailProps = {
 }
 
 const modules: Array<{ key: ModuleKey; label: string; shortLabel: string }> = [
+  { key: 'models', label: '网络模型管理', shortLabel: '模型' },
   { key: 'render', label: '渲染可视化', shortLabel: '渲染' },
   { key: 'analysis', label: '材质结果分析', shortLabel: '分析' },
-  { key: 'models', label: '网络模型管理', shortLabel: '模型' },
   { key: 'settings', label: '设置', shortLabel: '设置' },
 ]
 

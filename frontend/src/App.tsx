@@ -28,7 +28,7 @@ export type AnalysisSubView = 'evaluate' | 'compare' | 'grid' | 'compare-grid'
 export type ModelsSubView = string
 
 export function App() {
-  const [activeModule, setActiveModule] = useState<ModuleKey>("render");
+  const [activeModule, setActiveModule] = useState<ModuleKey>("models");
   const [activeAnalysisSubView, setActiveAnalysisSubView] = useState<AnalysisSubView>('evaluate');
   const [activeModelsSubView, setActiveModelsSubView] = useState<ModelsSubView>('');
   const [railCollapsed, setRailCollapsed] = useState(false);

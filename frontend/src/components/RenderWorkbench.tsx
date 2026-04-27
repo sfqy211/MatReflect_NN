@@ -3,18 +3,16 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 
 import { useAnalysisImages, useDeleteAnalysisImage } from '../features/analysis/useAnalysisWorkbench'
-import { useMaterialsDirectory, useTrainRuns } from '../features/models/useModelsWorkbench'
 import {
   useConvertOutputs,
   useRenderInputs,
   useRenderScenes,
   useRenderTaskDetail,
-  useStartReconstruct,
   useStartRender,
   useStopRender,
 } from '../features/render/useRenderWorkbench'
 import { BACKEND_ORIGIN } from '../lib/api'
-import type { AnalysisImageSet, RenderMode, RenderReconstructModel, RenderSourceModel, TaskEvent, TrainProjectVariant } from '../types/api'
+import type { AnalysisImageSet, RenderMode, RenderSourceModel, TaskEvent } from '../types/api'
 import { FeedbackPanel } from './FeedbackPanel'
 import { GalleryPreview } from './GalleryPreview'
 import { MaterialSelector } from './MaterialSelector'
@@ -22,9 +20,8 @@ import { TerminalDrawer } from './TerminalDrawer'
 import { Button } from './ui/Button'
 import { CheckboxField } from './ui/CheckboxField'
 import { Field } from './ui/Field'
+import { ConfirmDialog } from './ConfirmDialog'
 
-
-type WorkflowMode = 'render' | 'reconstruct'
 
 const TEST_SET_20 = [
   'alum-bronze',
@@ -70,11 +67,9 @@ export function RenderWorkbench() {
   const queryClient = useQueryClient()
   const resizableContainerRef = useRef<HTMLDivElement>(null)
   const [sourceModel, setSourceModel] = useState<RenderSourceModel>('gt')
-  const [workflowMode, setWorkflowMode] = useState<WorkflowMode>('render')
   const [scenePath, setScenePath] = useState('')
   const [search] = useState('')
   const [selectedFiles, setSelectedFiles] = useState<string[]>([])
-  const [selectedRunKey, setSelectedRunKey] = useState('')
   const [integratorType, setIntegratorType] = useState('bdpt')
   const [sampleCount, setSampleCount] = useState(256)
   const [autoConvert, setAutoConvert] = useState(true)
@@ -87,37 +82,22 @@ export function RenderWorkbench() {
   const [selectedOutputPaths, setSelectedOutputPaths] = useState<string[]>([])
   const [leftPaneWidth, setLeftPaneWidth] = useState(380)
   const [isDraggingSplitter, setIsDraggingSplitter] = useState(false)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
 
   const renderMode = useMemo(() => getRenderMode(sourceModel), [sourceModel])
   const analysisImageSet = useMemo(() => getAnalysisImageSet(sourceModel), [sourceModel])
-  const canReconstruct = sourceModel !== 'gt'
-  const needsCheckpoint = sourceModel === 'hyperbrdf'
-  const projectVariant = needsCheckpoint ? (sourceModel as TrainProjectVariant) : null
-  const isReconstructMode = canReconstruct && workflowMode === 'reconstruct'
 
   const scenesQuery = useRenderScenes(renderMode)
   const renderInputsQuery = useRenderInputs(renderMode, search)
-  const materialsQuery = useMaterialsDirectory(search)
-  const runsQuery = useTrainRuns(projectVariant)
   const outputGalleryQuery = useAnalysisImages(analysisImageSet, outputSearch)
   const taskDetailQuery = useRenderTaskDetail(activeTaskId)
   const startRenderMutation = useStartRender()
-  const startReconstructMutation = useStartReconstruct()
   const stopRenderMutation = useStopRender()
   const convertMutation = useConvertOutputs()
   const deleteImageMutation = useDeleteAnalysisImage()
 
-  const availableRuns = useMemo(
-    () => (runsQuery.data?.items ?? []).filter((run) => run.has_checkpoint && run.dataset === 'MERL'),
-    [runsQuery.data?.items],
-  )
-  const selectedRun = useMemo(
-    () => availableRuns.find((run) => run.run_dir === selectedRunKey) ?? null,
-    [availableRuns, selectedRunKey],
-  )
-  const availableFiles = isReconstructMode ? materialsQuery.data?.items ?? [] : renderInputsQuery.data?.items ?? []
+  const availableFiles = renderInputsQuery.data?.items ?? []
   const outputItems = outputGalleryQuery.data?.items ?? []
-  const currentListError = isReconstructMode ? materialsQuery.error : renderInputsQuery.error
   const taskDetail = taskDetailQuery.data
   const taskRecord = taskDetail?.record
 
@@ -128,12 +108,6 @@ export function RenderWorkbench() {
   }, [renderMode, scenesQuery.data?.default_scene])
 
   useEffect(() => {
-    if (sourceModel === 'gt') {
-      setWorkflowMode('render')
-    }
-  }, [sourceModel])
-
-  useEffect(() => {
     const availableNames = new Set(availableFiles.map((item) => item.name))
     setSelectedFiles((current) => current.filter((name) => availableNames.has(name)))
   }, [availableFiles])
@@ -142,17 +116,6 @@ export function RenderWorkbench() {
     const availablePaths = new Set(outputItems.map((item) => item.path))
     setSelectedOutputPaths((current) => current.filter((path) => availablePaths.has(path)))
   }, [outputItems])
-
-  useEffect(() => {
-    if (!needsCheckpoint) {
-      setSelectedRunKey('')
-      return
-    }
-    if (selectedRunKey && availableRuns.some((run) => run.run_dir === selectedRunKey)) {
-      return
-    }
-    setSelectedRunKey(availableRuns[0]?.run_dir ?? '')
-  }, [availableRuns, needsCheckpoint, selectedRunKey])
 
   useEffect(() => {
     if (!taskDetail) {
@@ -214,11 +177,10 @@ export function RenderWorkbench() {
   const logs = liveLogs.length > 0 ? liveLogs : taskDetail?.logs ?? []
   const currentStatus =
     taskRecord?.status ??
-    (startRenderMutation.isPending || startReconstructMutation.isPending || convertMutation.isPending ? 'pending' : 'idle')
+    (startRenderMutation.isPending || convertMutation.isPending ? 'pending' : 'idle')
   const progressValue = taskRecord?.progress ?? 0
   const mutationError =
     startRenderMutation.error ??
-    startReconstructMutation.error ??
     stopRenderMutation.error ??
     convertMutation.error
 
@@ -241,33 +203,6 @@ export function RenderWorkbench() {
     setActiveTaskId(response.task_id)
   }
 
-  const startReconstructAction = async () => {
-    if (selectedFiles.length === 0) return
-    if (needsCheckpoint && !selectedRun) return
-    setLiveLogs([])
-    const response = await startReconstructMutation.mutateAsync({
-      model_key: (sourceModel === 'neural' ? 'neural' : sourceModel) as RenderReconstructModel,
-      checkpoint_path: selectedRun?.checkpoint_path ?? '',
-      merl_dir: materialsQuery.data?.resolved_path ?? '',
-      output_dir: '',
-      selected_materials: selectedFiles,
-      conda_env: sourceModel === 'hyperbrdf' ? 'hyperbrdf' : 'nbrdf-train',
-      dataset: 'MERL',
-      sparse_samples: Number(selectedRun?.args.sparse_samples ?? 4000),
-      cuda_device: '0',
-      neural_device: 'cpu',
-      neural_epochs: 100,
-      scene_path: scenePath,
-      integrator_type: integratorType,
-      sample_count: sampleCount,
-      auto_convert: autoConvert,
-      skip_existing: skipExisting,
-      custom_cmd: customCmd.trim() ? customCmd.trim() : null,
-      render_after_reconstruct: false,
-    })
-    setActiveTaskId(response.task_id)
-  }
-
   const stopRender = async () => {
     if (!activeTaskId) return
     await stopRenderMutation.mutateAsync(activeTaskId)
@@ -283,6 +218,7 @@ export function RenderWorkbench() {
 
   const deleteOutputs = async () => {
     if (selectedOutputPaths.length === 0) return
+    setShowDeleteConfirm(false)
     await deleteImageMutation.mutateAsync({
       image_paths: selectedOutputPaths,
       delete_matching_exr: true,
@@ -310,20 +246,11 @@ export function RenderWorkbench() {
           <div className="render-form-grid">
             <Field label="网络模型">
               <select value={sourceModel} onChange={(event) => setSourceModel(event.target.value as RenderSourceModel)}>
-                <option value="gt">GT / MERL</option>
-                <option value="neural">Neural-BRDF</option>
-                <option value="hyperbrdf">HyperBRDF</option>
+                <option value="gt">GT / 参考值</option>
+                <option value="neural">Neural-BRDF 输出</option>
+                <option value="hyperbrdf">HyperBRDF 输出</option>
               </select>
             </Field>
-
-            {canReconstruct ? (
-              <Field label="工作模式">
-                <select value={workflowMode} onChange={(event) => setWorkflowMode(event.target.value as WorkflowMode)}>
-                  <option value="render">仅渲染</option>
-                  <option value="reconstruct">仅重建</option>
-                </select>
-              </Field>
-            ) : null}
 
             <Field label="场景">
               <select value={scenePath} onChange={(event) => setScenePath(event.target.value)}>
@@ -348,20 +275,6 @@ export function RenderWorkbench() {
             </Field>
           </div>
 
-          {isReconstructMode && needsCheckpoint ? (
-            <div className="render-form-grid">
-              <Field label="训练结果 / Checkpoint">
-                <select value={selectedRunKey} onChange={(event) => setSelectedRunKey(event.target.value)}>
-                  {availableRuns.map((run) => (
-                    <option key={run.run_dir} value={run.run_dir}>
-                      {run.run_name} / {run.completed_epochs} epochs
-                    </option>
-                  ))}
-                </select>
-              </Field>
-            </div>
-          ) : null}
-
           <div className="render-toggle-row">
             <CheckboxField label="自动转 PNG" checked={autoConvert} onChange={(event) => setAutoConvert(event.target.checked)} />
             <CheckboxField label="跳过已有结果" checked={skipExisting} onChange={(event) => setSkipExisting(event.target.checked)} />
@@ -377,14 +290,14 @@ export function RenderWorkbench() {
           <div className="render-form-grid">
             <Field label="渲染输入文件">
               <MaterialSelector
-                title={isReconstructMode ? '选择待重建材质' : '选择渲染输入'}
+                title="选择渲染输入"
                 items={availableFiles}
                 selectedItems={selectedFiles}
                 onSelectionChange={setSelectedFiles}
-                error={currentListError as Error | null}
-                emptyMessage={isReconstructMode ? '请先准备 MERL .binary 材质。' : '请检查当前模型对应的渲染输入目录。'}
-                searchPlaceholder={isReconstructMode ? '搜索待重建的 MERL 材质' : '搜索可渲染输入'}
-                formatName={(name) => sourceModel === 'neural' && !isReconstructMode ? normalizeMaterialName(name) : name}
+                error={renderInputsQuery.error as Error | null}
+                emptyMessage="请检查当前模型对应的渲染输入目录。"
+                searchPlaceholder="搜索可渲染输入"
+                formatName={(name) => sourceModel === 'neural' ? normalizeMaterialName(name) : name}
                 presets={[
                   {
                     label: '预设20',
@@ -438,27 +351,27 @@ export function RenderWorkbench() {
           {deleteImageMutation.error instanceof Error ? <FeedbackPanel title="输出删除失败" message={deleteImageMutation.error.message} tone="error" compact /> : null}
 
           <div className="render-actions">
-            {isReconstructMode ? (
-              <Button type="button" variant="primary" onClick={startReconstructAction} disabled={selectedFiles.length === 0 || (needsCheckpoint && !selectedRun)}>
-                一键重建
-              </Button>
-            ) : (
-              <Button type="button" variant="primary" onClick={startRenderAction} disabled={selectedFiles.length === 0}>
-                开始渲染
-              </Button>
-            )}
+            <Button type="button" variant="primary" onClick={startRenderAction} disabled={selectedFiles.length === 0}>
+              开始渲染
+            </Button>
             <Button type="button" variant="danger" onClick={stopRender} disabled={!activeTaskId}>
               停止任务
             </Button>
-            {!isReconstructMode ? (
-              <Button type="button" onClick={convertOutputs}>
-                转换 EXR
-              </Button>
-            ) : null}
-            <Button type="button" variant="danger" onClick={deleteOutputs} disabled={selectedOutputPaths.length === 0 || deleteImageMutation.isPending}>
+            <Button type="button" onClick={convertOutputs}>
+              转换 EXR
+            </Button>
+            <Button type="button" variant="danger" onClick={() => setShowDeleteConfirm(true)} disabled={selectedOutputPaths.length === 0 || deleteImageMutation.isPending}>
               删除选中
             </Button>
           </div>
+          {showDeleteConfirm ? (
+            <ConfirmDialog
+              title="确认删除"
+              message={`即将删除 ${selectedOutputPaths.length} 个文件，此操作不可撤销。`}
+              onConfirm={deleteOutputs}
+              onCancel={() => setShowDeleteConfirm(false)}
+            />
+          ) : null}
           </section>
 
           <div

@@ -32,9 +32,9 @@ type CompareSelectionMode = 'material' | 'custom'
 
 
 const IMAGE_SET_LABELS: Record<AnalysisImageSet, string> = {
-  brdfs: 'GT / BRDF',
-  fullbin: 'FullBin',
-  npy: 'NPY',
+  brdfs: 'GT / 参考值',
+  fullbin: 'HyperBRDF 输出',
+  npy: 'Neural-BRDF 输出',
   grids: '网格拼图',
   comparisons: '对比拼图',
 }
@@ -168,9 +168,9 @@ function AnalysisResultPane({
 export function AnalysisWorkbench({ activeSubView, onSubViewChange: _onSubViewChange }: { activeSubView: AnalysisSubView; onSubViewChange: (view: AnalysisSubView) => void }) {
   const queryClient = useQueryClient()
 
-  const [gtLabel, setGtLabel] = useState('GT / BRDF')
-  const [method1Label, setMethod1Label] = useState('FullBin')
-  const [method2Label, setMethod2Label] = useState('NPY')
+  const [gtLabel, setGtLabel] = useState('GT / 参考值')
+  const [method1Label, setMethod1Label] = useState('HyperBRDF 输出')
+  const [method2Label, setMethod2Label] = useState('Neural-BRDF 输出')
   const [evaluationRangeMode, setEvaluationRangeMode] = useState<EvaluationRangeMode>('all')
   const [selectedEvaluationMaterials, setSelectedEvaluationMaterials] = useState<string[]>([])
 
@@ -190,9 +190,9 @@ export function AnalysisWorkbench({ activeSubView, onSubViewChange: _onSubViewCh
   const [selectedGridMaterials, setSelectedGridMaterials] = useState<string[]>([])
 
   const [comparisonColumns, setComparisonColumns] = useState<ComparisonColumnDraft[]>([
-    { key: 'gt', enabled: true, imageSet: 'brdfs', label: 'BRDF' },
-    { key: 'fullbin', enabled: true, imageSet: 'fullbin', label: 'FullBin' },
-    { key: 'npy', enabled: true, imageSet: 'npy', label: 'NPY' },
+    { key: 'gt', enabled: true, imageSet: 'brdfs', label: 'GT / 参考值' },
+    { key: 'fullbin', enabled: true, imageSet: 'fullbin', label: 'HyperBRDF 输出' },
+    { key: 'npy', enabled: true, imageSet: 'npy', label: 'Neural-BRDF 输出' },
   ])
   const [comparisonOutputName, setComparisonOutputName] = useState('merged_comparison.png')
   const [comparisonShowLabel, setComparisonShowLabel] = useState(true)
@@ -524,16 +524,16 @@ export function AnalysisWorkbench({ activeSubView, onSubViewChange: _onSubViewCh
             </Field>
                   <Field label="左图">
               <select value={compareLeftSet} onChange={(event) => setCompareLeftSet(event.target.value as AnalysisImageSet)}>
-                      <option value="brdfs">GT / BRDF</option>
-                      <option value="fullbin">FullBin</option>
-                      <option value="npy">NPY</option>
+                      <option value="brdfs">GT / 参考值</option>
+                      <option value="fullbin">HyperBRDF 输出</option>
+                      <option value="npy">Neural-BRDF 输出</option>
                     </select>
             </Field>
                   <Field label="右图">
               <select value={compareRightSet} onChange={(event) => setCompareRightSet(event.target.value as AnalysisImageSet)}>
-                      <option value="brdfs">GT / BRDF</option>
-                      <option value="fullbin">FullBin</option>
-                      <option value="npy">NPY</option>
+                      <option value="brdfs">GT / 参考值</option>
+                      <option value="fullbin">HyperBRDF 输出</option>
+                      <option value="npy">Neural-BRDF 输出</option>
                     </select>
             </Field>
                   {compareSelectionMode === 'material' ? (
@@ -626,9 +626,9 @@ export function AnalysisWorkbench({ activeSubView, onSubViewChange: _onSubViewCh
                 <div className="render-form-grid">
                   <Field label="源图片集">
               <select value={gridSet} onChange={(event) => setGridSet(event.target.value as AnalysisImageSet)}>
-                      <option value="brdfs">GT / BRDF</option>
-                      <option value="fullbin">FullBin</option>
-                      <option value="npy">NPY</option>
+                      <option value="brdfs">GT / 参考值</option>
+                      <option value="fullbin">HyperBRDF 输出</option>
+                      <option value="npy">Neural-BRDF 输出</option>
                     </select>
             </Field>
                   <Field label="输出文件名">
