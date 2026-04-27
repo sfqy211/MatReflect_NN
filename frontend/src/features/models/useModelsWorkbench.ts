@@ -1,16 +1,21 @@
-import { useMutation, useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
-import { apiGet, apiPost } from '../../lib/api'
+import { apiDelete, apiGet, apiPost, apiPut } from '../../lib/api'
 import type {
   FileListResponse,
   HyperDecodeRequest,
   HyperExtractRequest,
   HyperTrainRunRequest,
+  ModelEnvStatusResponse,
+  ModelImportRequest,
+  ModelImportResponse,
   NeuralH5ConvertRequest,
   NeuralKerasTrainRequest,
   NeuralPytorchTrainRequest,
+  ReconstructRequest,
   TaskDetailResponse,
   TaskStartResponse,
+  TrainModelItem,
   TrainModelsResponse,
   TrainRunsResponse,
 } from '../../types/api'
@@ -130,5 +135,80 @@ export function useStartHyperDecode() {
 export function useStopTrainTask() {
   return useMutation({
     mutationFn: (taskId: string) => apiPost<TaskStartResponse>('/train/stop', { task_id: taskId }),
+  })
+}
+
+
+export function useImportModel() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (payload: ModelImportRequest) =>
+      apiPost<ModelImportResponse>('/models/import', payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['train-models'] })
+    },
+  })
+}
+
+
+export function useDeleteModel() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (modelKey: string) =>
+      apiDelete<{ status: string; model_key: string }>(`/models/${encodeURIComponent(modelKey)}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['train-models'] })
+    },
+  })
+}
+
+
+export function useModelConfig(modelKey: string | null) {
+  return useQuery({
+    queryKey: ['model-config', modelKey],
+    queryFn: () => apiGet<TrainModelItem>(`/models/${encodeURIComponent(modelKey!)}/config`),
+    enabled: Boolean(modelKey),
+  })
+}
+
+
+export function useUpdateModelConfig() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ modelKey, patch }: { modelKey: string; patch: Record<string, unknown> }) =>
+      apiPut<TrainModelItem>(`/models/${encodeURIComponent(modelKey)}/config`, patch),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['train-models'] })
+    },
+  })
+}
+
+
+export function useModelEnvStatus(modelKey: string | null) {
+  return useQuery({
+    queryKey: ['model-env-status', modelKey],
+    queryFn: () => apiGet<ModelEnvStatusResponse>(`/models/${encodeURIComponent(modelKey!)}/env-status`),
+    enabled: Boolean(modelKey),
+    staleTime: 30_000,
+  })
+}
+
+
+export function useSetupModelEnv() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (modelKey: string) =>
+      apiPost<{ status: string; model_key: string; conda_env: string }>(`/models/${encodeURIComponent(modelKey)}/setup-env`, {}),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['model-env-status'] })
+    },
+  })
+}
+
+
+export function useStartReconstruct() {
+  return useMutation({
+    mutationFn: (payload: ReconstructRequest) =>
+      apiPost<TaskStartResponse>('/train/reconstruct', payload),
   })
 }

@@ -121,7 +121,7 @@ export type FileListResponse = {
 
 export type RenderMode = 'brdfs' | 'fullbin' | 'npy'
 export type RenderSourceModel = 'gt' | 'neural' | 'hyperbrdf'
-export type RenderReconstructModel = 'neural' | 'hyperbrdf'
+export type RenderReconstructModel = 'neural' | 'hyperbrdf' | string
 export type AnalysisImageSet = 'brdfs' | 'fullbin' | 'npy' | 'grids' | 'comparisons'
 
 export type RenderSceneItem = {
@@ -296,8 +296,18 @@ export type GeneratedImageResponse = {
 export type TrainProjectVariant = string
 export type TrainDataset = 'MERL' | 'EPFL'
 export type NeuralTrainEngine = 'pytorch' | 'keras'
-export type TrainModelCategory = 'neural' | 'hyper'
-export type TrainModelAdapter = 'neural-pytorch' | 'neural-keras' | 'hyper-family'
+export type TrainModelCategory = 'neural' | 'hyper' | 'custom'
+export type TrainModelAdapter = 'neural-pytorch' | 'neural-keras' | 'hyper-family' | 'custom-cli'
+
+export type ModelParameter = {
+  key: string
+  label: string
+  type: 'int' | 'float' | 'str' | 'bool' | 'select'
+  default: unknown
+  min?: number | null
+  max?: number | null
+  options?: string[] | null
+}
 
 export type TrainModelItem = {
   key: string
@@ -310,6 +320,12 @@ export type TrainModelItem = {
   supports_extract: boolean
   supports_decode: boolean
   supports_runs: boolean
+  supports_reconstruction: boolean
+  model_dir: string
+  requirements_path: string
+  commands_doc: string
+  parameters: ModelParameter[]
+  render_modes: string[]
   default_paths: Record<string, string>
   runtime: Record<string, string>
   adapter_options: Record<string, unknown>
@@ -399,4 +415,60 @@ export type HyperDecodeRequest = {
   conda_env: string
   dataset: TrainDataset
   cuda_device: string
+}
+
+export type ReconstructRequest = {
+  model_key: string
+  checkpoint_path: string
+  merl_dir: string
+  output_dir: string
+  selected_materials: string[]
+  conda_env: string
+  dataset: TrainDataset
+  sparse_samples: number
+  cuda_device: string
+  neural_device: 'cpu' | 'cuda'
+  neural_epochs: number
+  scene_path: string
+  integrator_type: string
+  sample_count: number
+  auto_convert: boolean
+  skip_existing: boolean
+  custom_cmd: string | null
+  render_after_reconstruct: boolean
+}
+
+export type ModelImportRequest = {
+  source_dir: string
+  model_key: string
+  label: string
+  description: string
+  commands_doc_filename: string
+  train_script: string
+  train_args_template: string
+  reconstruct_script: string
+  reconstruct_args_template: string
+  supports_training: boolean
+  supports_reconstruction: boolean
+  supports_extract: boolean
+  supports_decode: boolean
+  supports_runs: boolean
+  render_modes: string[]
+  parameters: ModelParameter[]
+}
+
+export type ModelImportResponse = {
+  model_key: string
+  model_dir: string
+  requirements_path: string
+  commands_doc: string
+  conda_env: string
+  status: string
+}
+
+export type ModelEnvStatusResponse = {
+  model_key: string
+  conda_env: string
+  env_exists: boolean
+  env_prefix: string
 }
