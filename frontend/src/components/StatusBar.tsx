@@ -27,6 +27,12 @@ type SystemMetrics = {
 
 export function StatusBar() {
   const [metrics, setMetrics] = useState<SystemMetrics | null>(null);
+  const [currentTime, setCurrentTime] = useState(new Date());
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setCurrentTime(new Date()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     let ws: WebSocket;
@@ -87,6 +93,11 @@ export function StatusBar() {
         )}
       </div>
       <div className="status-bar__right">
+        <div className="status-bar__metric">
+          <span className="metric-value" style={{ fontFamily: 'monospace', fontSize: '0.82rem' }}>
+            {currentTime.toLocaleTimeString('zh-CN', { hour12: false })}
+          </span>
+        </div>
         {metrics ? (
           <>
             <div className="status-bar__metric">
