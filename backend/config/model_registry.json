@@ -100,6 +100,48 @@
         "extract_script": "models/HyperBRDF/test.py",
         "decode_script": "models/HyperBRDF/pt_to_fullmerl.py"
       }
+    },
+    {
+      "key": "hypersnbrdf",
+      "label": "HyperSNBRDF",
+      "category": "hyper",
+      "adapter": "hypersnbrdf",
+      "built_in": true,
+      "description": "HyperNetwork + SIREN 神经 BRDF 表示模型，从 MERL BRDF 数据集学习材质反射特性，支持训练和评估渲染。",
+      "supports_training": true,
+      "supports_extract": false,
+      "supports_decode": false,
+      "supports_runs": false,
+      "supports_reconstruction": false,
+      "model_dir": "models/HyperSNBRDF",
+      "requirements_path": "models/HyperSNBRDF/requirements.txt",
+      "commands_doc": "",
+      "render_modes": [],
+      "parameters": [
+        {"key": "epochs", "label": "训练轮数", "type": "int", "default": 10000, "min": 1, "max": 100000},
+        {"key": "lr", "label": "学习率", "type": "float", "default": 0.00001, "min": 0, "max": 1},
+        {"key": "siren_hid_features", "label": "SIREN 隐藏层特征数", "type": "int", "default": 21, "min": 1, "max": 256},
+        {"key": "train_sample_num", "label": "SetEncoder 采样数", "type": "int", "default": 400000, "min": 1, "max": 5000000},
+        {"key": "siren_sample_num", "label": "SIREN 采样数", "type": "int", "default": 400000, "min": 1, "max": 5000000},
+        {"key": "tonemap_num", "label": "Tone Mapping 参数", "type": "int", "default": 1, "min": 1, "max": 10},
+        {"key": "k1", "label": "MAE 权重 (k1)", "type": "float", "default": 1.0, "min": 0, "max": 100},
+        {"key": "kl", "label": "Latent 正则权重 (kl)", "type": "float", "default": 0.01, "min": 0, "max": 100},
+        {"key": "kw", "label": "Weight 正则权重 (kw)", "type": "float", "default": 0.1, "min": 0, "max": 100},
+        {"key": "seed", "label": "随机种子", "type": "int", "default": 1234794195, "min": 0, "max": 2147483647}
+      ],
+      "default_paths": {
+        "train_materials_dir": "data/merl_train_78",
+        "test_materials_dir": "data/merl_test_22",
+        "test_angles_dir": "data/test_th_td_pd2pi",
+        "test_li_cam_dir": "data/test_li_cam",
+        "output_dir": "models/HyperSNBRDF/../output"
+      },
+      "runtime": {
+        "conda_env": "hypersnbrdf",
+        "working_dir": "models/HyperSNBRDF",
+        "train_script": "models/HyperSNBRDF/main.py",
+        "eval_script": "models/HyperSNBRDF/eval_h21l5.py"
+      }
     }
   ]
 }
