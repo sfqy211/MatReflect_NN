@@ -12,7 +12,6 @@ import { parseAssetName } from "../lib/fileNames";
 import type {
   FileListItem,
   ModuleKey,
-  SystemDependencySetting,
   SystemSummary,
   SystemVirtualEnvSetting,
   TaskEvent,
@@ -237,9 +236,6 @@ function SettingsCanvas({
   const [compileLabel, setCompileLabel] = useState("");
   const [vcvarsallPath, setVcvarsallPath] = useState("");
   const [compileWorkDir, setCompileWorkDir] = useState("");
-  const [dependencies, setDependencies] = useState<SystemDependencySetting[]>(
-    [],
-  );
   const [virtualEnvs, setVirtualEnvs] = useState<SystemVirtualEnvSetting[]>([]);
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
   const [liveLogs, setLiveLogs] = useState<string[]>([]);
@@ -253,7 +249,7 @@ function SettingsCanvas({
   const taskRecord = taskDetail?.record;
 
   useEffect(() => {
-    if (!savedSettings || projectRoot || dependencies.length > 0) {
+    if (!savedSettings || projectRoot || virtualEnvs.length > 0) {
       return;
     }
     setProjectRoot(savedSettings.project_root);
@@ -272,9 +268,8 @@ function SettingsCanvas({
     setCompileLabel(savedSettings.preset_label);
     setVcvarsallPath(savedSettings.vcvarsall_path);
     setCompileWorkDir(savedSettings.work_dir);
-    setDependencies(savedSettings.dependencies);
     setVirtualEnvs(savedSettings.virtual_envs);
-  }, [dependencies.length, projectRoot, savedSettings, virtualEnvs.length]);
+  }, [projectRoot, savedSettings, virtualEnvs.length]);
 
   useEffect(() => {
     if (!taskDetail) {
@@ -327,23 +322,13 @@ function SettingsCanvas({
       ? "pending"
       : "idle");
   const compileProgress = taskRecord?.progress ?? 0;
-  const dependencyChecks =
-    saveSettingsMutation.data?.checks ??
-    checkSettingsMutation.data?.checks ??
-    system?.checks ??
-    [];
   const envChecks =
     saveSettingsMutation.data?.env_checks ??
     checkSettingsMutation.data?.env_checks ??
     system?.env_checks ??
     [];
-  const dependencyOkCount = dependencyChecks.filter(
-    (check) => check.status === "ok",
-  ).length;
-  const dependencyTotalCount = dependencyChecks.length;
   const envOkCount = envChecks.filter((check) => check.status === "ok").length;
   const envTotalCount = envChecks.length;
-    compileLabel.trim() || compileDefaults?.preset_label || "-";
 
   const settingsPayload = {
     project_root: projectRoot.trim(),
@@ -362,13 +347,6 @@ function SettingsCanvas({
     compile_cmd: compileCmd.trim(),
     vcvarsall_path: vcvarsallPath.trim(),
     work_dir: compileWorkDir.trim(),
-    dependencies: dependencies
-      .map((dependency) => ({
-        id: dependency.id,
-        label: dependency.label.trim(),
-        path: dependency.path.trim(),
-      }))
-      .filter((dependency) => dependency.label || dependency.path),
     virtual_envs: virtualEnvs
       .map((env) => ({
         id: env.id,
@@ -400,32 +378,7 @@ function SettingsCanvas({
     setCompileLabel(savedSettings.preset_label);
     setVcvarsallPath(savedSettings.vcvarsall_path);
     setCompileWorkDir(savedSettings.work_dir);
-    setDependencies(savedSettings.dependencies);
     setVirtualEnvs(savedSettings.virtual_envs);
-  };
-
-  const updateDependency = (
-    id: string,
-    patch: Partial<SystemDependencySetting>,
-  ) => {
-    setDependencies((current) =>
-      current.map((dependency) =>
-        dependency.id === id ? { ...dependency, ...patch } : dependency,
-      ),
-    );
-  };
-
-  const addDependency = () => {
-    setDependencies((current) => [
-      ...current,
-      { id: `dep-${Date.now()}-${current.length}`, label: "", path: "" },
-    ]);
-  };
-
-  const removeDependency = (id: string) => {
-    setDependencies((current) =>
-      current.filter((dependency) => dependency.id !== id),
-    );
   };
 
   const updateVirtualEnv = (
@@ -470,9 +423,7 @@ function SettingsCanvas({
         compileLabel.trim() || compileDefaults?.preset_label || "自定义编译",
       vcvarsall_path: vcvarsallPath.trim(),
       work_dir: compileWorkDir.trim(),
-      dependency_paths: settingsPayload.dependencies.map(
-        (dependency) => dependency.path,
-      ),
+      dependency_paths: [],
     });
     setActiveTaskId(response.task_id);
   };
@@ -505,7 +456,6 @@ function SettingsCanvas({
     setCompileLabel(response.settings.preset_label);
     setVcvarsallPath(response.settings.vcvarsall_path);
     setCompileWorkDir(response.settings.work_dir);
-    setDependencies(response.settings.dependencies);
     setVirtualEnvs(response.settings.virtual_envs);
     await queryClient.invalidateQueries({ queryKey: ["system-summary"] });
   };
@@ -769,75 +719,6 @@ function SettingsCanvas({
         </Card>
 
         <Card variant="settings" className="settings-card--wide">
-          <span className="eyebrow">依赖路径</span>
-          <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "180px minmax(0, 1fr) 80px",
-                gap: "12px",
-                padding: "0 4px 8px",
-                color: "var(--text-muted)",
-                fontSize: "0.85rem",
-                borderBottom: "1px solid color-mix(in oklab, var(--border) 60%, transparent)",
-              }}
-            >
-              <div>名称</div>
-              <div>路径</div>
-              <div>操作</div>
-            </div>
-            {dependencies.map((dependency) => (
-              <div
-                key={dependency.id}
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "180px minmax(0, 1fr) 80px",
-                  gap: "12px",
-                  alignItems: "center",
-                }}
-              >
-                <input
-                  className="table-input"
-                  value={dependency.label}
-                  onChange={(event) =>
-                    updateDependency(dependency.id, {
-                      label: event.target.value,
-                    })
-                  }
-                  placeholder="依赖名称"
-                />
-                <input
-                  className="table-input"
-                  value={dependency.path}
-                  onChange={(event) =>
-                    updateDependency(dependency.id, {
-                      path: event.target.value,
-                    })
-                  }
-                  placeholder="mitsuba\\dependencies\\bin"
-                />
-                <Button
-                  type="button"
-                  onClick={() => removeDependency(dependency.id)}
-                  style={{ padding: "4px 8px", fontSize: "0.8rem" }}
-                >
-                  删除
-                </Button>
-              </div>
-            ))}
-            <div style={{ marginTop: 4 }}>
-              <Button
-                type="button"
-                onClick={() => addDependency()}
-                style={{ padding: "4px 12px", fontSize: "0.8rem" }}
-              >
-                + 添加依赖
-              </Button>
-            </div>
-          </div>
-        </Card>
-
-        <Card variant="settings" className="settings-card--wide">
           <span className="eyebrow">虚拟环境管理</span>
           <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
             <div
@@ -925,23 +806,6 @@ function SettingsCanvas({
               tone="error"
               compact
             />
-          ) : null}
-          {dependencyChecks.length > 0 && dependencyTotalCount !== dependencyOkCount ? (
-            <div className="settings-list" style={{ marginTop: 16 }}>
-              {dependencyChecks
-                .filter((check) => check.status !== "ok")
-                .map((check) => (
-                  <SettingRow
-                    key={check.id}
-                    label={`${check.label} [${check.status}]`}
-                    value={
-                      check.path
-                        ? `${summarizePath(check.path)} | ${check.message}`
-                        : check.message
-                    }
-                  />
-                ))}
-            </div>
           ) : null}
           {envChecks.length > 0 && envTotalCount !== envOkCount ? (
             <div className="settings-list" style={{ marginTop: 16 }}>

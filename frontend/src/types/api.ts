@@ -80,7 +80,7 @@ export type SystemSettings = {
   compile_cmd: string
   vcvarsall_path: string
   work_dir: string
-  dependencies: SystemDependencySetting[]
+  dependencies?: SystemDependencySetting[]
   virtual_envs: SystemVirtualEnvSetting[]
 }
 

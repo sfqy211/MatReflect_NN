@@ -40,36 +40,8 @@ import { Badge } from './ui/Badge'
 import { Button } from './ui/Button'
 import { CheckboxField } from './ui/CheckboxField'
 import { Field } from './ui/Field'
-
-
-const TEST_SET_20 = [
-  'alum-bronze',
-  'beige-fabric',
-  'black-obsidian',
-  'blue-acrylic',
-  'chrome',
-  'chrome-steel',
-  'dark-red-paint',
-  'dark-specular-fabric',
-  'delrin',
-  'green-metallic-paint',
-  'natural-209',
-  'nylon',
-  'polyethylene',
-  'pure-rubber',
-  'silicon-nitrade',
-  'teflon',
-  'violet-rubber',
-  'white-diffuse-bball',
-  'white-fabric',
-  'yellow-paint',
-]
-
-const DEFAULT_FULLBIN_OUTPUT = 'data/inputs/fullbin'
-
-function normalizeBinaryName(name: string) {
-  return name.replace(/\.binary$/i, '')
-}
+import { TEST_SET_20 } from '../lib/materials'
+import { DEFAULT_FULLBIN_OUTPUT, normalizeBinaryName } from './models/utils'
 
 function getDefaultPath(model: TrainModelItem | null, field: string, fallback: string) {
   return model?.default_paths[field] ?? fallback
