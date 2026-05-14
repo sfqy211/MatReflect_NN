@@ -31,7 +31,7 @@ export function App() {
   const [activeModule, setActiveModule] = useState<ModuleKey>("models");
   const [activeAnalysisSubView, setActiveAnalysisSubView] = useState<AnalysisSubView>('evaluate');
   const [activeModelsSubView, setActiveModelsSubView] = useState<ModelsSubView>('');
-  const [railCollapsed, setRailCollapsed] = useState(false);
+  const [railPinned, setRailPinned] = useState(false);
   const [theme, setTheme] = useState<ThemeMode>(() => {
     if (typeof window === "undefined") {
       return "dark";
@@ -89,7 +89,7 @@ export function App() {
 
   return (
     <div className="app-shell">
-      <div className={railCollapsed ? "workspace-grid workspace-grid--collapsed" : "workspace-grid"}>
+      <div className={`workspace-grid${railPinned ? ' workspace-grid--pinned' : ''}`}>
         <ModuleRail
           activeModule={activeModule}
           onChange={setActiveModule}
@@ -97,8 +97,8 @@ export function App() {
           onAnalysisSubViewChange={setActiveAnalysisSubView}
           activeModelsSubView={activeModelsSubView}
           onModelsSubViewChange={setActiveModelsSubView}
-          collapsed={railCollapsed}
-          onToggleCollapse={() => setRailCollapsed((current) => !current)}
+          pinned={railPinned}
+          onTogglePin={() => setRailPinned((current) => !current)}
         />
         <main className="center-stack">
           <WorkspaceCanvas

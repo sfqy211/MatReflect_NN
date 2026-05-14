@@ -10,15 +10,22 @@ type ModuleRailProps = {
   onAnalysisSubViewChange: (view: AnalysisSubView) => void
   activeModelsSubView: ModelsSubView
   onModelsSubViewChange: (view: ModelsSubView) => void
-  collapsed: boolean
-  onToggleCollapse: () => void
+  pinned: boolean
+  onTogglePin: () => void
 }
 
-const modules: Array<{ key: ModuleKey; label: string; shortLabel: string }> = [
-  { key: 'models', label: '网络模型管理', shortLabel: '模型' },
-  { key: 'render', label: '渲染可视化', shortLabel: '渲染' },
-  { key: 'analysis', label: '材质结果分析', shortLabel: '分析' },
-  { key: 'settings', label: '设置', shortLabel: '设置' },
+const moduleIcons: Record<ModuleKey, string> = {
+  models: 'M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5',
+  render: 'M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2zM12 17a4 4 0 100-8 4 4 0 000 8z',
+  analysis: 'M18 20V10M12 20V4M6 20v-6',
+  settings: 'M12 15a3 3 0 100-6 3 3 0 000 6zM19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9c.26.604.852.997 1.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z',
+}
+
+const modules: Array<{ key: ModuleKey; label: string }> = [
+  { key: 'models', label: '网络模型管理' },
+  { key: 'render', label: '渲染可视化' },
+  { key: 'analysis', label: '材质结果分析' },
+  { key: 'settings', label: '设置' },
 ]
 
 const analysisSubViews: Array<{ key: AnalysisSubView; label: string }> = [
@@ -28,7 +35,7 @@ const analysisSubViews: Array<{ key: AnalysisSubView; label: string }> = [
   { key: 'compare-grid', label: '对比拼图' },
 ]
 
-export function ModuleRail({ activeModule, onChange, activeAnalysisSubView, onAnalysisSubViewChange, activeModelsSubView, onModelsSubViewChange, collapsed, onToggleCollapse }: ModuleRailProps) {
+export function ModuleRail({ activeModule, onChange, activeAnalysisSubView, onAnalysisSubViewChange, activeModelsSubView, onModelsSubViewChange, pinned, onTogglePin }: ModuleRailProps) {
   const modelQuery = useTrainModels()
   const models = modelQuery.data?.items ?? []
 
@@ -39,37 +46,17 @@ export function ModuleRail({ activeModule, onChange, activeAnalysisSubView, onAn
   }, [activeModule, activeModelsSubView, models, onModelsSubViewChange])
 
   return (
-    <aside className={collapsed ? 'module-rail module-rail--collapsed' : 'module-rail'}>
-      <div className="module-rail__header" style={{ minHeight: '40px' }}>
-        {!collapsed ? <h2>功能导航</h2> : null}
-        <button 
-          type="button" 
-          className="rail-toggle" 
-          onClick={onToggleCollapse} 
-          style={{ 
-            marginLeft: collapsed ? 0 : 'auto', 
-            display: 'flex', 
-            alignItems: 'center', 
-            justifyContent: 'center',
-            padding: '8px'
-          }}
-          title={collapsed ? '展开导航' : '收起导航'}
+    <aside className={`module-rail${pinned ? ' module-rail--pinned' : ''}`}>
+      <div className="module-rail__header">
+        <h2 className="module-rail__title">功能导航</h2>
+        <button
+          type="button"
+          className="rail-pin"
+          onClick={onTogglePin}
+          title={pinned ? '取消固定' : '固定导航'}
         >
-          <svg 
-            width="20" 
-            height="20" 
-            viewBox="0 0 24 24" 
-            fill="none" 
-            stroke="currentColor" 
-            strokeWidth="2" 
-            strokeLinecap="round" 
-            strokeLinejoin="round"
-            style={{
-              transform: collapsed ? 'rotate(180deg)' : 'none',
-              transition: 'transform 0.3s ease'
-            }}
-          >
-            <path d="M15 18l-6-6 6-6" />
+          <svg width="16" height="16" viewBox="0 0 24 24" fill={pinned ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M12 17v5M9 11V4a1 1 0 011-1h4a1 1 0 011 1v7M7 11h10l-1 6H8l-1-6z" />
           </svg>
         </button>
       </div>
@@ -79,84 +66,38 @@ export function ModuleRail({ activeModule, onChange, activeAnalysisSubView, onAn
           <div key={module.key}>
             <button
               type="button"
-              className={module.key === activeModule ? 'module-card module-card--active' : 'module-card'}
+              className={`module-card${module.key === activeModule ? ' module-card--active' : ''}`}
               onClick={() => onChange(module.key)}
               title={module.label}
             >
-              <span className="module-card__label">{collapsed ? module.shortLabel : module.label}</span>
+              <svg className="module-card__icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d={moduleIcons[module.key]} />
+              </svg>
+              <span className="module-card__label">{module.label}</span>
             </button>
-            {module.key === 'analysis' && activeModule === 'analysis' && !collapsed && (
-              <div className="module-sub-menu" style={{ paddingLeft: '16px', marginTop: '8px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            {module.key === 'analysis' && activeModule === 'analysis' && (
+              <div className="module-sub-menu">
                 {analysisSubViews.map((subView) => (
                   <button
                     key={subView.key}
                     type="button"
+                    className={`module-sub-item${subView.key === activeAnalysisSubView ? ' module-sub-item--active' : ''}`}
                     onClick={() => onAnalysisSubViewChange(subView.key)}
-                    style={{
-                      textAlign: 'left',
-                      padding: '8px 12px',
-                      background: subView.key === activeAnalysisSubView ? 'color-mix(in oklab, var(--surface-strong) 100%, transparent)' : 'transparent',
-                      color: subView.key === activeAnalysisSubView ? 'var(--accent)' : 'var(--text-muted)',
-                      border: '1px solid transparent',
-                      borderColor: subView.key === activeAnalysisSubView ? 'var(--border)' : 'transparent',
-                      borderRadius: '4px',
-                      fontSize: '0.9rem',
-                      transition: 'all 0.2s ease',
-                      cursor: 'pointer',
-                    }}
-                    onMouseEnter={(e) => {
-                      if (subView.key !== activeAnalysisSubView) {
-                        e.currentTarget.style.color = 'var(--text-strong)'
-                        e.currentTarget.style.background = 'color-mix(in oklab, var(--surface-soft) 40%, transparent)'
-                      }
-                    }}
-                    onMouseLeave={(e) => {
-                      if (subView.key !== activeAnalysisSubView) {
-                        e.currentTarget.style.color = 'var(--text-muted)'
-                        e.currentTarget.style.background = 'transparent'
-                      }
-                    }}
                   >
                     {subView.label}
                   </button>
                 ))}
               </div>
             )}
-            {module.key === 'models' && activeModule === 'models' && !collapsed && (
-              <div className="module-sub-menu" style={{ paddingLeft: '16px', marginTop: '8px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            {module.key === 'models' && activeModule === 'models' && (
+              <div className="module-sub-menu">
                 {models.map((m) => (
                   <button
                     key={m.key}
                     type="button"
+                    className={`module-sub-item${m.key === activeModelsSubView ? ' module-sub-item--active' : ''}`}
                     onClick={() => onModelsSubViewChange(m.key)}
-                    style={{
-                      textAlign: 'left',
-                      padding: '8px 12px',
-                      background: m.key === activeModelsSubView ? 'color-mix(in oklab, var(--surface-strong) 100%, transparent)' : 'transparent',
-                      color: m.key === activeModelsSubView ? 'var(--accent)' : 'var(--text-muted)',
-                      border: '1px solid transparent',
-                      borderColor: m.key === activeModelsSubView ? 'var(--border)' : 'transparent',
-                      borderRadius: '4px',
-                      fontSize: '0.9rem',
-                      transition: 'all 0.2s ease',
-                      cursor: 'pointer',
-                      whiteSpace: 'nowrap',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                    }}
                     title={m.label}
-                    onMouseEnter={(e) => {
-                      if (m.key !== activeModelsSubView) {
-                        e.currentTarget.style.color = 'var(--text-strong)'
-                        e.currentTarget.style.background = 'color-mix(in oklab, var(--surface-soft) 40%, transparent)'
-                      }
-                    }}
-                    onMouseLeave={(e) => {
-                      if (m.key !== activeModelsSubView) {
-                        e.currentTarget.style.color = 'var(--text-muted)'
-                        e.currentTarget.style.background = 'transparent'
-                      }
-                    }}
                   >
                     {m.label}
                   </button>
@@ -166,7 +107,6 @@ export function ModuleRail({ activeModule, onChange, activeAnalysisSubView, onAn
           </div>
         ))}
       </div>
-
     </aside>
   )
 }

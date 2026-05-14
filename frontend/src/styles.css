@@ -271,7 +271,6 @@ button {
 }
 
 .theme-toggle:hover,
-.module-card:hover,
 .action-tile:hover,
 .settings-action:hover {
   transform: translateY(-2px);
@@ -279,16 +278,17 @@ button {
 
 .workspace-grid {
   display: grid;
-  grid-template-columns: 230px minmax(0, 1fr);
-  gap: 0;
-  align-items: stretch;
-  transition: grid-template-columns 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  grid-template-columns: 1fr;
   flex: 1;
   min-height: 0;
+  position: relative;
+  padding-left: 68px;
+  transition: padding-left 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.workspace-grid--collapsed {
-  grid-template-columns: 92px minmax(0, 1fr);
+.workspace-grid--pinned {
+  grid-template-columns: 230px minmax(0, 1fr);
+  padding-left: 0;
 }
 
 @keyframes fadeIn {
@@ -323,7 +323,11 @@ button {
   padding: 22px;
 }
 
-.workspace-canvas {
+.workspace-grid:not(.workspace-grid--pinned) .workspace-canvas {
+  padding-left: 22px;
+}
+
+.workspace-grid--pinned .workspace-canvas {
   padding-left: 0;
 }
 
@@ -334,6 +338,33 @@ button {
   height: 100%;
   min-height: 0;
   overflow-y: auto;
+  position: fixed;
+  left: 12px;
+  top: 12px;
+  bottom: 44px;
+  width: 56px;
+  z-index: 100;
+  background: color-mix(in oklab, var(--surface) 92%, transparent);
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 8px;
+  transition: width 0.3s cubic-bezier(0.16, 1, 0.3, 1), padding 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.module-rail:hover,
+.module-rail--pinned {
+  width: 230px;
+  padding: 16px 14px;
+}
+
+.module-rail--pinned {
+  position: static;
+  border: none;
+  background: transparent;
+  backdrop-filter: none;
+  width: auto;
+  padding: 22px;
 }
 
 .module-rail::-webkit-scrollbar {
@@ -347,28 +378,49 @@ button {
   border-radius: 4px;
 }
 
-.module-rail--collapsed {
-  align-items: stretch;
-}
-
 .module-rail__header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: 12px;
+  min-height: 32px;
 }
 
-.rail-toggle {
+.module-rail__title {
+  white-space: nowrap;
+  overflow: hidden;
+  font-size: 0.95rem;
+  opacity: 0;
+  width: 0;
+  transition: opacity 0.25s ease, width 0.25s ease;
+}
+
+.module-rail:hover .module-rail__title,
+.module-rail--pinned .module-rail__title {
+  opacity: 1;
+  width: auto;
+}
+
+.rail-pin {
   border: 1px solid transparent;
   border-radius: 4px;
-  background: color-mix(in oklab, var(--surface-soft) 20%, transparent);
+  background: transparent;
   color: var(--text-muted);
-  padding: 0.55rem 0.8rem;
+  padding: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: all 0.2s ease;
 }
 
-.rail-toggle:hover {
+.rail-pin:hover {
   background: color-mix(in oklab, var(--surface-soft) 60%, transparent);
-  color: var(--text-strong);
+  color: var(--accent);
+}
+
+.rail-pin svg {
+  display: block;
 }
 
 .module-rail__summary,
@@ -421,14 +473,22 @@ button {
 .module-card {
   width: 100%;
   text-align: left;
-  padding: 10px 14px;
+  padding: 10px 10px;
   border: 1px solid transparent;
-  border-radius: 4px;
-  background: color-mix(in oklab, var(--surface-soft) 20%, transparent);
+  border-radius: 6px;
+  background: transparent;
   color: var(--text-muted);
   transition: all 0.2s ease;
   display: flex;
   align-items: center;
+  gap: 10px;
+  justify-content: center;
+}
+
+.module-rail:hover .module-card,
+.module-rail--pinned .module-card {
+  justify-content: flex-start;
+  padding: 10px 12px;
 }
 
 .module-card:hover {
@@ -437,40 +497,78 @@ button {
 }
 
 .module-card--active {
-  border: 1px solid transparent;
-  background: color-mix(in oklab, var(--surface-strong) 100%, transparent);
+  border-color: color-mix(in oklab, var(--accent) 30%, transparent);
+  background: color-mix(in oklab, var(--accent) 10%, transparent);
   color: var(--accent);
 }
 
-.module-card--active .module-card__label {
-  color: var(--accent);
+.module-card--active:hover {
+  background: color-mix(in oklab, var(--accent) 16%, transparent);
 }
 
-.module-card__label,
-.action-tile__label,
-.gallery-item strong,
-.mini-output strong {
+.module-card__icon {
+  flex-shrink: 0;
+}
+
+.module-card__label {
   display: block;
-  font-size: 0.95rem;
-  font-weight: 700;
-  margin: 0;
-}
-
-.module-rail--collapsed .module-card {
-  min-height: 48px;
-  display: grid;
-  place-items: center;
-  padding: 8px;
-}
-
-.module-rail--collapsed .module-card__label {
-  margin: 0;
   font-size: 0.92rem;
-  text-align: center;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  opacity: 0;
+  max-width: 0;
+  transition: opacity 0.25s ease 0.05s, max-width 0.3s ease;
 }
 
-.module-rail--collapsed .rail-toggle {
-  width: 100%;
+.module-rail:hover .module-card__label,
+.module-rail--pinned .module-card__label {
+  opacity: 1;
+  max-width: 200px;
+}
+
+.module-sub-menu {
+  padding-left: 16px;
+  margin-top: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow: hidden;
+  max-height: 0;
+  opacity: 0;
+  transition: max-height 0.3s ease, opacity 0.25s ease;
+}
+
+.module-rail:hover .module-sub-menu,
+.module-rail--pinned .module-sub-menu {
+  max-height: 500px;
+  opacity: 1;
+}
+
+.module-sub-item {
+  text-align: left;
+  padding: 7px 12px;
+  background: transparent;
+  color: var(--text-muted);
+  border: 1px solid transparent;
+  border-radius: 4px;
+  font-size: 0.88rem;
+  transition: all 0.15s ease;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.module-sub-item:hover {
+  color: var(--text-strong);
+  background: color-mix(in oklab, var(--surface-soft) 40%, transparent);
+}
+
+.module-sub-item--active {
+  color: var(--accent);
+  background: color-mix(in oklab, var(--accent) 8%, transparent);
+  border-color: color-mix(in oklab, var(--accent) 20%, transparent);
 }
 
 .module-card__detail,
@@ -1479,8 +1577,8 @@ button {
 }
 
 @media (max-width: 1400px) {
-  .workspace-grid {
-    grid-template-columns: 280px minmax(0, 1fr);
+  .workspace-grid--pinned {
+    grid-template-columns: 200px minmax(0, 1fr);
   }
 
   .status-panel {
@@ -1490,7 +1588,7 @@ button {
 }
 
 @media (max-width: 1120px) {
-  .workspace-grid,
+  .workspace-grid--pinned,
   .workspace-hero,
   .action-grid,
   .pipeline-grid,
@@ -1505,26 +1603,42 @@ button {
     grid-template-columns: 1fr;
   }
 
-  .module-rail {
-    position: static;
+  .module-rail--pinned {
+    position: fixed;
+    width: 200px;
   }
 }
 
 @media (max-width: 720px) {
   .app-shell {
-    padding: 16px;
+    padding: 8px;
+  }
+
+  .workspace-grid {
+    padding-left: 56px;
+  }
+
+  .module-rail {
+    left: 8px;
+    top: 8px;
+    bottom: 40px;
+    width: 44px;
   }
 
   .module-rail,
   .workspace-canvas,
   .status-panel,
   .gallery-panel {
-    padding: 18px;
+    padding: 14px;
     border-radius: 4px;
   }
 
-  .workspace-canvas {
-    padding-left: 0;
+  .module-rail--pinned {
+    padding: 14px;
+  }
+
+  .workspace-grid:not(.workspace-grid--pinned) .workspace-canvas {
+    padding-left: 14px;
   }
 
   .status-metric-grid {
