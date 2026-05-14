@@ -1,15 +1,11 @@
-import { useEffect } from 'react'
 import type { ModuleKey } from '../types/api'
-import type { AnalysisSubView, ModelsSubView } from '../App'
-import { useTrainModels } from '../features/models/useModelsWorkbench'
+import type { AnalysisSubView } from '../App'
 
 type ModuleRailProps = {
   activeModule: ModuleKey
   onChange: (module: ModuleKey) => void
   activeAnalysisSubView: AnalysisSubView
   onAnalysisSubViewChange: (view: AnalysisSubView) => void
-  activeModelsSubView: ModelsSubView
-  onModelsSubViewChange: (view: ModelsSubView) => void
   pinned: boolean
   onTogglePin: () => void
 }
@@ -35,78 +31,87 @@ const analysisSubViews: Array<{ key: AnalysisSubView; label: string }> = [
   { key: 'compare-grid', label: '对比拼图' },
 ]
 
-export function ModuleRail({ activeModule, onChange, activeAnalysisSubView, onAnalysisSubViewChange, activeModelsSubView, onModelsSubViewChange, pinned, onTogglePin }: ModuleRailProps) {
-  const modelQuery = useTrainModels()
-  const models = modelQuery.data?.items ?? []
-
-  useEffect(() => {
-    if (activeModule === 'models' && !activeModelsSubView && models.length > 0) {
-      onModelsSubViewChange(models[0].key)
-    }
-  }, [activeModule, activeModelsSubView, models, onModelsSubViewChange])
-
+export function ModuleRail({ activeModule, onChange, activeAnalysisSubView, onAnalysisSubViewChange, pinned, onTogglePin }: ModuleRailProps) {
   return (
-    <aside className={`module-rail${pinned ? ' module-rail--pinned' : ''}`}>
-      <div className="module-rail__header">
-        <h2 className="module-rail__title">功能导航</h2>
+    <div className={`module-rail-wrap${pinned ? ' module-rail-wrap--pinned' : ''}`}>
+      {/* Icon strip — always visible in auto-hide mode */}
+      <div className="module-rail-icons">
         <button
           type="button"
-          className="rail-pin"
+          className="module-icon-btn"
           onClick={onTogglePin}
-          title={pinned ? '取消固定' : '固定导航'}
+          title="固定导航"
         >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill={pinned ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M12 17v5M9 11V4a1 1 0 011-1h4a1 1 0 011 1v7M7 11h10l-1 6H8l-1-6z" />
           </svg>
         </button>
-      </div>
-
-      <div className="module-rail__list">
         {modules.map((module) => (
-          <div key={module.key}>
-            <button
-              type="button"
-              className={`module-card${module.key === activeModule ? ' module-card--active' : ''}`}
-              onClick={() => onChange(module.key)}
-              title={module.label}
-            >
-              <svg className="module-card__icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d={moduleIcons[module.key]} />
-              </svg>
-              <span className="module-card__label">{module.label}</span>
-            </button>
-            {module.key === 'analysis' && activeModule === 'analysis' && (
-              <div className="module-sub-menu">
-                {analysisSubViews.map((subView) => (
-                  <button
-                    key={subView.key}
-                    type="button"
-                    className={`module-sub-item${subView.key === activeAnalysisSubView ? ' module-sub-item--active' : ''}`}
-                    onClick={() => onAnalysisSubViewChange(subView.key)}
-                  >
-                    {subView.label}
-                  </button>
-                ))}
-              </div>
-            )}
-            {module.key === 'models' && activeModule === 'models' && (
-              <div className="module-sub-menu">
-                {models.map((m) => (
-                  <button
-                    key={m.key}
-                    type="button"
-                    className={`module-sub-item${m.key === activeModelsSubView ? ' module-sub-item--active' : ''}`}
-                    onClick={() => onModelsSubViewChange(m.key)}
-                    title={m.label}
-                  >
-                    {m.label}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
+          <button
+            key={module.key}
+            type="button"
+            className={`module-icon-btn${module.key === activeModule ? ' module-icon-btn--active' : ''}`}
+            onClick={() => onChange(module.key)}
+            title={module.label}
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d={moduleIcons[module.key]} />
+            </svg>
+          </button>
         ))}
       </div>
-    </aside>
+
+      {/* Full sidebar panel — appears on hover or when pinned */}
+      <aside className="module-rail">
+        <div className="module-rail__header">
+          <h2 className="module-rail__title">功能导航</h2>
+          <button
+            type="button"
+            className="rail-pin"
+            onClick={onTogglePin}
+            title={pinned ? '取消固定' : '固定导航'}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill={pinned ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 17v5M9 11V4a1 1 0 011-1h4a1 1 0 011 1v7M7 11h10l-1 6H8l-1-6z" />
+            </svg>
+          </button>
+        </div>
+
+        <div className="module-rail__list">
+          {modules.map((module) => (
+            <div key={module.key}>
+              <button
+                type="button"
+                className={`module-card${module.key === activeModule ? ' module-card--active' : ''}`}
+                onClick={() => onChange(module.key)}
+                title={module.label}
+              >
+                <svg className="module-card__icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d={moduleIcons[module.key]} />
+                </svg>
+                <span className="module-card__label">{module.label}</span>
+              </button>
+              {module.key === 'analysis' && (
+                <div className={`module-sub-menu${pinned ? ' module-sub-menu--always' : ''}`}>
+                  {analysisSubViews.map((subView) => (
+                    <button
+                      key={subView.key}
+                      type="button"
+                      className={`module-sub-item${activeModule === 'analysis' && subView.key === activeAnalysisSubView ? ' module-sub-item--active' : ''}`}
+                      onClick={() => {
+                        onChange('analysis')
+                        onAnalysisSubViewChange(subView.key)
+                      }}
+                    >
+                      {subView.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      </aside>
+    </div>
   )
 }

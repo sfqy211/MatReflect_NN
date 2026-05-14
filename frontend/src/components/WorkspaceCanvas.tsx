@@ -4,7 +4,6 @@ import { useQueryClient } from "@tanstack/react-query";
 
 import type {
   AnalysisSubView,
-  ModelsSubView,
   ThemeMode,
 } from "../App";
 import { BACKEND_ORIGIN } from "../lib/api";
@@ -37,8 +36,6 @@ type WorkspaceCanvasProps = {
   activeModule: ModuleKey;
   activeAnalysisSubView: AnalysisSubView;
   onAnalysisSubViewChange: (view: AnalysisSubView) => void;
-  activeModelsSubView: ModelsSubView;
-  onModelsSubViewChange: (view: ModelsSubView) => void;
   galleryItems: FileListItem[];
   galleryCount: number;
   system?: SystemSummary;
@@ -905,8 +902,6 @@ export function WorkspaceCanvas({
   activeModule,
   activeAnalysisSubView,
   onAnalysisSubViewChange,
-  activeModelsSubView,
-  onModelsSubViewChange,
   galleryItems,
   galleryCount,
   system,
@@ -931,12 +926,7 @@ export function WorkspaceCanvas({
   }
 
   if (activeModule === "models") {
-    return (
-      <ModelsWorkbench
-        activeSubView={activeModelsSubView}
-        onSubViewChange={onModelsSubViewChange}
-      />
-    );
+    return <ModelsWorkbench />;
   }
 
   if (activeModule === "settings") {

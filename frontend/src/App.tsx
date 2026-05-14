@@ -25,12 +25,10 @@ function clampFontSize(value: number) {
 }
 
 export type AnalysisSubView = 'evaluate' | 'compare' | 'grid' | 'compare-grid'
-export type ModelsSubView = string
 
 export function App() {
   const [activeModule, setActiveModule] = useState<ModuleKey>("models");
   const [activeAnalysisSubView, setActiveAnalysisSubView] = useState<AnalysisSubView>('evaluate');
-  const [activeModelsSubView, setActiveModelsSubView] = useState<ModelsSubView>('');
   const [railPinned, setRailPinned] = useState(false);
   const [theme, setTheme] = useState<ThemeMode>(() => {
     if (typeof window === "undefined") {
@@ -95,8 +93,6 @@ export function App() {
           onChange={setActiveModule}
           activeAnalysisSubView={activeAnalysisSubView}
           onAnalysisSubViewChange={setActiveAnalysisSubView}
-          activeModelsSubView={activeModelsSubView}
-          onModelsSubViewChange={setActiveModelsSubView}
           pinned={railPinned}
           onTogglePin={() => setRailPinned((current) => !current)}
         />
@@ -105,8 +101,6 @@ export function App() {
             activeModule={activeModule}
             activeAnalysisSubView={activeAnalysisSubView}
             onAnalysisSubViewChange={setActiveAnalysisSubView}
-            activeModelsSubView={activeModelsSubView}
-            onModelsSubViewChange={setActiveModelsSubView}
             galleryItems={galleryItems}
             galleryCount={galleryCount}
             system={systemQuery.data}

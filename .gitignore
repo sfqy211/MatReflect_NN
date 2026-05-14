@@ -3,6 +3,7 @@ __pycache__/
 *.log
 mitsuba/
 models/
+!frontend/src/components/models/
 .vscode/
 .claude
 .codebuddy/
