@@ -282,13 +282,15 @@ button {
   flex: 1;
   min-height: 0;
   position: relative;
-  padding-left: 52px;
+  padding-left: 60px;
   transition: padding-left 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .workspace-grid--pinned {
   grid-template-columns: 230px minmax(0, 1fr);
+  grid-template-rows: 1fr;
   padding-left: 0;
+  overflow: hidden;
 }
 
 @keyframes fadeIn {
@@ -340,7 +342,8 @@ button {
   bottom: 44px;
   z-index: 100;
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
+  align-items: stretch;
 }
 
 .module-rail-wrap--pinned {
@@ -355,9 +358,9 @@ button {
   align-items: center;
   gap: 4px;
   padding: 12px 6px;
+  flex-shrink: 0;
 }
 
-.module-rail-wrap:hover .module-rail-icons,
 .module-rail-wrap--pinned .module-rail-icons {
   display: none;
 }
@@ -390,13 +393,14 @@ button {
   background: color-mix(in oklab, var(--accent) 20%, transparent);
 }
 
-/* ── Full sidebar panel ── */
+/* ── Text panel ── */
 
 .module-rail {
-  display: none;
+  display: flex;
   flex-direction: column;
   gap: 8px;
-  width: 230px;
+  width: 0;
+  min-width: 0;
   height: 100%;
   min-height: 0;
   overflow-y: auto;
@@ -404,28 +408,39 @@ button {
   background: color-mix(in oklab, var(--surface) 92%, transparent);
   backdrop-filter: blur(12px);
   border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 16px 14px;
-  transition: opacity 0.2s ease;
+  border-left: none;
+  border-radius: 0 8px 8px 0;
+  padding: 16px 0;
+  opacity: 0;
+  pointer-events: none;
+  transition: width 0.25s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.2s ease, padding 0.25s ease;
 }
 
 .module-rail-wrap:hover .module-rail,
 .module-rail-wrap--pinned .module-rail {
-  display: flex;
+  width: 200px;
+  padding: 16px 14px;
+  opacity: 1;
+  pointer-events: auto;
 }
 
 .module-rail-wrap--pinned {
   position: static;
   height: 100%;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .module-rail-wrap--pinned .module-rail {
-  display: flex;
   position: static;
   border: none;
-  background: transparent;
+  border-radius: 8px;
+  background: var(--surface-soft);
   backdrop-filter: none;
-  width: auto;
+  width: 100%;
+  min-width: 0;
   padding: 22px;
 }
 
@@ -553,6 +568,11 @@ button {
 }
 
 .module-card__icon {
+  display: none;
+}
+
+.module-rail-wrap--pinned .module-card__icon {
+  display: block;
   flex-shrink: 0;
 }
 
@@ -617,6 +637,7 @@ button {
   overflow: hidden;
   height: 100%;
   min-height: 0;
+  min-width: 0;
   padding-right: 8px;
 }
 
@@ -1634,12 +1655,47 @@ button {
     grid-template-columns: 1fr;
   }
 
+  /* Pinned mode falls back to auto-hide (icon strip only) */
+  .workspace-grid--pinned {
+    padding-left: 60px;
+  }
+
   .module-rail-wrap--pinned {
     position: fixed;
+    left: 12px;
+    top: 12px;
+    bottom: 44px;
+    width: auto;
+    height: auto;
+    overflow: visible;
+  }
+
+  .module-rail-wrap--pinned .module-rail-icons {
+    display: flex;
   }
 
   .module-rail-wrap--pinned .module-rail {
+    width: 0;
+    min-width: 0;
+    padding: 16px 0;
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .module-rail-wrap--pinned:hover .module-rail {
     width: 200px;
+    padding: 16px 14px;
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  .module-rail-wrap--pinned:hover .module-rail-icons {
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .module-rail-wrap--pinned .module-card__icon {
+    display: none;
   }
 }
 
@@ -1649,7 +1705,7 @@ button {
   }
 
   .workspace-grid {
-    padding-left: 52px;
+    padding-left: 56px;
   }
 
   .module-rail-wrap {
@@ -1667,7 +1723,15 @@ button {
   }
 
   .module-rail-wrap--pinned .module-rail {
+    padding: 16px 0;
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .module-rail-wrap--pinned:hover .module-rail {
     padding: 14px;
+    opacity: 1;
+    pointer-events: auto;
   }
 
   .workspace-grid:not(.workspace-grid--pinned) .workspace-canvas {

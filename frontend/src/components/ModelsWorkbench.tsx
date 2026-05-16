@@ -127,9 +127,9 @@ export function ModelsWorkbench() {
 
   const envStatusQuery = useModelEnvStatus(activeModel?.supports_reconstruction ? activeModel.key : null)
 
-  const materialItems = materialsQuery.data?.items ?? []
-  const h5Items = h5FilesQuery.data?.items ?? []
-  const ptItems = ptFilesQuery.data?.items ?? []
+  const materialItems = useMemo(() => materialsQuery.data?.items ?? [], [materialsQuery.data?.items])
+  const h5Items = useMemo(() => h5FilesQuery.data?.items ?? [], [h5FilesQuery.data?.items])
+  const ptItems = useMemo(() => ptFilesQuery.data?.items ?? [], [ptFilesQuery.data?.items])
   const runs = activeModel?.supports_runs ? runsQuery.data?.items ?? [] : []
   const taskDetail = taskDetailQuery.data
   const taskRecord = taskDetail?.record

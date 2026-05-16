@@ -26,10 +26,26 @@ function clampFontSize(value: number) {
 
 export type AnalysisSubView = 'evaluate' | 'compare' | 'grid' | 'compare-grid'
 
+const PIN_BREAKPOINT = 1120;
+
 export function App() {
   const [activeModule, setActiveModule] = useState<ModuleKey>("models");
   const [activeAnalysisSubView, setActiveAnalysisSubView] = useState<AnalysisSubView>('evaluate');
   const [railPinned, setRailPinned] = useState(false);
+  const [pinAvailable, setPinAvailable] = useState(() => window.innerWidth > PIN_BREAKPOINT);
+
+  useEffect(() => {
+    const handleResize = () => {
+      const available = window.innerWidth > PIN_BREAKPOINT;
+      setPinAvailable(available);
+      if (!available) {
+        setRailPinned(false);
+      }
+    };
+    window.addEventListener('resize', handleResize);
+    handleResize();
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
   const [theme, setTheme] = useState<ThemeMode>(() => {
     if (typeof window === "undefined") {
       return "dark";
@@ -95,6 +111,7 @@ export function App() {
           onAnalysisSubViewChange={setActiveAnalysisSubView}
           pinned={railPinned}
           onTogglePin={() => setRailPinned((current) => !current)}
+          pinAvailable={pinAvailable}
         />
         <main className="center-stack">
           <WorkspaceCanvas

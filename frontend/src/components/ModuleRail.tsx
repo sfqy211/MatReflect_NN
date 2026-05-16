@@ -8,6 +8,7 @@ type ModuleRailProps = {
   onAnalysisSubViewChange: (view: AnalysisSubView) => void
   pinned: boolean
   onTogglePin: () => void
+  pinAvailable: boolean
 }
 
 const moduleIcons: Record<ModuleKey, string> = {
@@ -31,21 +32,23 @@ const analysisSubViews: Array<{ key: AnalysisSubView; label: string }> = [
   { key: 'compare-grid', label: '对比拼图' },
 ]
 
-export function ModuleRail({ activeModule, onChange, activeAnalysisSubView, onAnalysisSubViewChange, pinned, onTogglePin }: ModuleRailProps) {
+export function ModuleRail({ activeModule, onChange, activeAnalysisSubView, onAnalysisSubViewChange, pinned, onTogglePin, pinAvailable }: ModuleRailProps) {
   return (
     <div className={`module-rail-wrap${pinned ? ' module-rail-wrap--pinned' : ''}`}>
       {/* Icon strip — always visible in auto-hide mode */}
       <div className="module-rail-icons">
-        <button
-          type="button"
-          className="module-icon-btn"
-          onClick={onTogglePin}
-          title="固定导航"
-        >
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M12 17v5M9 11V4a1 1 0 011-1h4a1 1 0 011 1v7M7 11h10l-1 6H8l-1-6z" />
-          </svg>
-        </button>
+        {pinAvailable && (
+          <button
+            type="button"
+            className="module-icon-btn"
+            onClick={onTogglePin}
+            title="固定导航"
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 17v5M9 11V4a1 1 0 011-1h4a1 1 0 011 1v7M7 11h10l-1 6H8l-1-6z" />
+            </svg>
+          </button>
+        )}
         {modules.map((module) => (
           <button
             key={module.key}
@@ -65,16 +68,18 @@ export function ModuleRail({ activeModule, onChange, activeAnalysisSubView, onAn
       <aside className="module-rail">
         <div className="module-rail__header">
           <h2 className="module-rail__title">功能导航</h2>
-          <button
-            type="button"
-            className="rail-pin"
-            onClick={onTogglePin}
-            title={pinned ? '取消固定' : '固定导航'}
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill={pinned ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M12 17v5M9 11V4a1 1 0 011-1h4a1 1 0 011 1v7M7 11h10l-1 6H8l-1-6z" />
-            </svg>
-          </button>
+          {pinAvailable && (
+            <button
+              type="button"
+              className="rail-pin"
+              onClick={onTogglePin}
+              title={pinned ? '取消固定' : '固定导航'}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill={pinned ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 17v5M9 11V4a1 1 0 011-1h4a1 1 0 011 1v7M7 11h10l-1 6H8l-1-6z" />
+              </svg>
+            </button>
+          )}
         </div>
 
         <div className="module-rail__list">
