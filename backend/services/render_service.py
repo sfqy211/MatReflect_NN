@@ -330,7 +330,7 @@ class RenderService:
         return RenderScenesResponse(
             default_scene=default_scene.as_posix() if default_scene else None,
             items=[
-                RenderSceneItem(label=scene_path.name, path=scene_path.as_posix(), is_default=scene_path == default_scene)
+                RenderSceneItem(label=scene_path.parent.name, path=scene_path.as_posix(), is_default=scene_path == default_scene)
                 for scene_path in list_scene_xmls()
             ],
         )
