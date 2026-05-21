@@ -91,6 +91,26 @@ pip install -r backend/requirements.txt
 | Path resolution | `backend/core/paths.py` |
 | Subprocess wrapper | `backend/core/threaded_subprocess.py` |
 | System settings | `backend/core/system_settings.py` |
+| Model registry config | `backend/config/model_registry.json` |
+
+## Environment Variables
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `MATREFLECT_PROJECT_ROOT` | Auto-detected parent of `backend/` | Project root for all path resolution |
+| `MATREFLECT_RUNTIME_ROOT` | `{PROJECT_ROOT}/backend/runtime` | Task JSON files, logs |
+| `MATREFLECT_OUTPUTS_ROOT` | `{PROJECT_ROOT}/data/outputs` | Render results, grids, comparisons |
+| `VITE_API_BASE` | `/api/v1` | Frontend API base URL (set in `frontend/.env`) |
+
+## Frontend API Pattern
+
+Frontend uses `apiGet`/`apiPost`/`apiPut`/`apiDelete` from `frontend/src/lib/api.ts`. These functions prepend `API_BASE` (defaults to `/api/v1`) and throw on non-OK responses. WebSocket connections go to `ws://<host>/ws/tasks/{task_id}` for task progress and `ws://<host>/ws/system/metrics` for system monitoring.
+
+Data fetching uses `@tanstack/react-query`. State management is per-workbench via custom hooks in `frontend/src/features/`.
+
+## Model Registry
+
+Models are defined in `backend/config/model_registry.json`. Each model entry specifies its adapter, conda environment, supported operations (train/extract/decode/reconstruct), parameters, and default paths. Built-in models are protected from modification/removal.
 
 ## Key Constraints
 
