@@ -3,29 +3,40 @@
 import asyncio
 import json
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query
 
 from backend.services.terminal_service import terminal_service
 
 
 router = APIRouter(tags=["terminal"])
 
+# 断连后保留会话的秒数（允许浏览器刷新/网络抖动后重连）
+SESSION_TTL = 30
+
 
 @router.websocket("/ws/pty/{session_id}")
-async def pty_websocket(websocket: WebSocket, session_id: str) -> None:
+async def pty_websocket(
+    websocket: WebSocket,
+    session_id: str,
+    conda_env: str = Query(default=""),
+    working_dir: str = Query(default=""),
+) -> None:
     await websocket.accept()
 
     session = terminal_service.get_session(session_id)
     if not session:
-        # Auto-create session
-        session = terminal_service.create_session()
+        session = terminal_service.create_session(
+            working_dir=working_dir,
+            conda_env=conda_env,
+        )
         await session.start()
 
+    # 标记已连接（取消待销毁的 TTL 任务由 _delayed_close 自然处理）
+    session._connected = True
+
     try:
-        # Send initial prompt
         await websocket.send_text(json.dumps({"type": "ready", "session_id": session.session_id}))
 
-        # Read loop (output from PTY → WebSocket)
         async def send_output() -> None:
             while session._active:
                 data = await session.read_output()
@@ -34,7 +45,6 @@ async def pty_websocket(websocket: WebSocket, session_id: str) -> None:
                 await asyncio.sleep(0.01)
         output_task = asyncio.create_task(send_output())
 
-        # Write loop (WebSocket → PTY)
         while True:
             raw = await websocket.receive_text()
             try:
@@ -42,13 +52,28 @@ async def pty_websocket(websocket: WebSocket, session_id: str) -> None:
                 if msg.get("type") == "input":
                     await session.write(msg.get("data", ""))
                 elif msg.get("type") == "resize":
-                    # Future: handle terminal resize
                     pass
             except json.JSONDecodeError:
-                # Plain text input
                 await session.write(raw)
     except WebSocketDisconnect:
         pass
     finally:
+        session._connected = False
         output_task.cancel()
-        terminal_service.close_session(session.session_id)
+        try:
+            await output_task
+        except asyncio.CancelledError:
+            pass
+        # 断连后延迟销毁会话，允许前端重连
+        asyncio.create_task(_delayed_close(session.session_id, SESSION_TTL))
+
+
+async def _delayed_close(session_id: str, ttl: int) -> None:
+    """延迟关闭会话：若 TTL 内无重连则销毁。"""
+    await asyncio.sleep(ttl)
+    session = terminal_service.get_session(session_id)
+    if not session:
+        return
+    # 仅当仍无 WebSocket 连接时才销毁
+    if not session._connected:
+        terminal_service.close_session(session_id)

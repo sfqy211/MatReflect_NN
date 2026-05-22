@@ -1120,6 +1120,104 @@ button {
   grid-column: 1 / -1;
 }
 
+/* ── Model split layout (terminal left + operation panels right) ── */
+
+.model-split-layout {
+  display: flex;
+  flex-direction: row;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.model-split-pane {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.model-split-pane--terminal {
+  flex-shrink: 0;
+}
+
+.model-split-pane--panels {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 4px;
+  gap: 8px;
+}
+
+.model-splitter {
+  width: 5px;
+  cursor: col-resize;
+  background: var(--border);
+  flex-shrink: 0;
+  transition: background 0.15s ease;
+}
+
+.model-splitter:hover {
+  background: var(--accent);
+}
+
+/* ── Floating cards (individually collapsible) ── */
+
+.model-floating-card {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  flex-shrink: 0;
+}
+
+.model-floating-card--collapsed {
+  /* collapsed card has no body, just the header bar */
+}
+
+.model-floating-card__header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 8px 12px;
+  background: var(--surface-soft);
+  border: none;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-strong);
+  cursor: pointer;
+  user-select: none;
+  font: inherit;
+  text-align: left;
+  transition: background 0.12s ease;
+}
+
+.model-floating-card--collapsed .model-floating-card__header {
+  border-bottom: none;
+}
+
+.model-floating-card__header:hover {
+  background: color-mix(in oklab, var(--surface-soft) 80%, var(--accent));
+}
+
+.model-floating-card__chevron {
+  font-size: 11px;
+  color: var(--text-muted);
+  width: 14px;
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+.model-floating-card__title {
+  font-weight: 600;
+  font-size: 0.85rem;
+  color: var(--text-strong);
+}
+
+.model-floating-card__body {
+  padding: 12px;
+}
+
 .runs-list {
   display: grid;
   gap: 10px;

@@ -5,8 +5,6 @@ import { Button } from '../ui/Button'
 type ModelDetailHeaderProps = {
   model: TrainModelItem
   onBack: () => void
-  showTerminal: boolean
-  onToggleTerminal: () => void
   showCommandsDoc: boolean
   onToggleCommandsDoc: () => void
   onSetupEnv: () => void
@@ -17,8 +15,6 @@ type ModelDetailHeaderProps = {
 export function ModelDetailHeader({
   model,
   onBack,
-  showTerminal,
-  onToggleTerminal,
   showCommandsDoc,
   onToggleCommandsDoc,
   onSetupEnv,
@@ -48,9 +44,6 @@ export function ModelDetailHeader({
             {setupEnvPending ? '创建环境中...' : '创建虚拟环境'}
           </Button>
         )}
-        <Button type="button" onClick={onToggleTerminal} style={{ fontSize: '0.8rem' }}>
-          {showTerminal ? '关闭终端' : '终端'}
-        </Button>
         {model.commands_doc && (
           <Button type="button" onClick={onToggleCommandsDoc} style={{ fontSize: '0.8rem' }}>
             {showCommandsDoc ? '关闭文档' : '命令文档'}

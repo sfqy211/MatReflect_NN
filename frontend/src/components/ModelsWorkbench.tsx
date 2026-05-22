@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { useQueryClient } from '@tanstack/react-query'
 
@@ -96,11 +96,23 @@ export function ModelsWorkbench() {
   const [reconstructOutputDir, setReconstructOutputDir] = useState('')
   const [showImportWizard, setShowImportWizard] = useState(false)
   const [deleteConfirmKey, setDeleteConfirmKey] = useState<string | null>(null)
-  const [showTerminal, setShowTerminal] = useState(false)
   const [terminalSessionId, setTerminalSessionId] = useState<string | null>(null)
   const [parameterValues, setParameterValues] = useState<Record<string, unknown>>({})
-  const [activeModelTab, setActiveModelTab] = useState<ModelTab>('train')
   const [showCommandsDoc, setShowCommandsDoc] = useState(false)
+
+  // Split layout state — terminal left, operation panels right
+  const [splitRatio, setSplitRatio] = useState(0.6)
+  const [collapsedCards, setCollapsedCards] = useState<Set<ModelTab>>(new Set())
+  const splitLayoutRef = useRef<HTMLDivElement>(null)
+
+  const toggleCardCollapse = (tab: ModelTab) => {
+    setCollapsedCards((prev) => {
+      const next = new Set(prev)
+      if (next.has(tab)) next.delete(tab)
+      else next.add(tab)
+      return next
+    })
+  }
 
   const modelQuery = useTrainModels()
   const materialsQuery = useMaterialsDirectory('')
@@ -154,9 +166,6 @@ export function ModelsWorkbench() {
     setReconstructOutputDir(getDefaultPath(activeModel, 'output_dir', ''))
     setDataset('MERL')
     setParameterValues(initParameterValues(activeModel.parameters ?? []))
-    if (activeModelTab === 'reconstruct' && !activeModel.supports_reconstruction) {
-      setActiveModelTab('train')
-    }
   }, [activeModel?.key])
 
   useEffect(() => {
@@ -244,17 +253,41 @@ export function ModelsWorkbench() {
     decode: '潜向量解码',
   }
 
+  // Splitter drag — terminal on left, panels on right
+  const handleSplitterMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault()
+    const layout = splitLayoutRef.current
+    if (!layout) return
+    const rect = layout.getBoundingClientRect()
+    const onMove = (ev: MouseEvent) => {
+      const pos = ev.clientX - rect.left
+      setSplitRatio(Math.min(0.75, Math.max(0.25, pos / rect.width)))
+    }
+    const onUp = () => {
+      document.removeEventListener('mousemove', onMove)
+      document.removeEventListener('mouseup', onUp)
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+    }
+    document.addEventListener('mousemove', onMove)
+    document.addEventListener('mouseup', onUp)
+    document.body.style.cursor = 'col-resize'
+    document.body.style.userSelect = 'none'
+  }, [])
+
   const handleSelectModel = (key: string) => {
     setSelectedModelKey(key)
     setView('detail')
+    setTerminalSessionId(`pty-${Date.now()}`)
   }
 
   const handleBackToGrid = () => {
     setView('grid')
     setSelectedModelKey('')
-    setShowTerminal(false)
     setTerminalSessionId(null)
     setShowCommandsDoc(false)
+    setSplitRatio(0.6)
+    setCollapsedCards(new Set())
   }
 
   const applyRun = (run: TrainRunSummary) => {
@@ -414,17 +447,6 @@ export function ModelsWorkbench() {
     queryClient.invalidateQueries({ queryKey: ['model-env-status'] })
   }
 
-  const toggleTerminal = () => {
-    if (showTerminal) {
-      setShowTerminal(false)
-      setTerminalSessionId(null)
-    } else {
-      const id = `pty-${Date.now()}`
-      setTerminalSessionId(id)
-      setShowTerminal(true)
-    }
-  }
-
   // ── Grid view ──
   if (view === 'grid') {
     const models = modelQuery.data?.items ?? []
@@ -484,47 +506,10 @@ export function ModelsWorkbench() {
     return null
   }
 
-  return (
-    <section className="workspace-canvas" style={{ position: 'relative' }}>
-      <ModelDetailHeader
-        model={activeModel}
-        onBack={handleBackToGrid}
-        showTerminal={showTerminal}
-        onToggleTerminal={toggleTerminal}
-        showCommandsDoc={showCommandsDoc}
-        onToggleCommandsDoc={() => setShowCommandsDoc(!showCommandsDoc)}
-        onSetupEnv={() => void handleSetupEnv()}
-        setupEnvPending={setupEnvMutation.isPending}
-        envStatus={envStatusQuery.data}
-      />
-
-      {/* Tab bar */}
-      {availableTabs.length > 1 && (
-        <div style={{ display: 'flex', gap: 0, marginBottom: 16, borderBottom: '1px solid var(--border)' }}>
-          {availableTabs.map((tab) => (
-            <button
-              key={tab}
-              type="button"
-              onClick={() => setActiveModelTab(tab)}
-              style={{
-                padding: '8px 16px',
-                border: 'none',
-                borderBottom: activeModelTab === tab ? '2px solid var(--accent)' : '2px solid transparent',
-                background: 'transparent',
-                color: activeModelTab === tab ? 'var(--text-primary)' : 'var(--text-muted)',
-                cursor: 'pointer',
-                fontSize: '0.85rem',
-                fontWeight: activeModelTab === tab ? 600 : 400,
-              }}
-            >
-              {tabLabels[tab]}
-            </button>
-          ))}
-        </div>
-      )}
-
-      <div className="models-layout">
-        {activeModelTab === 'train' && (
+  const renderTabComponent = (tab: ModelTab) => {
+    switch (tab) {
+      case 'train':
+        return (
           <TrainTab
             activeModel={activeModel}
             merlDir={merlDir}
@@ -591,9 +576,9 @@ export function ModelsWorkbench() {
             startDecode={() => void startDecode()}
             applyRun={applyRun}
           />
-        )}
-
-        {activeModelTab === 'reconstruct' && activeModel.supports_reconstruction && (
+        )
+      case 'reconstruct':
+        return activeModel.supports_reconstruction ? (
           <ReconstructTab
             activeModel={activeModel}
             merlDir={merlDir}
@@ -624,9 +609,9 @@ export function ModelsWorkbench() {
             startReconstruct={() => void startReconstruct()}
             isReconstructPending={startReconstructMutation.isPending}
           />
-        )}
-
-        {activeModelTab === 'extract' && activeModel.adapter === 'hyper-family' && activeModel.supports_extract && (
+        ) : null
+      case 'extract':
+        return activeModel.adapter === 'hyper-family' && activeModel.supports_extract ? (
           <ExtractTab
             activeModel={activeModel}
             merlDir={merlDir}
@@ -650,9 +635,9 @@ export function ModelsWorkbench() {
             materialsQueryError={materialsQuery.error as Error | null}
             startExtract={() => void startExtract()}
           />
-        )}
-
-        {activeModelTab === 'decode' && activeModel.adapter === 'hyper-family' && activeModel.supports_decode && (
+        ) : null
+      case 'decode':
+        return activeModel.adapter === 'hyper-family' && activeModel.supports_decode ? (
           <DecodeTab
             activeModel={activeModel}
             ptDir={ptDir}
@@ -671,24 +656,55 @@ export function ModelsWorkbench() {
             ptFilesQueryError={ptFilesQuery.error as Error | null}
             startDecode={() => void startDecode()}
           />
-        )}
-      </div>
+        ) : null
+    }
+  }
 
-      {/* PTY Terminal panel */}
-      {showTerminal && (
-        <div style={{
-          marginTop: 16,
-          border: '1px solid var(--border)',
-          borderRadius: 6,
-          overflow: 'hidden',
-          height: 260,
-        }}>
+  return (
+    <section className="workspace-canvas" style={{ position: 'relative' }}>
+      <ModelDetailHeader
+        model={activeModel}
+        onBack={handleBackToGrid}
+        showCommandsDoc={showCommandsDoc}
+        onToggleCommandsDoc={() => setShowCommandsDoc(!showCommandsDoc)}
+        onSetupEnv={() => void handleSetupEnv()}
+        setupEnvPending={setupEnvMutation.isPending}
+        envStatus={envStatusQuery.data}
+      />
+
+      {/* Split layout: terminal left + operation panels right */}
+      <div className="model-split-layout" ref={splitLayoutRef}>
+        <div className="model-split-pane model-split-pane--terminal" style={{ width: `${splitRatio * 100}%` }}>
           <TerminalPanel
             sessionId={terminalSessionId}
-            onClose={() => { setShowTerminal(false); setTerminalSessionId(null) }}
+            condaEnv={getRuntimeValue(activeModel, 'conda_env')}
+            workingDir={getRuntimeValue(activeModel, 'working_dir')}
           />
         </div>
-      )}
+        <div className="model-splitter" onMouseDown={handleSplitterMouseDown} />
+        <div className="model-split-pane model-split-pane--panels">
+          {availableTabs.map((tab) => {
+            const collapsed = collapsedCards.has(tab)
+            return (
+              <div key={tab} className={`model-floating-card${collapsed ? ' model-floating-card--collapsed' : ''}`}>
+                <button
+                  type="button"
+                  className="model-floating-card__header"
+                  onClick={() => toggleCardCollapse(tab)}
+                >
+                  <span className="model-floating-card__chevron">{collapsed ? '▸' : '▾'}</span>
+                  <span className="model-floating-card__title">{tabLabels[tab]}</span>
+                </button>
+                {!collapsed && (
+                  <div className="model-floating-card__body">
+                    {renderTabComponent(tab)}
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      </div>
 
       <TerminalDrawer
         taskId={activeTaskId}
