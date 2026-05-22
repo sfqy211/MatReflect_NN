@@ -34,15 +34,19 @@ async def pty_websocket(
     # 标记已连接（取消待销毁的 TTL 任务由 _delayed_close 自然处理）
     session._connected = True
 
+    output_task: asyncio.Task | None = None
     try:
         await websocket.send_text(json.dumps({"type": "ready", "session_id": session.session_id}))
 
         async def send_output() -> None:
-            while session._active:
-                data = await session.read_output()
-                if data:
-                    await websocket.send_text(json.dumps({"type": "output", "data": data}))
-                await asyncio.sleep(0.01)
+            try:
+                while session._active:
+                    data = await session.read_output()
+                    if data:
+                        await websocket.send_text(json.dumps({"type": "output", "data": data}))
+                    await asyncio.sleep(0.01)
+            except (WebSocketDisconnect, Exception):
+                pass
         output_task = asyncio.create_task(send_output())
 
         while True:
@@ -59,11 +63,12 @@ async def pty_websocket(
         pass
     finally:
         session._connected = False
-        output_task.cancel()
-        try:
-            await output_task
-        except asyncio.CancelledError:
-            pass
+        if output_task is not None:
+            output_task.cancel()
+            try:
+                await output_task
+            except asyncio.CancelledError:
+                pass
         # 断连后延迟销毁会话，允许前端重连
         asyncio.create_task(_delayed_close(session.session_id, SESSION_TTL))
 
