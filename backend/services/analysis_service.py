@@ -63,6 +63,8 @@ def build_file_item(path: Path) -> FileListItem:
 
 def calc_single_pair(img1: np.ndarray, img2: np.ndarray) -> np.ndarray:
     psnr = metrics.peak_signal_noise_ratio(img1, img2, data_range=255)
+    if not np.isfinite(psnr):
+        psnr = 100.0  # 完全相同的图片，钳位到合理最大值
     try:
         ssim = metrics.structural_similarity(img1, img2, data_range=255, channel_axis=2)
     except TypeError:
