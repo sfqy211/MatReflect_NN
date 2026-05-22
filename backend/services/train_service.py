@@ -6,15 +6,22 @@ import os
 import shutil
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, Optional, TYPE_CHECKING, Union
 
-import shlex
+if TYPE_CHECKING:
+    from backend.models.train import PostActionDef
 
-from backend.core.conda import build_python_runner
+from backend.core.command_renderer import (
+    _build_context,
+    get_operation,
+    render_commands,
+    render_preview,
+    resolve_source,
+)
 from backend.core.config import LOGS_ROOT, PROJECT_ROOT
 from backend.core.runtime_logging import format_command, log_task_message
 from backend.core.threaded_subprocess import process_is_running, run_process_streaming, terminate_process
-from backend.models.common import TaskDetailResponse
+from backend.models.common import TaskDetailResponse, TaskRecord
 from backend.models.train import (
     HyperDecodeRequest,
     HyperExtractRequest,
@@ -22,6 +29,9 @@ from backend.models.train import (
     NeuralH5ConvertRequest,
     NeuralKerasTrainRequest,
     NeuralPytorchTrainRequest,
+    OperationDef,
+    PreviewCommandItem,
+    PreviewCommandResponse,
     ReconstructRequest,
     TrainModelItem,
     TrainModelsResponse,
@@ -43,15 +53,6 @@ def decode_subprocess_output(raw: Optional[Union[bytes, str]]) -> str:
         except UnicodeDecodeError:
             continue
     return raw.decode("utf-8", errors="replace")
-
-
-def ensure_exists(path: Path, *, file_ok: bool = False) -> None:
-    if file_ok:
-        if not path.exists() or not path.is_file():
-            raise FileNotFoundError(path)
-        return
-    if not path.exists() or not path.is_dir():
-        raise FileNotFoundError(path)
 
 
 class TrainService:
@@ -106,6 +107,407 @@ class TrainService:
         items.sort(key=lambda item: item.updated_at, reverse=True)
         return TrainRunsResponse(total=len(items), items=items)
 
+    # ─── 通用操作入口（新） ──────────────────────────────────────────────────
+
+    async def start_operation(
+        self,
+        model_key: str,
+        operation_id: str,
+        params: dict,
+        *,
+        task_type: str = "operation",
+        task_label: str = "",
+        log_path: Optional[Path] = None,
+    ) -> TaskRecord:
+        """通用操作执行入口。
+        
+        Args:
+            model_key: 模型 key
+            operation_id: 操作 ID（如 "train", "extract", "decode", "reconstruct"）
+            params: 请求参数 dict
+            task_type: 任务类型（用于 task_manager.create）
+            task_label: 任务显示标签
+            log_path: 日志路径，为空则自动生成
+        """
+        model = self._get_model(model_key)
+        op = get_operation(model, operation_id)
+        if not op:
+            valid_ops = list(model.operations.keys())
+            raise ValueError(f"模型 {model_key} 未定义操作 '{operation_id}'，可用: {valid_ops}")
+
+        label = task_label or op.label or operation_id
+        effective_log_path = log_path if log_path is not None else LOGS_ROOT / f"{task_type}_{operation_id}_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.log"
+        record = task_manager.create(task_type, f"{model.label} {label} 排队中", log_path=str(effective_log_path))
+        cancel_event = asyncio.Event()
+        self._cancel_events[record.task_id] = cancel_event
+        asyncio.create_task(
+            self._run_operation(record.task_id, model, operation_id, params, effective_log_path, cancel_event, task_label=label)
+        )
+        return record
+
+    def preview_command(
+        self,
+        model_key: str,
+        operation_id: str,
+        params: dict,
+        single_item: Optional[str] = None,
+    ) -> PreviewCommandResponse:
+        """预览操作命令（不执行）。"""
+        model = self._get_model(model_key)
+        preview_items = render_preview(model, operation_id, params, single_item=single_item)
+        commands = []
+        for item in preview_items:
+            commands.append(PreviewCommandItem(
+                step_index=len(commands),
+                step_label=item.get("label", ""),
+                command=item.get("command", []),
+                cwd=item.get("cwd", ""),
+                conda_env=item.get("conda_env", ""),
+            ))
+        return PreviewCommandResponse(
+            model_key=model_key,
+            operation=operation_id,
+            commands=commands,
+            total_commands=len(commands),
+            has_loop=any(cmd.get("item") is not None for cmd in preview_items),
+        )
+
+    # ─── 通用操作执行器 ──────────────────────────────────────────────────────
+
+    async def _run_operation(
+        self,
+        task_id: str,
+        model: TrainModelItem,
+        operation_id: str,
+        params: dict,
+        log_path: Path,
+        cancel_event: asyncio.Event,
+        *,
+        task_label: str = "",
+        progress_start: int = 0,
+        progress_range: int = 95,
+        is_sub_op: bool = False,
+        parent_ctx: Optional[dict] = None,
+    ) -> None:
+        """通用操作执行器，支持单步、多步子操作、post_action、output_transform。
+
+        当 is_sub_op=True 时，表示本操作是子操作链中的一环：
+        - 执行成功时不写 status=success + event=done（由最外层任务统一写）
+        - 执行失败/取消时照常写（整个任务终止）
+        """
+        try:
+            op = get_operation(model, operation_id)
+            if not op:
+                valid_ops = list(model.operations.keys())
+                raise ValueError(f"模型 {model.key} 未定义操作 '{operation_id}'，可用: {valid_ops}")
+
+            label_prefix = task_label or op.label or operation_id
+
+            # ── 多步子操作（Workflow） ──────────────────────────────────────
+            if op.sub_operations:
+                await self._run_sub_operations(
+                    task_id=task_id,
+                    model=model,
+                    operation=op,
+                    params=params,
+                    log_path=log_path,
+                    cancel_event=cancel_event,
+                    task_label=label_prefix,
+                    progress_start=progress_start,
+                    progress_range=progress_range,
+                )
+                # 子操作全部完成后，由最外层 (is_sub_op=False) 写 success/done
+                if not is_sub_op:
+                    payload = self._build_result_payload(model, operation_id, params, [])
+                    payload["sub_operations"] = op.sub_operations
+                    await self._write_log(
+                        task_id, log_path,
+                        f"{label_prefix} 完成。",
+                        status="success", progress=100, event="done",
+                        result_payload=payload,
+                    )
+                return  # 子操作完成后不再执行单步逻辑
+
+            # ── 单步渲染命令 ────────────────────────────────────────────────
+            commands = render_commands(op, model, params)
+            total = len(commands)
+
+            for idx, cmd_info in enumerate(commands):
+                cmd = cmd_info["command"]
+                cwd_str = cmd_info.get("cwd", "")
+                item_name = cmd_info.get("item")
+
+                # Environment
+                env = self._make_env(model)
+                if op.cuda_visible_source:
+                    ctx_for_resolve = _build_context(model, params, op)
+                    cuda_val = resolve_source(op.cuda_visible_source, ctx_for_resolve)
+                    if cuda_val:
+                        env["CUDA_VISIBLE_DEVICES"] = str(cuda_val)
+
+                cwd = Path(cwd_str) if cwd_str else self._working_dir_for(model)
+                progress = progress_start
+                if total > 1:
+                    progress = progress_start + int((idx / total) * progress_range)
+
+                step_label = cmd_info.get("label", f"{label_prefix} [{idx + 1}/{total}]")
+                if item_name:
+                    step_label = f"{label_prefix}: {item_name} [{idx + 1}/{total}]"
+
+                return_code = await self._run_command(
+                    task_id, log_path, cmd,
+                    cwd=cwd, env=env,
+                    progress=progress,
+                    start_message=step_label,
+                    cancel_event=cancel_event,
+                )
+                if return_code == -1:
+                    await self._write_log(task_id, log_path, "任务已取消。", status="cancelled", progress=100, event="done")
+                    return
+                if return_code != 0:
+                    msg = f"操作失败 (exit code: {return_code})"
+                    if item_name:
+                        msg = f"处理 {item_name} 失败 (exit code: {return_code})"
+                    await self._write_log(task_id, log_path, msg, status="failed", progress=100, event="done")
+                    return
+
+            # ── 后处理（Post-actions） ──────────────────────────────────────
+            if op.post_actions:
+                for action in op.post_actions:
+                    try:
+                        await self._run_post_action(
+                            task_id, model, op, params, action, log_path, cancel_event,
+                            progress=progress_start + progress_range,
+                        )
+                    except Exception as exc:
+                        await self._write_log(
+                            task_id, log_path,
+                            f"后处理失败: {exc}", status="failed", progress=100, event="done",
+                        )
+                        return
+
+            # ── 结果 ────────────────────────────────────────────────────────
+            # is_sub_op 时仅写进度更新，不写 success/done（由最外层统一写）
+            if not is_sub_op:
+                payload = self._build_result_payload(model, operation_id, params, commands)
+                await self._write_log(
+                    task_id, log_path,
+                    f"{label_prefix} 完成。",
+                    status="success", progress=100, event="done",
+                    result_payload=payload,
+                )
+            else:
+                await self._write_log(
+                    task_id, log_path,
+                    f"{label_prefix} 完成（子操作）。",
+                    progress=progress_start + progress_range,
+                )
+        except Exception as exc:
+            await self._write_log(task_id, log_path, f"任务失败: {exc}", status="failed", progress=100, event="done")
+        finally:
+            self._cancel_events.pop(task_id, None)
+
+    async def _run_sub_operations(
+        self,
+        task_id: str,
+        model: TrainModelItem,
+        operation: OperationDef,
+        params: dict,
+        log_path: Path,
+        cancel_event: asyncio.Event,
+        *,
+        task_label: str = "",
+        progress_start: int = 0,
+        progress_range: int = 95,
+    ) -> None:
+        """顺序执行子操作链。"""
+        sub_ids = operation.sub_operations
+        sub_count = len(sub_ids)
+        current_params = dict(params)
+
+        for idx, sub_id in enumerate(sub_ids):
+            sub_op = get_operation(model, sub_id)
+            if not sub_op:
+                await self._write_log(
+                    task_id, log_path,
+                    f"子操作 '{sub_id}' 未定义（模型: {model.key}）",
+                    status="failed", progress=100, event="done",
+                )
+                return
+
+            sub_range = progress_range // sub_count
+            sub_start = progress_start + idx * sub_range
+
+            # 应用 output_transform（用于子操作间数据传递）
+            if idx > 0 and operation.output_transform_type:
+                transformed = self._apply_output_transform(
+                    operation, sub_id, current_params, model
+                )
+                if transformed:
+                    current_params.update(transformed)
+
+            sub_label = f"{task_label}/{sub_op.label}" if task_label else sub_op.label
+
+            await self._write_log(
+                task_id, log_path,
+                f"[{idx + 1}/{sub_count}] 开始子操作: {sub_label}",
+                progress=sub_start,
+            )
+
+            await self._run_operation(
+                task_id=task_id,
+                model=model,
+                operation_id=sub_id,
+                params=current_params,
+                log_path=log_path,
+                cancel_event=cancel_event,
+                task_label=sub_label,
+                progress_start=sub_start,
+                progress_range=sub_range,
+                is_sub_op=True,
+                parent_ctx={"params": current_params},
+            )
+
+            # Check if cancelled/failed after sub operation
+            record = task_manager.get(task_id)
+            if record and record.status in ("cancelled", "failed"):
+                return
+
+        # 子操作全部完成 — 仅写进度，不写 event=done（由最外层 _run_operation 的 is_sub_op=False 负责）
+        await self._write_log(
+            task_id, log_path,
+            f"{task_label} 所有子操作完成。" if task_label else "所有子操作完成。",
+            progress=progress_start + progress_range,
+        )
+
+    def _apply_output_transform(
+        self,
+        operation: OperationDef,
+        next_sub_id: str,
+        current_params: dict,
+        model: TrainModelItem,
+    ) -> dict:
+        """应用 output_transform 在子操作间传递数据。
+        
+        当前支持：
+        - selected_materials_to_pt: selected_materials → .pt 文件名列表，设为对应子操作的 loop_source
+        
+        遇到未知 transform_type 时显式抛错，避免配置错误悄悄通过。
+        """
+        transform_type = operation.output_transform_type
+        if not transform_type:
+            return {}
+
+        if transform_type == "selected_materials_to_pt":
+            selected = current_params.get("selected_materials", [])
+            if not selected:
+                return {}
+            pt_names = [f"{Path(m).stem}.pt" for m in selected]
+            # 确定 pt_dir：使用 default_paths.extract_dir 或 output_dir
+            pt_dir = model.default_paths.get("extract_dir", "")
+            if not pt_dir:
+                pt_dir = current_params.get("output_dir", "")
+            return {
+                "selected_pts": pt_names,
+                "pt_dir": pt_dir,
+            }
+
+        raise ValueError(
+            f"未知的 output_transform_type: '{transform_type}'。"
+            f"模型 {model.key} 操作中定义了不支持的转换类型。"
+        )
+
+    async def _run_post_action(
+        self,
+        task_id: str,
+        model: TrainModelItem,
+        operation: OperationDef,
+        params: dict,
+        action: "PostActionDef",
+        log_path: Path,
+        cancel_event: asyncio.Event,
+        *,
+        progress: int = 90,
+    ) -> None:
+        """执行操作后处理（如 move_files）。
+        
+        注意：当前 post_action 中的 pattern 占位符使用 Python str.replace 风格
+        （{item} / {item.stem}），而非 command_renderer 的 {{var}} 模板语法。
+        若未来需要统一，建议将 post_action 的 pattern 也迁移至 {{var}} 语法。
+        """
+        if action.type == "move_files":
+            ctx = _build_context(model, params, operation)
+            source_dir_str = resolve_source(action.source_dir_source, ctx) if action.source_dir_source else ""
+            dest_dir_str = resolve_source(action.dest_dir_source, ctx) if action.dest_dir_source else ""
+
+            if not dest_dir_str:
+                await self._write_log(task_id, log_path, "后处理: 目标目录为空，跳过。", progress=progress)
+                return
+
+            source_dir = Path(source_dir_str) if source_dir_str else self._working_dir_for(model)
+            dest_dir = Path(dest_dir_str)
+            if not dest_dir.is_absolute():
+                dest_dir = (PROJECT_ROOT / dest_dir).resolve()
+
+            # 遍历每个 loop 项，移动对应的文件
+            loop_source = operation.loop_source
+            items = params.get(loop_source.replace("request.", ""), []) if loop_source else []
+            if not items and operation.merge_inputs:
+                items = params.get("selected_materials", [])
+
+            dest_dir.mkdir(parents=True, exist_ok=True)
+            moved_count = 0
+            for item_name in items:
+                item_stem = Path(item_name).stem if item_name else ""
+                for pattern in action.patterns:
+                    resolved_pattern = pattern.replace("{item.stem}", item_stem).replace("{item}", str(item_name))
+                    for f in source_dir.glob(resolved_pattern):
+                        dest_path = dest_dir / f.name
+                        shutil.move(str(f), str(dest_path))
+                        moved_count += 1
+                        await self._write_log(
+                            task_id, log_path,
+                            f"归档: {f.name} → {dest_dir}",
+                            progress=progress,
+                        )
+
+            if moved_count == 0:
+                await self._write_log(
+                    task_id, log_path,
+                    f"后处理: 没有匹配的文件（模式: {action.patterns}）",
+                    progress=progress,
+                )
+            else:
+                await self._write_log(
+                    task_id, log_path,
+                    f"后处理完成: 已移动 {moved_count} 个文件",
+                    progress=progress,
+                )
+
+    def _build_result_payload(
+        self,
+        model: TrainModelItem,
+        operation_id: str,
+        params: dict,
+        commands: list[dict],
+    ) -> dict:
+        """构建通用结果 payload。"""
+        payload: dict = {
+            "model_key": model.key,
+            "operation": operation_id,
+        }
+        # 尝试提取输出目录
+        for key in ("output_dir", "npy_output_dir", "h5_output_dir"):
+            val = params.get(key)
+            if val:
+                payload[key] = str(val)
+                break
+        # 如果有子操作，标记完成
+        op = get_operation(model, operation_id)
+        if op and op.sub_operations:
+            payload["sub_operations"] = op.sub_operations
+        return payload
+
     def get_task_detail(self, task_id: str, limit: int = 200) -> Optional[TaskDetailResponse]:
         record = task_manager.get(task_id)
         if record is None:
@@ -129,76 +531,161 @@ class TrainService:
         return True
 
     async def start_neural_pytorch(self, request: NeuralPytorchTrainRequest):
+        """旧端点包装：转换为通用操作 (train)。"""
         model = self._require_model_adapter(request.model_key, "neural-pytorch")
+        params = {
+            "merl_dir": request.merl_dir,
+            "selected_materials": request.selected_materials,
+            "epochs": request.epochs,
+            "output_dir": request.output_dir,
+            "device": request.device,
+        }
         log_path = LOGS_ROOT / f"train_neural_pytorch_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.log"
-        record = task_manager.create("train_neural_pytorch", f"{model.label} queued", log_path=str(log_path))
-        cancel_event = asyncio.Event()
-        self._cancel_events[record.task_id] = cancel_event
-        asyncio.create_task(self._run_neural_pytorch(record.task_id, model, request, log_path, cancel_event))
-        return record
+        return await self.start_operation(
+            model_key=request.model_key,
+            operation_id="train",
+            params=params,
+            task_type="train_neural_pytorch",
+            task_label="训练 (PyTorch)",
+            log_path=log_path,
+        )
 
     async def start_neural_keras(self, request: NeuralKerasTrainRequest):
+        """旧端点包装：转换为通用操作 (train)。"""
         model = self._require_model_adapter(request.model_key, "neural-keras")
+        params = {
+            "merl_dir": request.merl_dir,
+            "selected_materials": request.selected_materials,
+            "cuda_device": request.cuda_device,
+            "h5_output_dir": request.h5_output_dir,
+            "npy_output_dir": request.npy_output_dir,
+        }
         log_path = LOGS_ROOT / f"train_neural_keras_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.log"
-        record = task_manager.create("train_neural_keras", f"{model.label} queued", log_path=str(log_path))
-        cancel_event = asyncio.Event()
-        self._cancel_events[record.task_id] = cancel_event
-        asyncio.create_task(self._run_neural_keras(record.task_id, model, request, log_path, cancel_event))
-        return record
+        return await self.start_operation(
+            model_key=request.model_key,
+            operation_id="train",
+            params=params,
+            task_type="train_neural_keras",
+            task_label="训练 (Keras)",
+            log_path=log_path,
+        )
 
     async def start_neural_h5_convert(self, request: NeuralH5ConvertRequest):
+        """旧端点包装：转换为通用操作 (convert)。"""
         model = self._require_model_adapter(request.model_key, "neural-keras")
+        params = {
+            "h5_dir": request.h5_dir,
+            "selected_h5_files": request.selected_h5_files,
+            "npy_output_dir": request.npy_output_dir,
+        }
         log_path = LOGS_ROOT / f"train_neural_h5_convert_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.log"
-        record = task_manager.create("train_neural_h5_convert", f"{model.label} h5 conversion queued", log_path=str(log_path))
-        cancel_event = asyncio.Event()
-        self._cancel_events[record.task_id] = cancel_event
-        asyncio.create_task(self._run_neural_h5_convert(record.task_id, model, request, log_path, cancel_event))
-        return record
+        return await self.start_operation(
+            model_key=request.model_key,
+            operation_id="convert",
+            params=params,
+            task_type="train_neural_h5_convert",
+            task_label="H5→NPY 转换",
+            log_path=log_path,
+        )
 
     async def start_hyper_run(self, request: HyperTrainRunRequest):
+        """旧端点包装：转换为通用操作 (train)。"""
         model = self._require_model_adapter(request.model_key, "hyper-family")
         if not model.supports_training:
             raise ValueError(f"模型不支持训练: {model.key}")
+        params = {
+            "merl_dir": request.merl_dir,
+            "output_dir": request.output_dir,
+            "dataset": request.dataset,
+            "epochs": request.epochs,
+            "sparse_samples": request.sparse_samples,
+            "kl_weight": request.kl_weight,
+            "fw_weight": request.fw_weight,
+            "lr": request.lr,
+            "keepon": request.keepon,
+            "train_subset": request.train_subset,
+            "train_seed": request.train_seed,
+        }
         log_path = LOGS_ROOT / f"train_hyper_run_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.log"
-        record = task_manager.create("train_hyper_run", f"{model.label} training queued", log_path=str(log_path))
-        cancel_event = asyncio.Event()
-        self._cancel_events[record.task_id] = cancel_event
-        asyncio.create_task(self._run_hyper_train(record.task_id, model, request, log_path, cancel_event))
-        return record
+        return await self.start_operation(
+            model_key=request.model_key,
+            operation_id="train",
+            params=params,
+            task_type="train_hyper_run",
+            task_label="训练 (HyperBRDF)",
+            log_path=log_path,
+        )
 
     async def start_hyper_extract(self, request: HyperExtractRequest):
+        """旧端点包装：转换为通用操作 (extract)。"""
         model = self._require_model_adapter(request.model_key, "hyper-family")
         if not model.supports_extract:
             raise ValueError(f"模型不支持参数提取: {model.key}")
+        params = {
+            "merl_dir": request.merl_dir,
+            "selected_materials": request.selected_materials,
+            "checkpoint_path": request.model_path,  # 统一命名到 checkpoint_path
+            "output_dir": request.output_dir,
+            "dataset": request.dataset,
+            "sparse_samples": request.sparse_samples,
+        }
         log_path = LOGS_ROOT / f"train_hyper_extract_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.log"
-        record = task_manager.create("train_hyper_extract", f"{model.label} extraction queued", log_path=str(log_path))
-        cancel_event = asyncio.Event()
-        self._cancel_events[record.task_id] = cancel_event
-        asyncio.create_task(self._run_hyper_extract(record.task_id, model, request, log_path, cancel_event))
-        return record
+        return await self.start_operation(
+            model_key=request.model_key,
+            operation_id="extract",
+            params=params,
+            task_type="train_hyper_extract",
+            task_label="参数提取",
+            log_path=log_path,
+        )
 
     async def start_hyper_decode(self, request: HyperDecodeRequest):
+        """旧端点包装：转换为通用操作 (decode)。"""
         model = self._require_model_adapter(request.model_key, "hyper-family")
         if not model.supports_decode:
             raise ValueError(f"模型不支持 fullbin 解码: {model.key}")
+        params = {
+            "pt_dir": request.pt_dir,
+            "selected_pts": request.selected_pts,
+            "output_dir": request.output_dir,
+            "dataset": request.dataset,
+            "cuda_device": request.cuda_device,
+        }
         log_path = LOGS_ROOT / f"train_hyper_decode_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.log"
-        record = task_manager.create("train_hyper_decode", f"{model.label} decode queued", log_path=str(log_path))
-        cancel_event = asyncio.Event()
-        self._cancel_events[record.task_id] = cancel_event
-        asyncio.create_task(self._run_hyper_decode(record.task_id, model, request, log_path, cancel_event))
-        return record
+        return await self.start_operation(
+            model_key=request.model_key,
+            operation_id="decode",
+            params=params,
+            task_type="train_hyper_decode",
+            task_label="FullBin 解码",
+            log_path=log_path,
+        )
 
     async def start_reconstruct(self, request: ReconstructRequest):
-        """启动重建任务（从模型管理页调用）。"""
+        """旧端点包装：转换为通用操作 (reconstruct)。"""
         model = self._get_model(request.model_key)
         if not model.supports_reconstruction:
             raise ValueError(f"模型不支持重建: {model.key}")
+        params = {
+            "checkpoint_path": request.checkpoint_path,
+            "merl_dir": request.merl_dir,
+            "output_dir": request.output_dir,
+            "selected_materials": request.selected_materials,
+            "dataset": request.dataset,
+            "sparse_samples": request.sparse_samples,
+            "cuda_device": request.cuda_device,
+            "neural_device": request.neural_device,
+            "neural_epochs": request.neural_epochs,
+        }
         log_path = LOGS_ROOT / f"reconstruct_{request.model_key}_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.log"
-        record = task_manager.create("reconstruct", f"{model.label} 重建排队中", log_path=str(log_path))
-        cancel_event = asyncio.Event()
-        self._cancel_events[record.task_id] = cancel_event
-        asyncio.create_task(self._run_reconstruct(record.task_id, model, request, log_path, cancel_event))
-        return record
+        return await self.start_operation(
+            model_key=request.model_key,
+            operation_id="reconstruct",
+            params=params,
+            task_type="reconstruct",
+            task_label="重建",
+            log_path=log_path,
+        )
 
     def _get_model(self, model_key: str) -> TrainModelItem:
         return model_registry_service.get_model(model_key)
@@ -296,9 +783,6 @@ class TrainService:
         env["PYTHONPATH"] = os.pathsep.join(part for part in pythonpath_parts if part)
         return env
 
-    def _python_runner(self, conda_env: Optional[str] = None) -> tuple[list[str], bool]:
-        return build_python_runner(conda_env)
-
     def _resolve_project_path(self, path_value: str, *, must_exist: bool) -> Path:
         raw_path = Path(path_value)
         candidate = raw_path if raw_path.is_absolute() else PROJECT_ROOT / raw_path
@@ -321,750 +805,11 @@ class TrainService:
             return self._resolve_project_path(train_script, must_exist=True).parent
         return PROJECT_ROOT
 
-    def _supports_sparse_samples(self, model: TrainModelItem) -> bool:
-        return model.adapter == "hyper-family"
-
-    async def _run_neural_pytorch(
-        self,
-        task_id: str,
-        model: TrainModelItem,
-        request: NeuralPytorchTrainRequest,
-        log_path: Path,
-        cancel_event: asyncio.Event,
-    ) -> None:
-        try:
-            merl_dir = Path(request.merl_dir).resolve()
-            ensure_exists(merl_dir)
-            if not request.selected_materials:
-                raise ValueError("未选择材质文件。")
-            output_dir = Path(request.output_dir).resolve()
-            output_dir.mkdir(parents=True, exist_ok=True)
-
-            train_script = self._resolve_project_path(model.runtime["train_script"], must_exist=True)
-            relative_parent = str(train_script.parent.relative_to(PROJECT_ROOT))
-            env = self._make_env(model, include_script_parent=relative_parent)
-            runner, _ = self._python_runner(model.runtime.get("conda_env", "").strip())
-
-            total = len(request.selected_materials)
-            generated: list[str] = []
-            for index, material in enumerate(request.selected_materials):
-                material_path = merl_dir / material
-                ensure_exists(material_path, file_ok=True)
-                cmd = [
-                    *runner,
-                    str(train_script),
-                    str(material_path),
-                    "--outpath",
-                    str(output_dir),
-                    "--epochs",
-                    str(request.epochs),
-                    "--device",
-                    request.device,
-                ]
-                return_code = await self._run_command(
-                    task_id,
-                    log_path,
-                    cmd,
-                    cwd=self._working_dir_for(model),
-                    env=env,
-                    progress=min(95, int(index / total * 100)),
-                    start_message=f"[{index + 1}/{total}] Start {model.label}: {material}",
-                    cancel_event=cancel_event,
-                )
-                if return_code == -1:
-                    await self._write_log(task_id, log_path, "Task cancelled.", status="cancelled", progress=100, event="done")
-                    return
-                if return_code != 0:
-                    await self._write_log(
-                        task_id,
-                        log_path,
-                        f"Training failed for {material} (exit code: {return_code}).",
-                        status="failed",
-                        progress=100,
-                        event="done",
-                    )
-                    return
-                generated.append(material_path.stem)
-
-            await self._write_log(
-                task_id,
-                log_path,
-                f"{model.label} training completed.",
-                status="success",
-                progress=100,
-                event="done",
-                result_payload={"output_dir": str(output_dir), "materials": generated, "model_key": model.key},
-            )
-        except Exception as exc:
-            await self._write_log(task_id, log_path, f"Training task failed: {exc}", status="failed", progress=100, event="done")
-        finally:
-            self._cancel_events.pop(task_id, None)
-
-    async def _run_neural_keras(
-        self,
-        task_id: str,
-        model: TrainModelItem,
-        request: NeuralKerasTrainRequest,
-        log_path: Path,
-        cancel_event: asyncio.Event,
-    ) -> None:
-        try:
-            merl_dir = Path(request.merl_dir).resolve()
-            ensure_exists(merl_dir)
-            if not request.selected_materials:
-                raise ValueError("未选择材质文件。")
-            h5_output_dir = Path(request.h5_output_dir).resolve()
-            npy_output_dir = Path(request.npy_output_dir).resolve()
-            h5_output_dir.mkdir(parents=True, exist_ok=True)
-            npy_output_dir.mkdir(parents=True, exist_ok=True)
-
-            train_script = self._resolve_project_path(model.runtime["train_script"], must_exist=True)
-            convert_script = self._resolve_project_path(model.runtime["convert_script"], must_exist=True)
-            relative_parent = str(train_script.parent.relative_to(PROJECT_ROOT))
-            env = self._make_env(model, include_script_parent=relative_parent)
-            env["CUDA_VISIBLE_DEVICES"] = request.cuda_device
-            runner, _ = self._python_runner(model.runtime.get("conda_env", "").strip())
-
-            binary_paths = [str((merl_dir / material).resolve()) for material in request.selected_materials]
-            for binary_path in binary_paths:
-                ensure_exists(Path(binary_path), file_ok=True)
-
-            train_cmd = [*runner, str(train_script), *binary_paths, "--cuda_device", request.cuda_device]
-            train_return = await self._run_command(
-                task_id,
-                log_path,
-                train_cmd,
-                cwd=self._working_dir_for(model),
-                env=env,
-                progress=15,
-                start_message=f"Start {model.label} training.",
-                cancel_event=cancel_event,
-            )
-            if train_return == -1:
-                await self._write_log(task_id, log_path, "Task cancelled.", status="cancelled", progress=100, event="done")
-                return
-            if train_return != 0:
-                await self._write_log(
-                    task_id,
-                    log_path,
-                    f"Keras training failed (exit code: {train_return}).",
-                    status="failed",
-                    progress=100,
-                    event="done",
-                )
-                return
-
-            h5_paths: list[str] = []
-            work_dir = self._working_dir_for(model)
-            for material in request.selected_materials:
-                basename = Path(material).stem
-                src_h5 = work_dir / f"{basename}.h5"
-                src_json = work_dir / f"{basename}.json"
-                src_loss = work_dir / f"lossplot_{basename}.png"
-                target_h5 = h5_output_dir / f"{basename}.h5"
-                if src_h5.exists():
-                    shutil.move(str(src_h5), str(target_h5))
-                    if src_json.exists():
-                        shutil.move(str(src_json), str(h5_output_dir / f"{basename}.json"))
-                    if src_loss.exists():
-                        shutil.move(str(src_loss), str(h5_output_dir / f"lossplot_{basename}.png"))
-                    h5_paths.append(str(target_h5))
-                    await self._write_log(task_id, log_path, f"Archived intermediate file: {basename}.h5", progress=45)
-
-            if not h5_paths:
-                await self._write_log(
-                    task_id,
-                    log_path,
-                    "Training completed but no .h5 outputs were found.",
-                    status="failed",
-                    progress=100,
-                    event="done",
-                )
-                return
-
-            convert_cmd = [*runner, str(convert_script), *h5_paths, "--destdir", str(npy_output_dir)]
-            convert_return = await self._run_command(
-                task_id,
-                log_path,
-                convert_cmd,
-                cwd=self._working_dir_for(model),
-                env=env,
-                progress=65,
-                start_message=f"Start {model.label} h5 -> npy conversion.",
-                cancel_event=cancel_event,
-            )
-            if convert_return == -1:
-                await self._write_log(task_id, log_path, "Task cancelled.", status="cancelled", progress=100, event="done")
-                return
-            if convert_return != 0:
-                await self._write_log(
-                    task_id,
-                    log_path,
-                    f"h5 -> npy conversion failed (exit code: {convert_return}).",
-                    status="failed",
-                    progress=100,
-                    event="done",
-                )
-                return
-
-            await self._write_log(
-                task_id,
-                log_path,
-                f"{model.label} training and conversion completed.",
-                status="success",
-                progress=100,
-                event="done",
-                result_payload={
-                    "h5_output_dir": str(h5_output_dir),
-                    "npy_output_dir": str(npy_output_dir),
-                    "count": len(h5_paths),
-                    "model_key": model.key,
-                },
-            )
-        except Exception as exc:
-            await self._write_log(task_id, log_path, f"Training task failed: {exc}", status="failed", progress=100, event="done")
-        finally:
-            self._cancel_events.pop(task_id, None)
-
-    async def _run_neural_h5_convert(
-        self,
-        task_id: str,
-        model: TrainModelItem,
-        request: NeuralH5ConvertRequest,
-        log_path: Path,
-        cancel_event: asyncio.Event,
-    ) -> None:
-        try:
-            h5_dir = Path(request.h5_dir).resolve()
-            npy_output_dir = Path(request.npy_output_dir).resolve()
-            ensure_exists(h5_dir)
-            if not request.selected_h5_files:
-                raise ValueError("No .h5 files selected.")
-            npy_output_dir.mkdir(parents=True, exist_ok=True)
-
-            convert_script = self._resolve_project_path(model.runtime["convert_script"], must_exist=True)
-            env = self._make_env(model, include_script_parent=str(convert_script.parent.relative_to(PROJECT_ROOT)))
-            conda_env = request.conda_env.strip() or model.runtime.get("conda_env", "").strip()
-            runner, _ = self._python_runner(conda_env)
-
-            h5_paths: list[str] = []
-            for file_name in request.selected_h5_files:
-                h5_path = h5_dir / file_name
-                ensure_exists(h5_path, file_ok=True)
-                h5_paths.append(str(h5_path))
-
-            convert_cmd = [*runner, str(convert_script), *h5_paths, "--destdir", str(npy_output_dir)]
-            convert_return = await self._run_command(
-                task_id,
-                log_path,
-                convert_cmd,
-                cwd=self._working_dir_for(model),
-                env=env,
-                progress=25,
-                start_message=f"Start {model.label} h5 -> npy conversion.",
-                cancel_event=cancel_event,
-            )
-            if convert_return == -1:
-                await self._write_log(task_id, log_path, "Task cancelled.", status="cancelled", progress=100, event="done")
-                return
-            if convert_return != 0:
-                await self._write_log(
-                    task_id,
-                    log_path,
-                    f"h5 -> npy conversion failed (exit code: {convert_return}).",
-                    status="failed",
-                    progress=100,
-                    event="done",
-                )
-                return
-
-            await self._write_log(
-                task_id,
-                log_path,
-                f"{model.label} h5 conversion completed.",
-                status="success",
-                progress=100,
-                event="done",
-                result_payload={
-                    "h5_dir": str(h5_dir),
-                    "npy_output_dir": str(npy_output_dir),
-                    "count": len(h5_paths),
-                    "model_key": model.key,
-                },
-            )
-        except Exception as exc:
-            await self._write_log(task_id, log_path, f"Conversion task failed: {exc}", status="failed", progress=100, event="done")
-        finally:
-            self._cancel_events.pop(task_id, None)
-
-    async def _run_hyper_train(
-        self,
-        task_id: str,
-        model: TrainModelItem,
-        request: HyperTrainRunRequest,
-        log_path: Path,
-        cancel_event: asyncio.Event,
-    ) -> None:
-        try:
-            merl_dir = Path(request.merl_dir).resolve()
-            output_dir = Path(request.output_dir).resolve()
-            ensure_exists(merl_dir)
-            output_dir.mkdir(parents=True, exist_ok=True)
-
-            train_script = self._resolve_project_path(model.runtime["train_script"], must_exist=True)
-            env = self._make_env(model)
-            conda_env = request.conda_env.strip() or model.runtime.get("conda_env", "").strip()
-            runner, _ = self._python_runner(conda_env)
-
-            cmd = [
-                *runner,
-                str(train_script),
-                "--destdir",
-                str(output_dir),
-                "--binary",
-                str(merl_dir),
-                "--dataset",
-                request.dataset,
-                "--epochs",
-                str(request.epochs),
-                "--sparse_samples",
-                str(request.sparse_samples),
-                "--kl_weight",
-                str(request.kl_weight),
-                "--fw_weight",
-                str(request.fw_weight),
-                "--lr",
-                str(request.lr),
-                "--train_subset",
-                str(request.train_subset),
-                "--train_seed",
-                str(request.train_seed),
-            ]
-            if request.keepon:
-                cmd.append("--keepon")
-
-            return_code = await self._run_command(
-                task_id,
-                log_path,
-                cmd,
-                cwd=self._working_dir_for(model),
-                env=env,
-                progress=5,
-                start_message=f"Start {model.label} training.",
-                cancel_event=cancel_event,
-            )
-            if return_code == -1:
-                await self._write_log(task_id, log_path, "Task cancelled.", status="cancelled", progress=100, event="done")
-                return
-            if return_code != 0:
-                await self._write_log(
-                    task_id,
-                    log_path,
-                    f"Training failed (exit code: {return_code}).",
-                    status="failed",
-                    progress=100,
-                    event="done",
-                )
-                return
-
-            await self._write_log(
-                task_id,
-                log_path,
-                f"{model.label} training completed.",
-                status="success",
-                progress=100,
-                event="done",
-                result_payload={"output_dir": str(output_dir), "model_key": model.key},
-            )
-        except Exception as exc:
-            await self._write_log(task_id, log_path, f"Training task failed: {exc}", status="failed", progress=100, event="done")
-        finally:
-            self._cancel_events.pop(task_id, None)
-
-    async def _run_hyper_extract(
-        self,
-        task_id: str,
-        model: TrainModelItem,
-        request: HyperExtractRequest,
-        log_path: Path,
-        cancel_event: asyncio.Event,
-    ) -> None:
-        try:
-            merl_dir = Path(request.merl_dir).resolve()
-            model_path = Path(request.model_path).resolve()
-            output_dir = Path(request.output_dir).resolve()
-            ensure_exists(merl_dir)
-            ensure_exists(model_path, file_ok=True)
-            if request.dataset == "MERL" and not request.selected_materials:
-                raise ValueError("未选择材质文件。")
-            output_dir.mkdir(parents=True, exist_ok=True)
-
-            extract_script = self._resolve_project_path(model.runtime["extract_script"], must_exist=True)
-            env = self._make_env(model)
-            conda_env = request.conda_env.strip() or model.runtime.get("conda_env", "").strip()
-            runner, _ = self._python_runner(conda_env)
-
-            if request.dataset == "EPFL":
-                cmd = [
-                    *runner,
-                    str(extract_script),
-                    "--model",
-                    str(model_path),
-                    "--binary",
-                    str(merl_dir),
-                    "--destdir",
-                    str(output_dir),
-                    "--dataset",
-                    "EPFL",
-                ]
-                if self._supports_sparse_samples(model):
-                    cmd.extend(["--sparse_samples", str(request.sparse_samples)])
-                return_code = await self._run_command(
-                    task_id,
-                    log_path,
-                    cmd,
-                    cwd=self._working_dir_for(model),
-                    env=env,
-                    progress=10,
-                    start_message=f"Start {model.label} extraction for EPFL.",
-                    cancel_event=cancel_event,
-                )
-                if return_code == -1:
-                    await self._write_log(task_id, log_path, "Task cancelled.", status="cancelled", progress=100, event="done")
-                    return
-                if return_code != 0:
-                    await self._write_log(
-                        task_id,
-                        log_path,
-                        f"Extraction failed (exit code: {return_code}).",
-                        status="failed",
-                        progress=100,
-                        event="done",
-                    )
-                    return
-                processed = ["EPFL"]
-            else:
-                processed = []
-                total = len(request.selected_materials)
-                for index, material in enumerate(request.selected_materials):
-                    binary_path = merl_dir / material
-                    ensure_exists(binary_path, file_ok=True)
-                    cmd = [
-                        *runner,
-                        str(extract_script),
-                        "--model",
-                        str(model_path),
-                        "--binary",
-                        str(binary_path),
-                        "--destdir",
-                        str(output_dir),
-                        "--dataset",
-                        "MERL",
-                    ]
-                    if self._supports_sparse_samples(model):
-                        cmd.extend(["--sparse_samples", str(request.sparse_samples)])
-                    return_code = await self._run_command(
-                        task_id,
-                        log_path,
-                        cmd,
-                        cwd=self._working_dir_for(model),
-                        env=env,
-                        progress=min(95, int(index / total * 100)),
-                        start_message=f"[{index + 1}/{total}] Extract parameters: {material}",
-                        cancel_event=cancel_event,
-                    )
-                    if return_code == -1:
-                        await self._write_log(task_id, log_path, "Task cancelled.", status="cancelled", progress=100, event="done")
-                        return
-                    if return_code != 0:
-                        await self._write_log(
-                            task_id,
-                            log_path,
-                            f"Extraction failed for {material} (exit code: {return_code}).",
-                            status="failed",
-                            progress=100,
-                            event="done",
-                        )
-                        return
-                    processed.append(material)
-
-            await self._write_log(
-                task_id,
-                log_path,
-                f"{model.label} extraction completed.",
-                status="success",
-                progress=100,
-                event="done",
-                result_payload={"output_dir": str(output_dir), "model_key": model.key, "processed": processed},
-            )
-        except Exception as exc:
-            await self._write_log(task_id, log_path, f"Extraction task failed: {exc}", status="failed", progress=100, event="done")
-        finally:
-            self._cancel_events.pop(task_id, None)
-
-    async def _run_hyper_decode(
-        self,
-        task_id: str,
-        model: TrainModelItem,
-        request: HyperDecodeRequest,
-        log_path: Path,
-        cancel_event: asyncio.Event,
-    ) -> None:
-        try:
-            pt_dir = Path(request.pt_dir).resolve()
-            output_dir = Path(request.output_dir).resolve()
-            ensure_exists(pt_dir)
-            if not request.selected_pts:
-                raise ValueError("未选择 .pt 文件。")
-            output_dir.mkdir(parents=True, exist_ok=True)
-
-            decode_script = self._resolve_project_path(model.runtime["decode_script"], must_exist=True)
-            env = self._make_env(model)
-            env["CUDA_VISIBLE_DEVICES"] = request.cuda_device
-            conda_env = request.conda_env.strip() or model.runtime.get("conda_env", "").strip()
-            runner, _ = self._python_runner(conda_env)
-
-            total = len(request.selected_pts)
-            processed: list[str] = []
-            for index, pt_name in enumerate(request.selected_pts):
-                pt_path = pt_dir / pt_name
-                ensure_exists(pt_path, file_ok=True)
-                cmd = [
-                    *runner,
-                    str(decode_script),
-                    str(pt_path),
-                    str(output_dir),
-                    "--dataset",
-                    request.dataset,
-                    "--cuda_device",
-                    request.cuda_device,
-                ]
-                return_code = await self._run_command(
-                    task_id,
-                    log_path,
-                    cmd,
-                    cwd=self._working_dir_for(model),
-                    env=env,
-                    progress=min(95, int(index / total * 100)),
-                    start_message=f"[{index + 1}/{total}] Decode fullbin: {pt_name}",
-                    cancel_event=cancel_event,
-                )
-                if return_code == -1:
-                    await self._write_log(task_id, log_path, "Task cancelled.", status="cancelled", progress=100, event="done")
-                    return
-                if return_code != 0:
-                    await self._write_log(
-                        task_id,
-                        log_path,
-                        f"Decode failed for {pt_name} (exit code: {return_code}).",
-                        status="failed",
-                        progress=100,
-                        event="done",
-                    )
-                    return
-                processed.append(pt_name)
-
-            await self._write_log(
-                task_id,
-                log_path,
-                f"{model.label} decode completed.",
-                status="success",
-                progress=100,
-                event="done",
-                result_payload={"output_dir": str(output_dir), "model_key": model.key, "processed": processed},
-            )
-        except Exception as exc:
-            await self._write_log(task_id, log_path, f"Decode task failed: {exc}", status="failed", progress=100, event="done")
-        finally:
-            self._cancel_events.pop(task_id, None)
-
-    async def _run_reconstruct(
-        self,
-        task_id: str,
-        model: TrainModelItem,
-        request: ReconstructRequest,
-        log_path: Path,
-        cancel_event: asyncio.Event,
-    ) -> None:
-        """执行重建任务。根据模型适配器分派不同的重建逻辑。"""
-        try:
-            merl_dir = Path(request.merl_dir).resolve()
-            ensure_exists(merl_dir)
-            if not request.selected_materials:
-                raise ValueError("未选择材质文件。")
-
-            if model.adapter == "neural-pytorch":
-                output_dir = Path(request.output_dir or "data/inputs/npy").resolve()
-                output_dir.mkdir(parents=True, exist_ok=True)
-
-                train_script = self._resolve_project_path(model.runtime["train_script"], must_exist=True)
-                relative_parent = str(train_script.parent.relative_to(PROJECT_ROOT))
-                env = self._make_env(model, include_script_parent=relative_parent)
-                conda_env = request.conda_env.strip() or model.runtime.get("conda_env", "").strip()
-                runner, _ = self._python_runner(conda_env)
-
-                total = len(request.selected_materials)
-                generated: list[str] = []
-                for index, material in enumerate(request.selected_materials):
-                    material_path = merl_dir / material
-                    ensure_exists(material_path, file_ok=True)
-                    cmd = [
-                        *runner,
-                        str(train_script),
-                        str(material_path),
-                        "--outpath",
-                        str(output_dir),
-                        "--epochs",
-                        str(request.neural_epochs),
-                        "--device",
-                        request.neural_device,
-                    ]
-                    return_code = await self._run_command(
-                        task_id, log_path, cmd,
-                        cwd=self._working_dir_for(model), env=env,
-                        progress=min(95, int(index / total * 100)),
-                        start_message=f"[{index + 1}/{total}] 重建 {model.label}: {material}",
-                        cancel_event=cancel_event,
-                    )
-                    if return_code == -1:
-                        await self._write_log(task_id, log_path, "Task cancelled.", status="cancelled", progress=100, event="done")
-                        return
-                    if return_code != 0:
-                        await self._write_log(task_id, log_path, f"重建失败: {material} (exit code: {return_code})", status="failed", progress=100, event="done")
-                        return
-                    generated.append(material_path.stem)
-
-                await self._write_log(task_id, log_path, f"{model.label} 重建完成。", status="success", progress=100, event="done",
-                    result_payload={"output_dir": str(output_dir), "model_key": model.key, "materials": generated})
-
-            elif model.adapter == "hyper-family":
-                # HyperBRDF 重建 = extract + decode
-                checkpoint_path = Path(request.checkpoint_path).resolve() if request.checkpoint_path else None
-                if not checkpoint_path or not checkpoint_path.exists():
-                    raise ValueError("HyperBRDF 重建需要有效的 Checkpoint 路径")
-
-                extract_dir = Path(model.default_paths.get("extract_dir", "models/HyperBRDF/results/extracted_pts")).resolve()
-                extract_dir.mkdir(parents=True, exist_ok=True)
-                fullbin_output_dir = Path(request.output_dir or "data/inputs/fullbin").resolve()
-                fullbin_output_dir.mkdir(parents=True, exist_ok=True)
-
-                # Step 1: Extract
-                extract_script = self._resolve_project_path(model.runtime["extract_script"], must_exist=True)
-                env = self._make_env(model)
-                conda_env = request.conda_env.strip() or model.runtime.get("conda_env", "").strip()
-                runner, _ = self._python_runner(conda_env)
-
-                total = len(request.selected_materials)
-                pt_files: list[str] = []
-                for index, material in enumerate(request.selected_materials):
-                    binary_path = merl_dir / material
-                    ensure_exists(binary_path, file_ok=True)
-                    cmd = [
-                        *runner, str(extract_script),
-                        "--model", str(checkpoint_path),
-                        "--binary", str(binary_path),
-                        "--destdir", str(extract_dir),
-                        "--dataset", request.dataset,
-                    ]
-                    if self._supports_sparse_samples(model):
-                        cmd.extend(["--sparse_samples", str(request.sparse_samples)])
-                    return_code = await self._run_command(
-                        task_id, log_path, cmd,
-                        cwd=self._working_dir_for(model), env=env,
-                        progress=min(45, int(index / total * 50)),
-                        start_message=f"[{index + 1}/{total}] 提取参数: {material}",
-                        cancel_event=cancel_event,
-                    )
-                    if return_code == -1:
-                        await self._write_log(task_id, log_path, "Task cancelled.", status="cancelled", progress=100, event="done")
-                        return
-                    if return_code != 0:
-                        await self._write_log(task_id, log_path, f"提取失败: {material}", status="failed", progress=100, event="done")
-                        return
-                    pt_name = f"{Path(material).stem}.pt"
-                    pt_files.append(pt_name)
-
-                # Step 2: Decode
-                decode_script = self._resolve_project_path(model.runtime["decode_script"], must_exist=True)
-                env["CUDA_VISIBLE_DEVICES"] = request.cuda_device
-
-                for index, pt_name in enumerate(pt_files):
-                    pt_path = extract_dir / pt_name
-                    if not pt_path.exists():
-                        await self._write_log(task_id, log_path, f"跳过缺失的 PT 文件: {pt_name}", progress=50 + int(index / len(pt_files) * 45))
-                        continue
-                    cmd = [
-                        *runner, str(decode_script),
-                        str(pt_path), str(fullbin_output_dir),
-                        "--dataset", request.dataset,
-                        "--cuda_device", request.cuda_device,
-                    ]
-                    return_code = await self._run_command(
-                        task_id, log_path, cmd,
-                        cwd=self._working_dir_for(model), env=env,
-                        progress=min(95, 50 + int(index / len(pt_files) * 45)),
-                        start_message=f"[{index + 1}/{len(pt_files)}] 解码: {pt_name}",
-                        cancel_event=cancel_event,
-                    )
-                    if return_code == -1:
-                        await self._write_log(task_id, log_path, "Task cancelled.", status="cancelled", progress=100, event="done")
-                        return
-                    if return_code != 0:
-                        await self._write_log(task_id, log_path, f"解码失败: {pt_name}", status="failed", progress=100, event="done")
-                        return
-
-                await self._write_log(task_id, log_path, f"{model.label} 重建完成。", status="success", progress=100, event="done",
-                    result_payload={"output_dir": str(fullbin_output_dir), "model_key": model.key})
-
-            elif model.adapter == "custom-cli":
-                # Custom model reconstruction via command line
-                reconstruct_script = model.runtime.get("reconstruct_script", "").strip()
-                reconstruct_args_template = model.runtime.get("reconstruct_args_template", "").strip()
-                if not reconstruct_script:
-                    raise ValueError(f"自定义模型未配置重建脚本: {model.key}")
-
-                output_dir = Path(request.output_dir).resolve() if request.output_dir else PROJECT_ROOT / "data" / "outputs" / model.key
-                output_dir.mkdir(parents=True, exist_ok=True)
-
-                script_path = self._resolve_project_path(reconstruct_script, must_exist=True)
-                env = self._make_env(model)
-                conda_env = request.conda_env.strip() or model.runtime.get("conda_env", "").strip()
-                runner, _ = self._python_runner(conda_env)
-
-                # Build command from template - use shlex.split for safe argument parsing
-                args_str = reconstruct_args_template
-                for material in request.selected_materials:
-                    material_path = merl_dir / material
-                    # Quote user-supplied values to prevent template injection
-                    safe_kwargs = {
-                        "data_dir": str(merl_dir),
-                        "input": str(material_path),
-                        "output": str(output_dir),
-                        "checkpoint": request.checkpoint_path,
-                        "material": material,
-                    }
-                    cmd_str = args_str.format(**safe_kwargs)
-                    cmd = [*runner, str(script_path)] + shlex.split(cmd_str)
-                    return_code = await self._run_command(
-                        task_id, log_path, cmd,
-                        cwd=self._working_dir_for(model), env=env,
-                        progress=50,
-                        start_message=f"自定义模型重建: {material}",
-                        cancel_event=cancel_event,
-                    )
-                    if return_code != 0:
-                        await self._write_log(task_id, log_path, f"重建失败: {material}", status="failed", progress=100, event="done")
-                        return
-
-                await self._write_log(task_id, log_path, f"{model.label} 重建完成。", status="success", progress=100, event="done",
-                    result_payload={"output_dir": str(output_dir), "model_key": model.key})
-            else:
-                raise ValueError(f"不支持的适配器类型: {model.adapter}")
-
-        except Exception as exc:
-            await self._write_log(task_id, log_path, f"重建任务失败: {exc}", status="failed", progress=100, event="done")
-        finally:
-            self._cancel_events.pop(task_id, None)
+    # ─── 旧 per-adapter 执行方法已删除 ───────────────────────────────────────
+    # _run_neural_pytorch / _run_neural_keras / _run_neural_h5_convert /
+    # _run_hyper_train / _run_hyper_extract / _run_hyper_decode / _run_reconstruct
+    # 均已迁移至通用 _run_operation + operations 定义。
+    # 旧 start_* wrapper 通过参数转换调用 start_operation → _run_operation。
 
 
 train_service = TrainService()

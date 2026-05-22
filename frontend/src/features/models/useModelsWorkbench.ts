@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiDelete, apiGet, apiPost, apiPut } from '../../lib/api'
 import type {
   FileListResponse,
+  GenericOperationRequest,
   HyperDecodeRequest,
   HyperExtractRequest,
   HyperTrainRunRequest,
@@ -12,6 +13,7 @@ import type {
   NeuralH5ConvertRequest,
   NeuralKerasTrainRequest,
   NeuralPytorchTrainRequest,
+  PreviewCommandResponse,
   ReconstructRequest,
   TaskDetailResponse,
   TaskStartResponse,
@@ -210,5 +212,23 @@ export function useStartReconstruct() {
   return useMutation({
     mutationFn: (payload: ReconstructRequest) =>
       apiPost<TaskStartResponse>('/train/reconstruct', payload),
+  })
+}
+
+// ── Generic operation hooks ──
+
+/** 通用操作执行 — 替代逐一 adapter 的专有 endpoints */
+export function useExecuteOperation() {
+  return useMutation({
+    mutationFn: (payload: GenericOperationRequest) =>
+      apiPost<TaskStartResponse>('/train/execute', payload),
+  })
+}
+
+/** 预览操作命令 */
+export function usePreviewCommand() {
+  return useMutation({
+    mutationFn: (payload: GenericOperationRequest) =>
+      apiPost<PreviewCommandResponse>('/train/preview-command', payload),
   })
 }

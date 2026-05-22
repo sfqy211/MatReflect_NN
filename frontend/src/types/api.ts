@@ -297,7 +297,7 @@ export type TrainProjectVariant = string
 export type TrainDataset = 'MERL' | 'EPFL'
 export type NeuralTrainEngine = 'pytorch' | 'keras'
 export type TrainModelCategory = 'neural' | 'hyper' | 'custom'
-export type TrainModelAdapter = 'neural-pytorch' | 'neural-keras' | 'hyper-family' | 'custom-cli'
+export type TrainModelAdapter = 'neural-pytorch' | 'neural-keras' | 'hyper-family' | 'hypersnbrdf' | 'custom-cli'
 
 export type ModelParameter = {
   key: string
@@ -329,6 +329,8 @@ export type TrainModelItem = {
   default_paths: Record<string, string>
   runtime: Record<string, string>
   adapter_options: Record<string, unknown>
+  /** 通用操作定义字典 — 后端按 operation key 索引，与前端的 OperationDef[] 不同 */
+  operations?: Record<string, BackendOperationDef>
 }
 
 export type TrainModelsResponse = {
@@ -437,6 +439,109 @@ export type ReconstructRequest = {
   custom_cmd: string | null
   render_after_reconstruct: boolean
 }
+
+// ── Operation System Types ──
+
+export type OperationFieldType = 'path' | 'int' | 'float' | 'str' | 'bool' | 'select' | 'file_picker'
+
+export type OperationField = {
+  key: string
+  label: string
+  type: OperationFieldType
+  default: unknown
+  min?: number | null
+  max?: number | null
+  options?: string[] | null
+  placeholder?: string | null
+  required?: boolean
+  /** 仅 file_picker 类型：文件扩展名过滤，如 ['.binary'] */
+  file_filter?: string[] | null
+  /** 仅 file_picker 类型：文件来源标识，由前端分发层匹配对应的数据源 */
+  file_source?: string | null
+}
+
+export type OperationForm = {
+  fields: OperationField[]
+}
+
+/** 前端 UI 层使用的操作定义（含通用的 form UI 描述） */
+export type OperationDef = {
+  key: string
+  label: string
+  /** 通用执行端点（如 /train/execute） */
+  endpoint?: string
+  form: OperationForm
+}
+
+// ── 与后端 schema 对齐的类型 ──
+
+/** 后端 OperationArgDef（命令参数定义） */
+export type BackendArgDef = {
+  flag?: string
+  source?: string
+  default?: unknown
+  condition_source?: string
+  raw_value?: string
+}
+
+/** 后端 OperationDef（来自 model_registry.json） */
+export type BackendOperationDef = {
+  label?: string
+  description?: string
+  script?: string
+  args?: BackendArgDef[]
+  working_dir?: string
+  conda_env?: string
+  loop_source?: string
+  loop_var?: string
+  merge_inputs?: boolean
+  input_dir_source?: string
+  cuda_visible_source?: string
+  sub_operations?: string[]
+  post_actions?: Array<{
+    type?: string
+    description?: string
+    patterns?: string[]
+    source_dir_source?: string
+    dest_dir_source?: string
+  }>
+}
+
+/** 后端 GenericOperationRequest */
+export type GenericOperationRequest = {
+  model_key: string
+  /** 注意后端字段名是 operation，不是 operation_key */
+  operation: string
+  params: Record<string, unknown>
+}
+
+/** 后端 PreviewCommandItem */
+export type CommandItem = {
+  step_index: number
+  step_label?: string
+  /** 后端返回的 command 是 string[]（命令令牌列表） */
+  command: string[]
+  cwd?: string
+  conda_env?: string
+}
+
+/** 后端 PreviewCommandResponse */
+export type PreviewCommandResponse = {
+  model_key?: string
+  operation?: string
+  commands: CommandItem[]
+  total_commands?: number
+  has_loop?: boolean
+}
+
+/** 后端 GenericOperationResponse */
+export type GenericOperationResponse = {
+  task_id: string
+  status: 'pending' | 'running' | 'success' | 'failed' | 'cancelled'
+}
+
+// ── End Operation System Types ──
+
 
 export type ModelImportRequest = {
   source_dir: string

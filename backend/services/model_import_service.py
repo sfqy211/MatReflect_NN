@@ -6,13 +6,13 @@ import hashlib
 import json
 import shutil
 from pathlib import Path
-from typing import Any
+from typing import Any, Dict, Optional
 
 from pydantic import BaseModel
 
 from backend.core.config import PROJECT_ROOT
 from backend.core.conda import find_conda_command
-from backend.models.train import ModelParameter, TrainModelItem
+from backend.models.train import ModelParameter, OperationDef, TrainModelItem
 from backend.services.model_registry import model_registry_service
 
 
@@ -33,6 +33,7 @@ class ModelImportRequest(BaseModel):
     supports_runs: bool = False
     render_modes: list[str] = []
     parameters: list[ModelParameter] = []
+    operations: Optional[Dict[str, OperationDef]] = None
 
 
 class ModelImportResponse(BaseModel):
@@ -83,7 +84,7 @@ class ModelImportService:
         conda_env = self._make_env_name(request.model_key)
 
         # Create model_config.json in the model directory
-        config = {
+        config: dict[str, Any] = {
             "key": request.model_key,
             "label": request.label,
             "description": request.description,
@@ -99,6 +100,8 @@ class ModelImportService:
         if request.reconstruct_script:
             config["runtime"]["reconstruct_script"] = request.reconstruct_script
             config["runtime"]["reconstruct_args_template"] = request.reconstruct_args_template
+        if request.operations:
+            config["operations"] = {k: v.model_dump() for k, v in request.operations.items()}
 
         config_path = dest / "model_config.json"
         config_path.write_text(json.dumps(config, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -130,6 +133,7 @@ class ModelImportService:
                 "reconstruct_script": request.reconstruct_script,
                 "reconstruct_args_template": request.reconstruct_args_template,
             },
+            operations=request.operations or {},
         )
         model_registry_service.register_model(model_item)
 

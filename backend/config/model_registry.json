@@ -28,6 +28,34 @@
         "conda_env": "nbrdf-train",
         "working_dir": "models/Neural-BRDF/binary_to_nbrdf",
         "train_script": "models/Neural-BRDF/binary_to_nbrdf/pytorch_code/train_NBRDF_pytorch.py"
+      },
+      "operations": {
+        "train": {
+          "label": "训练",
+          "description": "逐材质训练 PyTorch 模型，输出 .npy 权重",
+          "script": "models/Neural-BRDF/binary_to_nbrdf/pytorch_code/train_NBRDF_pytorch.py",
+          "loop_source": "request.selected_materials",
+          "input_dir_source": "request.merl_dir",
+          "args": [
+            {"source": "item.path"},
+            {"flag": "--outpath", "source": "request.output_dir"},
+            {"flag": "--epochs", "source": "request.epochs", "default": 100},
+            {"flag": "--device", "source": "request.device", "default": "cpu"}
+          ]
+        },
+        "reconstruct": {
+          "label": "重建",
+          "description": "逐材质重建（同 train），输出 .npy 权重",
+          "script": "models/Neural-BRDF/binary_to_nbrdf/pytorch_code/train_NBRDF_pytorch.py",
+          "loop_source": "request.selected_materials",
+          "input_dir_source": "request.merl_dir",
+          "args": [
+            {"source": "item.path"},
+            {"flag": "--outpath", "source": "request.output_dir"},
+            {"flag": "--epochs", "source": "request.neural_epochs", "default": 100},
+            {"flag": "--device", "source": "request.neural_device", "default": "cpu"}
+          ]
+        }
       }
     },
     {
@@ -59,6 +87,41 @@
         "working_dir": "models/Neural-BRDF/binary_to_nbrdf",
         "train_script": "models/Neural-BRDF/binary_to_nbrdf/binary_to_nbrdf.py",
         "convert_script": "models/Neural-BRDF/binary_to_nbrdf/h5_to_npy.py"
+      },
+      "operations": {
+        "train": {
+          "label": "训练",
+          "description": "批量训练 Keras 模型，合并材质为位置参数",
+          "script": "models/Neural-BRDF/binary_to_nbrdf/binary_to_nbrdf.py",
+          "loop_source": "request.selected_materials",
+          "input_dir_source": "request.merl_dir",
+          "merge_inputs": true,
+          "args": [
+            {"source": "item.path"},
+            {"flag": "--cuda_device", "source": "request.cuda_device", "default": "0"}
+          ],
+          "post_actions": [
+            {
+              "type": "move_files",
+              "description": "归档 h5/json/lossplot 到 h5_output_dir",
+              "patterns": ["*.h5", "*.json", "lossplot_*.png"],
+              "source_dir_source": "cwd",
+              "dest_dir_source": "request.h5_output_dir"
+            }
+          ]
+        },
+        "convert": {
+          "label": "H5→NPY 转换",
+          "description": "批量将 .h5 文件转换为 .npy",
+          "script": "models/Neural-BRDF/binary_to_nbrdf/h5_to_npy.py",
+          "loop_source": "request.selected_h5_files",
+          "input_dir_source": "request.h5_dir",
+          "merge_inputs": true,
+          "args": [
+            {"source": "item.path"},
+            {"flag": "--destdir", "source": "request.npy_output_dir"}
+          ]
+        }
       }
     },
     {
@@ -99,6 +162,59 @@
         "train_script": "models/HyperBRDF/main.py",
         "extract_script": "models/HyperBRDF/test.py",
         "decode_script": "models/HyperBRDF/pt_to_fullmerl.py"
+      },
+      "operations": {
+        "train": {
+          "label": "训练",
+          "description": "在 MERL 数据集上训练 HyperBRDF 模型",
+          "script": "models/HyperBRDF/main.py",
+          "args": [
+            {"flag": "--destdir", "source": "request.output_dir"},
+            {"flag": "--binary", "source": "request.merl_dir"},
+            {"flag": "--dataset", "source": "request.dataset", "default": "MERL"},
+            {"flag": "--epochs", "source": "request.epochs", "default": 100},
+            {"flag": "--sparse_samples", "source": "request.sparse_samples", "default": 4000},
+            {"flag": "--kl_weight", "source": "request.kl_weight", "default": 0.1},
+            {"flag": "--fw_weight", "source": "request.fw_weight", "default": 0.1},
+            {"flag": "--lr", "source": "request.lr", "default": 5e-5},
+            {"flag": "--train_subset", "source": "request.train_subset", "default": 0},
+            {"flag": "--train_seed", "source": "request.train_seed", "default": 42},
+            {"flag": "--keepon", "condition_source": "request.keepon"}
+          ]
+        },
+        "extract": {
+          "label": "参数提取",
+          "description": "从训练好的 checkpoint 提取材质参数为 .pt 文件",
+          "script": "models/HyperBRDF/test.py",
+          "loop_source": "request.selected_materials",
+          "input_dir_source": "request.merl_dir",
+          "args": [
+            {"flag": "--model", "source": "request.checkpoint_path"},
+            {"flag": "--binary", "source": "item.path"},
+            {"flag": "--destdir", "source": "request.output_dir"},
+            {"flag": "--dataset", "source": "request.dataset", "default": "MERL"},
+            {"flag": "--sparse_samples", "source": "request.sparse_samples", "default": 4000}
+          ]
+        },
+        "decode": {
+          "label": "FullBin 解码",
+          "description": "将 .pt 文件解码为 Mitsuba 可用的 .fullbin",
+          "script": "models/HyperBRDF/pt_to_fullmerl.py",
+          "loop_source": "request.selected_pts",
+          "input_dir_source": "request.pt_dir",
+          "args": [
+            {"source": "item.path"},
+            {"source": "request.output_dir"},
+            {"flag": "--dataset", "source": "request.dataset", "default": "MERL"},
+            {"flag": "--cuda_device", "source": "request.cuda_device", "default": "0"}
+          ]
+        },
+        "reconstruct": {
+          "label": "重建",
+          "description": "Extract → Decode 两阶段重建（从 checkpoint 到 .fullbin）",
+          "sub_operations": ["extract", "decode"],
+          "output_transform_type": "selected_materials_to_pt"
+        }
       }
     },
     {
@@ -141,6 +257,33 @@
         "working_dir": "models/HyperSNBRDF",
         "train_script": "models/HyperSNBRDF/main.py",
         "eval_script": "models/HyperSNBRDF/eval_h21l5.py"
+      },
+      "operations": {
+        "train": {
+          "label": "训练",
+          "description": "在 MERL 数据集上训练 HyperSNBRDF 模型",
+          "script": "models/HyperSNBRDF/main.py",
+          "args": [
+            {"flag": "--epochs", "source": "request.epochs", "default": 10000},
+            {"flag": "--lr", "source": "request.lr", "default": 1e-5},
+            {"flag": "--siren_hid_features", "source": "request.siren_hid_features", "default": 21},
+            {"flag": "--train_sample_num", "source": "request.train_sample_num", "default": 400000},
+            {"flag": "--siren_sample_num", "source": "request.siren_sample_num", "default": 400000},
+            {"flag": "--tonemap_num", "source": "request.tonemap_num", "default": 1},
+            {"flag": "--k1", "source": "request.k1", "default": 1.0},
+            {"flag": "--kl", "source": "request.kl", "default": 0.01},
+            {"flag": "--kw", "source": "request.kw", "default": 0.1},
+            {"flag": "--seed", "source": "request.seed", "default": 1234794195}
+          ]
+        },
+        "eval": {
+          "label": "评估",
+          "description": "评估训练好的 HyperSNBRDF 模型",
+          "script": "models/HyperSNBRDF/eval_h21l5.py",
+          "args": [
+            {"flag": "--model_path", "source": "request.checkpoint_path"}
+          ]
+        }
       }
     }
   ]

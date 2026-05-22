@@ -3,12 +3,16 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException, Query
 
 from backend.models.train import (
+    GenericOperationRequest,
+    GenericOperationResponse,
     HyperDecodeRequest,
     HyperExtractRequest,
     HyperTrainRunRequest,
     NeuralH5ConvertRequest,
     NeuralKerasTrainRequest,
     NeuralPytorchTrainRequest,
+    PreviewCommandRequest,
+    PreviewCommandResponse,
     ReconstructRequest,
     TrainModelsResponse,
     TrainRunsResponse,
@@ -127,3 +131,44 @@ async def train_reconstruct(request: ReconstructRequest) -> TrainTaskStartRespon
     except (KeyError, ValueError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return TrainTaskStartResponse(task_id=record.task_id, status=record.status)
+
+
+# ─── 新通用端点（operations-driven） ─────────────────────────────────────────
+
+
+@router.post("/train/execute", response_model=GenericOperationResponse)
+async def train_execute(request: GenericOperationRequest) -> GenericOperationResponse:
+    """通用操作执行入口。
+
+    根据 model_key + operation 从 model_registry.json 的 operations 定义
+    渲染命令并执行。params 中的字段作为模板变量使用。
+    """
+    try:
+        record = await train_service.start_operation(
+            model_key=request.model_key,
+            operation_id=request.operation,
+            params=request.params,
+            task_type=f"execute_{request.operation}",
+        )
+    except (KeyError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return GenericOperationResponse(task_id=record.task_id, status=record.status)
+
+
+@router.post("/train/preview-command", response_model=PreviewCommandResponse)
+async def train_preview_command(request: PreviewCommandRequest) -> PreviewCommandResponse:
+    """预览操作命令（不执行）。
+
+    返回渲染后的所有命令列表，每条命令包含 command/cwd/conda_env 等信息。
+    可用于前端展示确认或调试。
+    """
+    try:
+        result = train_service.preview_command(
+            model_key=request.model_key,
+            operation_id=request.operation,
+            params=request.params,
+            single_item=request.item,
+        )
+    except (KeyError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return result

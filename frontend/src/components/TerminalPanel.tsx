@@ -1,9 +1,14 @@
-import { useEffect, useRef, useState, useCallback } from 'react'
+import { useEffect, useRef, useState, useCallback, useImperativeHandle, forwardRef } from 'react'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebLinksAddon } from '@xterm/addon-web-links'
 import '@xterm/xterm/css/xterm.css'
 import { BACKEND_ORIGIN } from '../lib/api'
+
+export type TerminalPanelHandle = {
+  /** 向终端发送一条命令 */
+  sendCommand: (cmd: string) => void
+}
 
 type TerminalPanelProps = {
   sessionId: string | null
@@ -12,7 +17,8 @@ type TerminalPanelProps = {
   workingDir?: string
 }
 
-export function TerminalPanel({ sessionId, onClose, condaEnv, workingDir }: TerminalPanelProps) {
+export const TerminalPanel = forwardRef<TerminalPanelHandle, TerminalPanelProps>(
+  function TerminalPanel({ sessionId, onClose, condaEnv, workingDir }, ref) {
   const termRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const termInstanceRef = useRef<Terminal | null>(null)
@@ -186,6 +192,11 @@ export function TerminalPanel({ sessionId, onClose, condaEnv, workingDir }: Term
     }
   }, [inputValue, sendCommand])
 
+  // Expose sendCommand for programmatic use via ref
+  useImperativeHandle(ref, () => ({
+    sendCommand,
+  }), [sendCommand])
+
   return (
     <div
       style={{
@@ -270,4 +281,4 @@ export function TerminalPanel({ sessionId, onClose, condaEnv, workingDir }: Term
       </div>
     </div>
   )
-}
+})
