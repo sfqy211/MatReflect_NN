@@ -49,12 +49,14 @@ const TEST_SET_20 = [
 function getRenderMode(model: RenderSourceModel): RenderMode {
   if (model === 'gt') return 'brdfs'
   if (model === 'neural') return 'npy'
+  if (model === 'hypersnbrdf') return 'snbrdf'
   return 'fullbin'
 }
 
 function getAnalysisImageSet(model: RenderSourceModel): AnalysisImageSet {
   if (model === 'gt') return 'brdfs'
   if (model === 'neural') return 'npy'
+  if (model === 'hypersnbrdf') return 'snbrdf'
   return 'fullbin'
 }
 
@@ -249,6 +251,7 @@ export function RenderWorkbench() {
                 <option value="gt">GT / 参考值</option>
                 <option value="neural">Neural-BRDF 输出</option>
                 <option value="hyperbrdf">HyperBRDF 输出</option>
+                <option value="hypersnbrdf">HyperSNBRDF 输出</option>
               </select>
             </Field>
 

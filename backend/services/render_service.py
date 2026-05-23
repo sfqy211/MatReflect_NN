@@ -127,6 +127,8 @@ def get_default_scene_path(render_mode: RenderMode = "brdfs") -> Optional[Path]:
         preferred_candidates.append(assets / "matpreview_universal" / "scene.xml")
         if render_mode == "npy":
             preferred_candidates.append(assets / "matpreview_nbrdf" / "scene.xml")
+        elif render_mode == "snbrdf":
+            preferred_candidates.append(assets / "matpreview_merl" / "scene.xml")
         else:
             preferred_candidates.append(assets / "matpreview_merl" / "scene.xml")
     for candidate in preferred_candidates:
@@ -282,9 +284,13 @@ class RenderService:
             "brdfs": settings.binary_input_dir,
             "fullbin": settings.fullbin_input_dir,
             "npy": settings.npy_input_dir,
+            "snbrdf": settings.snbrdf_output_dir,
         }[render_mode]
         raw_path = Path(configured).expanduser()
-        return (raw_path if raw_path.is_absolute() else Path(settings.project_root).resolve() / raw_path).resolve(strict=False)
+        resolved = (raw_path if raw_path.is_absolute() else Path(settings.project_root).resolve() / raw_path).resolve(strict=False)
+        if render_mode == "snbrdf":
+            resolved = resolved / "binary"
+        return resolved
 
     def _output_dir(self, render_mode: RenderMode) -> Path:
         settings = load_system_settings()
@@ -292,6 +298,7 @@ class RenderService:
             "brdfs": settings.brdf_output_dir,
             "fullbin": settings.fullbin_output_dir,
             "npy": settings.npy_output_dir,
+            "snbrdf": settings.snbrdf_output_dir,
         }[render_mode]
         raw_path = Path(configured).expanduser()
         return (raw_path if raw_path.is_absolute() else Path(settings.project_root).resolve() / raw_path).resolve(strict=False)
@@ -301,6 +308,7 @@ class RenderService:
             "brdfs": "render_outputs_binary_png",
             "fullbin": "render_outputs_fullbin_png",
             "npy": "render_outputs_npy_png",
+            "snbrdf": "render_outputs_snbrdf_png",
         }[render_mode]
 
     def _project_config(self, project_variant: TrainProjectVariant) -> dict[str, Union[Path, str]]:

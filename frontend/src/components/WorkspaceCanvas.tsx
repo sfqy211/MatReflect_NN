@@ -226,6 +226,7 @@ function SettingsCanvas({
   const [brdfOutputDir, setBrdfOutputDir] = useState("");
   const [npyOutputDir, setNpyOutputDir] = useState("");
   const [fullbinOutputDir, setFullbinOutputDir] = useState("");
+  const [snbrdfOutputDir, setSnbrdfOutputDir] = useState("");
   const [gridsOutputDir, setGridsOutputDir] = useState("");
   const [comparisonsOutputDir, setComparisonsOutputDir] = useState("");
   const [compileCmd, setCompileCmd] = useState("");
@@ -258,6 +259,7 @@ function SettingsCanvas({
     setBrdfOutputDir(savedSettings.brdf_output_dir);
     setNpyOutputDir(savedSettings.npy_output_dir);
     setFullbinOutputDir(savedSettings.fullbin_output_dir);
+    setSnbrdfOutputDir(savedSettings.snbrdf_output_dir);
     setGridsOutputDir(savedSettings.grids_output_dir);
     setComparisonsOutputDir(savedSettings.comparisons_output_dir);
     setCompileCmd(savedSettings.compile_cmd);
@@ -337,6 +339,7 @@ function SettingsCanvas({
     brdf_output_dir: brdfOutputDir.trim(),
     npy_output_dir: npyOutputDir.trim(),
     fullbin_output_dir: fullbinOutputDir.trim(),
+    snbrdf_output_dir: snbrdfOutputDir.trim(),
     grids_output_dir: gridsOutputDir.trim(),
     comparisons_output_dir: comparisonsOutputDir.trim(),
     preset_label: compileLabel.trim(),
@@ -368,6 +371,7 @@ function SettingsCanvas({
     setBrdfOutputDir(savedSettings.brdf_output_dir);
     setNpyOutputDir(savedSettings.npy_output_dir);
     setFullbinOutputDir(savedSettings.fullbin_output_dir);
+    setSnbrdfOutputDir(savedSettings.snbrdf_output_dir);
     setGridsOutputDir(savedSettings.grids_output_dir);
     setComparisonsOutputDir(savedSettings.comparisons_output_dir);
     setCompileCmd(savedSettings.compile_cmd);
@@ -446,6 +450,7 @@ function SettingsCanvas({
     setBrdfOutputDir(response.settings.brdf_output_dir);
     setNpyOutputDir(response.settings.npy_output_dir);
     setFullbinOutputDir(response.settings.fullbin_output_dir);
+    setSnbrdfOutputDir(response.settings.snbrdf_output_dir);
     setGridsOutputDir(response.settings.grids_output_dir);
     setComparisonsOutputDir(response.settings.comparisons_output_dir);
     setCompileCmd(response.settings.compile_cmd);
@@ -647,6 +652,13 @@ function SettingsCanvas({
                 value={fullbinOutputDir}
                 onChange={(event) => setFullbinOutputDir(event.target.value)}
                 placeholder="data\\outputs\\fullbin"
+              />
+            </Field>
+            <Field label="HyperSNBRDF 渲染输出">
+              <input
+                value={snbrdfOutputDir}
+                onChange={(event) => setSnbrdfOutputDir(event.target.value)}
+                placeholder="data\\outputs\\snbrdf"
               />
             </Field>
             <Field label="网格输出">

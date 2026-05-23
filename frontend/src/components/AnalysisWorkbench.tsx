@@ -21,7 +21,7 @@ import {
 
 
 type ComparisonColumnDraft = {
-  key: 'gt' | 'fullbin' | 'npy'
+  key: 'gt' | 'fullbin' | 'npy' | 'snbrdf'
   enabled: boolean
   imageSet: AnalysisImageSet
   label: string
@@ -35,6 +35,7 @@ const IMAGE_SET_LABELS: Record<AnalysisImageSet, string> = {
   brdfs: 'GT / 参考值',
   fullbin: 'HyperBRDF 输出',
   npy: 'Neural-BRDF 输出',
+  snbrdf: 'HyperSNBRDF 输出',
   grids: '网格拼图',
   comparisons: '对比拼图',
 }
@@ -171,6 +172,7 @@ export function AnalysisWorkbench({ activeSubView, onSubViewChange: _onSubViewCh
   const [gtLabel, setGtLabel] = useState('GT / 参考值')
   const [method1Label, setMethod1Label] = useState('HyperBRDF 输出')
   const [method2Label, setMethod2Label] = useState('Neural-BRDF 输出')
+  const [method3Label, setMethod3Label] = useState('HyperSNBRDF 输出')
   const [evaluationRangeMode, setEvaluationRangeMode] = useState<EvaluationRangeMode>('all')
   const [selectedEvaluationMaterials, setSelectedEvaluationMaterials] = useState<string[]>([])
 
@@ -193,6 +195,7 @@ export function AnalysisWorkbench({ activeSubView, onSubViewChange: _onSubViewCh
     { key: 'gt', enabled: true, imageSet: 'brdfs', label: 'GT / 参考值' },
     { key: 'fullbin', enabled: true, imageSet: 'fullbin', label: 'HyperBRDF 输出' },
     { key: 'npy', enabled: true, imageSet: 'npy', label: 'Neural-BRDF 输出' },
+    { key: 'snbrdf', enabled: false, imageSet: 'snbrdf', label: 'HyperSNBRDF 输出' },
   ])
   const [comparisonOutputName, setComparisonOutputName] = useState('merged_comparison.png')
   const [comparisonShowLabel, setComparisonShowLabel] = useState(true)
@@ -232,6 +235,7 @@ export function AnalysisWorkbench({ activeSubView, onSubViewChange: _onSubViewCh
   const brdfsQuery = useAnalysisImages('brdfs', '')
   const fullbinQuery = useAnalysisImages('fullbin', '')
   const npyQuery = useAnalysisImages('npy', '')
+  const snbrdfQuery = useAnalysisImages('snbrdf', '')
   const gridsQuery = useAnalysisImages('grids', '', '')
   const comparisonsQuery = useAnalysisImages('comparisons', '', '')
 
@@ -242,29 +246,30 @@ export function AnalysisWorkbench({ activeSubView, onSubViewChange: _onSubViewCh
   const brdfItems = brdfsQuery.data?.items ?? []
   const fullbinItems = fullbinQuery.data?.items ?? []
   const npyItems = npyQuery.data?.items ?? []
+  const snbrdfItems = snbrdfQuery.data?.items ?? []
   const gridItems = gridsQuery.data?.items ?? []
   const comparisonItems = comparisonsQuery.data?.items ?? []
 
   const brdfMaterialMap = useMemo(() => buildMaterialMap(brdfItems), [brdfItems])
   const fullbinMaterialMap = useMemo(() => buildMaterialMap(fullbinItems), [fullbinItems])
   const npyMaterialMap = useMemo(() => buildMaterialMap(npyItems), [npyItems])
+  const snbrdfMaterialMap = useMemo(() => buildMaterialMap(snbrdfItems), [snbrdfItems])
 
   const evaluationMaterials = useMemo(
     () =>
       Array.from(brdfMaterialMap.keys())
-        .filter((material) => fullbinMaterialMap.has(material) && npyMaterialMap.has(material))
+        .filter((material) => fullbinMaterialMap.has(material) && npyMaterialMap.has(material) && snbrdfMaterialMap.has(material))
         .sort(),
-    [brdfMaterialMap, fullbinMaterialMap, npyMaterialMap],
+    [brdfMaterialMap, fullbinMaterialMap, npyMaterialMap, snbrdfMaterialMap],
   )
 
-  const compareLeftItems = useMemo(
-    () => (compareLeftSet === 'brdfs' ? brdfItems : compareLeftSet === 'fullbin' ? fullbinItems : npyItems),
-    [brdfItems, compareLeftSet, fullbinItems, npyItems],
-  )
-  const compareRightItems = useMemo(
-    () => (compareRightSet === 'brdfs' ? brdfItems : compareRightSet === 'fullbin' ? fullbinItems : npyItems),
-    [brdfItems, compareRightSet, fullbinItems, npyItems],
-  )
+  const getItemsForSet = (set: AnalysisImageSet) =>
+    set === 'brdfs' ? brdfItems : set === 'fullbin' ? fullbinItems : set === 'npy' ? npyItems : snbrdfItems
+  const getMaterialMapForSet = (set: AnalysisImageSet) =>
+    set === 'brdfs' ? brdfMaterialMap : set === 'fullbin' ? fullbinMaterialMap : set === 'npy' ? npyMaterialMap : snbrdfMaterialMap
+
+  const compareLeftItems = useMemo(() => getItemsForSet(compareLeftSet), [brdfItems, compareLeftSet, fullbinItems, npyItems, snbrdfItems])
+  const compareRightItems = useMemo(() => getItemsForSet(compareRightSet), [brdfItems, compareRightSet, fullbinItems, npyItems, snbrdfItems])
   const compareLeftMap = useMemo(() => buildMaterialMap(compareLeftItems), [compareLeftItems])
   const compareRightMap = useMemo(() => buildMaterialMap(compareRightItems), [compareRightItems])
 
@@ -276,10 +281,7 @@ export function AnalysisWorkbench({ activeSubView, onSubViewChange: _onSubViewCh
     [compareLeftMap, compareRightMap],
   )
 
-  const gridSourceItems = useMemo(
-    () => (gridSet === 'brdfs' ? brdfItems : gridSet === 'fullbin' ? fullbinItems : npyItems),
-    [brdfItems, fullbinItems, gridSet, npyItems],
-  )
+  const gridSourceItems = useMemo(() => getItemsForSet(gridSet), [brdfItems, fullbinItems, gridSet, npyItems, snbrdfItems])
   const gridMaterials = useMemo(
     () => Array.from(buildMaterialMap(gridSourceItems).keys()).sort(),
     [gridSourceItems],
@@ -290,14 +292,12 @@ export function AnalysisWorkbench({ activeSubView, onSubViewChange: _onSubViewCh
     if (enabledSets.length === 0) {
       return []
     }
-    const maps = enabledSets.map((imageSet) =>
-      imageSet === 'brdfs' ? brdfMaterialMap : imageSet === 'fullbin' ? fullbinMaterialMap : npyMaterialMap,
-    )
+    const maps = enabledSets.map((imageSet) => getMaterialMapForSet(imageSet))
     const [firstMap, ...restMaps] = maps
     return Array.from(firstMap.keys())
       .filter((material) => restMaps.every((map) => map.has(material)))
       .sort()
-  }, [brdfMaterialMap, comparisonColumns, fullbinMaterialMap, npyMaterialMap])
+  }, [brdfMaterialMap, comparisonColumns, fullbinMaterialMap, npyMaterialMap, snbrdfMaterialMap])
 
   const sliderMaterial =
     selectedCompareMaterials[0] && commonMaterials.includes(selectedCompareMaterials[0]) ? selectedCompareMaterials[0] : commonMaterials[0]
@@ -389,12 +389,15 @@ export function AnalysisWorkbench({ activeSubView, onSubViewChange: _onSubViewCh
       gt_set: 'brdfs',
       method1_set: 'fullbin',
       method2_set: 'npy',
+      method3_set: 'snbrdf',
       gt_dir: '',
       method1_dir: '',
       method2_dir: '',
+      method3_dir: '',
       gt_label: gtLabel,
       method1_label: method1Label,
       method2_label: method2Label,
+      method3_label: method3Label,
       selected_materials: evaluationSelection,
     })
   }
@@ -469,6 +472,9 @@ export function AnalysisWorkbench({ activeSubView, onSubViewChange: _onSubViewCh
                   <Field label="方法二标签">
               <input value={method2Label} onChange={(event) => setMethod2Label(event.target.value)} />
             </Field>
+                  <Field label="方法三标签">
+              <input value={method3Label} onChange={(event) => setMethod3Label(event.target.value)} />
+            </Field>
                 </div>
 
                 {evaluationRangeMode === 'selected' ? (
@@ -527,6 +533,7 @@ export function AnalysisWorkbench({ activeSubView, onSubViewChange: _onSubViewCh
                       <option value="brdfs">GT / 参考值</option>
                       <option value="fullbin">HyperBRDF 输出</option>
                       <option value="npy">Neural-BRDF 输出</option>
+                      <option value="snbrdf">HyperSNBRDF 输出</option>
                     </select>
             </Field>
                   <Field label="右图">
@@ -534,6 +541,7 @@ export function AnalysisWorkbench({ activeSubView, onSubViewChange: _onSubViewCh
                       <option value="brdfs">GT / 参考值</option>
                       <option value="fullbin">HyperBRDF 输出</option>
                       <option value="npy">Neural-BRDF 输出</option>
+                      <option value="snbrdf">HyperSNBRDF 输出</option>
                     </select>
             </Field>
                   {compareSelectionMode === 'material' ? (
@@ -629,6 +637,7 @@ export function AnalysisWorkbench({ activeSubView, onSubViewChange: _onSubViewCh
                       <option value="brdfs">GT / 参考值</option>
                       <option value="fullbin">HyperBRDF 输出</option>
                       <option value="npy">Neural-BRDF 输出</option>
+                      <option value="snbrdf">HyperSNBRDF 输出</option>
                     </select>
             </Field>
                   <Field label="输出文件名">

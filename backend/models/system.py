@@ -52,6 +52,7 @@ class SystemSettings(BaseModel):
     brdf_output_dir: str
     npy_output_dir: str
     fullbin_output_dir: str
+    snbrdf_output_dir: str
     grids_output_dir: str
     comparisons_output_dir: str
     preset_label: str
@@ -105,6 +106,7 @@ class SystemSettingsRequest(BaseModel):
     brdf_output_dir: str = Field(default="", max_length=1024)
     npy_output_dir: str = Field(default="", max_length=1024)
     fullbin_output_dir: str = Field(default="", max_length=1024)
+    snbrdf_output_dir: str = Field(default="", max_length=1024)
     grids_output_dir: str = Field(default="", max_length=1024)
     comparisons_output_dir: str = Field(default="", max_length=1024)
     compile_cmd: str = Field(default="scons --parallelize", min_length=1, max_length=512)

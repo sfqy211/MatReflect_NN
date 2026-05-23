@@ -8,7 +8,7 @@ from backend.models.common import FileListItem, TaskStatus
 from backend.models.train import TrainDataset
 
 
-RenderMode = Literal["brdfs", "fullbin", "npy"]
+RenderMode = Literal["brdfs", "fullbin", "npy", "snbrdf"]
 RenderReconstructModel = Literal["neural", "hyperbrdf"]
 
 

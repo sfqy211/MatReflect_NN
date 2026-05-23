@@ -35,6 +35,7 @@ DEFAULT_SET_LABELS: dict[AnalysisImageSet, str] = {
     "brdfs": "GT / 参考值",
     "fullbin": "HyperBRDF 输出",
     "npy": "Neural-BRDF 输出",
+    "snbrdf": "HyperSNBRDF 输出",
     "grids": "Grids",
     "comparisons": "Comparisons",
 }
@@ -92,6 +93,7 @@ class AnalysisService:
             "brdfs": resolve_path(settings.brdf_output_dir) / "png",
             "fullbin": resolve_path(settings.fullbin_output_dir) / "png",
             "npy": resolve_path(settings.npy_output_dir) / "png",
+            "snbrdf": resolve_path(settings.snbrdf_output_dir) / "png",
             "grids": resolve_path(settings.grids_output_dir),
             "comparisons": resolve_path(settings.comparisons_output_dir),
         }
@@ -210,10 +212,17 @@ class AnalysisService:
         method1_index = self._material_index_from_dir(method1_dir)
         method2_index = self._material_index_from_dir(method2_dir)
 
+        has_method3 = request.method3_set is not None
+        method3_index: dict[str, Path] = {}
+        if has_method3:
+            method3_dir = self._resolve_directory(request.method3_set, request.method3_dir)
+            method3_index = self._material_index_from_dir(method3_dir)
+
         materials = request.selected_materials or sorted(gt_index.keys())
         metrics_gt_m1 = np.zeros(3, dtype=np.float64)
         metrics_gt_m2 = np.zeros(3, dtype=np.float64)
         metrics_m1_m2 = np.zeros(3, dtype=np.float64)
+        metrics_gt_m3 = np.zeros(3, dtype=np.float64) if has_method3 else None
         processed = 0
         skipped: list[str] = []
 
@@ -224,6 +233,9 @@ class AnalysisService:
             if not gt_path or not method1_path or not method2_path:
                 skipped.append(material)
                 continue
+            if has_method3 and not method3_index.get(material):
+                skipped.append(material)
+                continue
 
             img_gt_rgb = self._load_rgb(gt_path)
             img_m1_rgb = self._load_rgb(method1_path)
@@ -232,14 +244,25 @@ class AnalysisService:
                 skipped.append(material)
                 continue
 
+            img_m3_rgb = None
+            if has_method3:
+                img_m3_rgb = self._load_rgb(method3_index[material])
+                if img_m3_rgb is None:
+                    skipped.append(material)
+                    continue
+
             if img_gt_rgb.shape != img_m1_rgb.shape:
                 img_m1_rgb = cv2.resize(img_m1_rgb, (img_gt_rgb.shape[1], img_gt_rgb.shape[0]))
             if img_gt_rgb.shape != img_m2_rgb.shape:
                 img_m2_rgb = cv2.resize(img_m2_rgb, (img_gt_rgb.shape[1], img_gt_rgb.shape[0]))
+            if img_m3_rgb is not None and img_gt_rgb.shape != img_m3_rgb.shape:
+                img_m3_rgb = cv2.resize(img_m3_rgb, (img_gt_rgb.shape[1], img_gt_rgb.shape[0]))
 
             metrics_gt_m1 += calc_single_pair(img_gt_rgb, img_m1_rgb)
             metrics_gt_m2 += calc_single_pair(img_gt_rgb, img_m2_rgb)
             metrics_m1_m2 += calc_single_pair(img_m1_rgb, img_m2_rgb)
+            if img_m3_rgb is not None and metrics_gt_m3 is not None:
+                metrics_gt_m3 += calc_single_pair(img_gt_rgb, img_m3_rgb)
             processed += 1
 
         if processed == 0:
@@ -253,14 +276,20 @@ class AnalysisService:
         method1_label = request.method1_label.strip() or DEFAULT_SET_LABELS[request.method1_set]
         method2_label = request.method2_label.strip() or DEFAULT_SET_LABELS[request.method2_set]
 
+        comparisons = [
+            EvaluationPairResult(label=self._comparison_title(gt_label, method1_label), metrics=summary(metrics_gt_m1)),
+            EvaluationPairResult(label=self._comparison_title(gt_label, method2_label), metrics=summary(metrics_gt_m2)),
+            EvaluationPairResult(label=self._comparison_title(method1_label, method2_label), metrics=summary(metrics_m1_m2)),
+        ]
+
+        if has_method3 and metrics_gt_m3 is not None:
+            method3_label = request.method3_label.strip() or DEFAULT_SET_LABELS[request.method3_set]
+            comparisons.append(EvaluationPairResult(label=self._comparison_title(gt_label, method3_label), metrics=summary(metrics_gt_m3)))
+
         return EvaluationResponse(
             processed_count=processed,
             skipped=skipped,
-            comparisons=[
-                EvaluationPairResult(label=self._comparison_title(gt_label, method1_label), metrics=summary(metrics_gt_m1)),
-                EvaluationPairResult(label=self._comparison_title(gt_label, method2_label), metrics=summary(metrics_gt_m2)),
-                EvaluationPairResult(label=self._comparison_title(method1_label, method2_label), metrics=summary(metrics_m1_m2)),
-            ],
+            comparisons=comparisons,
         )
 
     def generate_grid(self, request: GridRequest) -> GeneratedImageResponse:

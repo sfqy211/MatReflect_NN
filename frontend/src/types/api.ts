@@ -73,6 +73,7 @@ export type SystemSettings = {
   brdf_output_dir: string
   npy_output_dir: string
   fullbin_output_dir: string
+  snbrdf_output_dir: string
   grids_output_dir: string
   comparisons_output_dir: string
   preset_label: string
@@ -119,10 +120,10 @@ export type FileListResponse = {
   items: FileListItem[]
 }
 
-export type RenderMode = 'brdfs' | 'fullbin' | 'npy'
-export type RenderSourceModel = 'gt' | 'neural' | 'hyperbrdf'
+export type RenderMode = 'brdfs' | 'fullbin' | 'npy' | 'snbrdf'
+export type RenderSourceModel = 'gt' | 'neural' | 'hyperbrdf' | 'hypersnbrdf'
 export type RenderReconstructModel = 'neural' | 'hyperbrdf' | string
-export type AnalysisImageSet = 'brdfs' | 'fullbin' | 'npy' | 'grids' | 'comparisons'
+export type AnalysisImageSet = 'brdfs' | 'fullbin' | 'npy' | 'snbrdf' | 'grids' | 'comparisons'
 
 export type RenderSceneItem = {
   label: string
@@ -252,12 +253,15 @@ export type EvaluationRequest = {
   gt_set: AnalysisImageSet
   method1_set: AnalysisImageSet
   method2_set: AnalysisImageSet
+  method3_set?: AnalysisImageSet | null
   gt_dir: string
   method1_dir: string
   method2_dir: string
+  method3_dir?: string
   gt_label: string
   method1_label: string
   method2_label: string
+  method3_label?: string
   selected_materials: string[]
 }
 

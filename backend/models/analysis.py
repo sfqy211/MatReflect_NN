@@ -5,7 +5,7 @@ from pydantic import BaseModel, Field
 from backend.models.common import FileListItem
 
 
-AnalysisImageSet = Literal["brdfs", "fullbin", "npy", "grids", "comparisons"]
+AnalysisImageSet = Literal["brdfs", "fullbin", "npy", "snbrdf", "grids", "comparisons"]
 
 
 class AnalysisImagesResponse(BaseModel):
@@ -42,12 +42,15 @@ class EvaluationRequest(BaseModel):
     gt_set: AnalysisImageSet = "brdfs"
     method1_set: AnalysisImageSet = "fullbin"
     method2_set: AnalysisImageSet = "npy"
+    method3_set: Optional[AnalysisImageSet] = None
     gt_dir: str = ""
     method1_dir: str = ""
     method2_dir: str = ""
+    method3_dir: str = ""
     gt_label: str = "GT / BRDF"
     method1_label: str = "FullBin"
     method2_label: str = "NPY"
+    method3_label: str = ""
     selected_materials: list[str] = Field(default_factory=list)
 
 
