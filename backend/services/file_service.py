@@ -31,7 +31,7 @@ def list_files_by_path(request: FileListPathRequest) -> FileListResponse:
     return _build_listing(directory, "workspace_path", request.page, request.page_size, request.suffix, request.search)
 
 
-def resolve_workspace_path(path_value: str) -> Path:
+def resolve_workspace_path(path_value: str, *, create: bool = False) -> Path:
     raw_path = Path(path_value)
     candidate = raw_path if raw_path.is_absolute() else PROJECT_ROOT / raw_path
     resolved = candidate.resolve(strict=False)
@@ -40,7 +40,8 @@ def resolve_workspace_path(path_value: str) -> Path:
         resolved.relative_to(project_root)
     except ValueError as exc:
         raise ValueError(f"Path must stay inside project root: {path_value}") from exc
-    resolved.mkdir(parents=True, exist_ok=True)
+    if create:
+        resolved.mkdir(parents=True, exist_ok=True)
     return resolved
 
 
@@ -52,7 +53,15 @@ def _build_listing(
     suffix: list[str],
     search: str,
 ) -> FileListResponse:
-    base_path.mkdir(parents=True, exist_ok=True)
+    if not base_path.exists():
+        return FileListResponse(
+            path_key=path_key,
+            resolved_path=str(base_path.resolve()),
+            page=page,
+            page_size=page_size,
+            total=0,
+            items=[],
+        )
 
     entries = sorted(base_path.iterdir(), key=lambda entry: (not entry.is_dir(), entry.name.lower()))
     if search:

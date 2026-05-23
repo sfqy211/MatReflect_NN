@@ -33,6 +33,7 @@
         "train": {
           "label": "训练",
           "description": "逐材质训练 PyTorch 模型，输出 .npy 权重",
+          "conda_env": "matreflect",
           "script": "models/Neural-BRDF/binary_to_nbrdf/pytorch_code/train_NBRDF_pytorch.py",
           "loop_source": "request.selected_materials",
           "input_dir_source": "request.merl_dir",
@@ -46,6 +47,7 @@
         "reconstruct": {
           "label": "重建",
           "description": "逐材质重建（同 train），输出 .npy 权重",
+          "conda_env": "matreflect",
           "script": "models/Neural-BRDF/binary_to_nbrdf/pytorch_code/train_NBRDF_pytorch.py",
           "loop_source": "request.selected_materials",
           "input_dir_source": "request.merl_dir",
