@@ -25,6 +25,7 @@ from backend.models.analysis import (
     EvaluationResponse,
     GeneratedImageResponse,
     GridRequest,
+    MaterialMetricItem,
     MetricSummary,
 )
 from backend.models.common import FileListItem
@@ -218,6 +219,14 @@ class AnalysisService:
             method3_dir = self._resolve_directory(request.method3_set, request.method3_dir)
             method3_index = self._material_index_from_dir(method3_dir)
 
+        gt_label = request.gt_label.strip() or DEFAULT_SET_LABELS[request.gt_set]
+        method1_label = request.method1_label.strip() or DEFAULT_SET_LABELS[request.method1_set]
+        method2_label = request.method2_label.strip() or DEFAULT_SET_LABELS[request.method2_set]
+        pair_label_gt_m1 = self._comparison_title(gt_label, method1_label)
+        pair_label_gt_m2 = self._comparison_title(gt_label, method2_label)
+        pair_label_m1_m2 = self._comparison_title(method1_label, method2_label)
+        pair_label_gt_m3 = self._comparison_title(gt_label, request.method3_label.strip() or DEFAULT_SET_LABELS.get(request.method3_set or "snbrdf", "M3")) if has_method3 else None
+
         materials = request.selected_materials or sorted(gt_index.keys())
         metrics_gt_m1 = np.zeros(3, dtype=np.float64)
         metrics_gt_m2 = np.zeros(3, dtype=np.float64)
@@ -225,6 +234,10 @@ class AnalysisService:
         metrics_gt_m3 = np.zeros(3, dtype=np.float64) if has_method3 else None
         processed = 0
         skipped: list[str] = []
+        per_material: list[MaterialMetricItem] = []
+
+        def _to_summary(arr: np.ndarray) -> MetricSummary:
+            return MetricSummary(psnr=float(arr[0]), ssim=float(arr[1]), delta_e=float(arr[2]))
 
         for material in materials:
             gt_path = gt_index.get(material)
@@ -258,11 +271,26 @@ class AnalysisService:
             if img_m3_rgb is not None and img_gt_rgb.shape != img_m3_rgb.shape:
                 img_m3_rgb = cv2.resize(img_m3_rgb, (img_gt_rgb.shape[1], img_gt_rgb.shape[0]))
 
-            metrics_gt_m1 += calc_single_pair(img_gt_rgb, img_m1_rgb)
-            metrics_gt_m2 += calc_single_pair(img_gt_rgb, img_m2_rgb)
-            metrics_m1_m2 += calc_single_pair(img_m1_rgb, img_m2_rgb)
+            r_gt_m1 = calc_single_pair(img_gt_rgb, img_m1_rgb)
+            r_gt_m2 = calc_single_pair(img_gt_rgb, img_m2_rgb)
+            r_m1_m2 = calc_single_pair(img_m1_rgb, img_m2_rgb)
+
+            metrics_gt_m1 += r_gt_m1
+            metrics_gt_m2 += r_gt_m2
+            metrics_m1_m2 += r_m1_m2
+
+            material_metrics: dict[str, MetricSummary] = {
+                pair_label_gt_m1: _to_summary(r_gt_m1),
+                pair_label_gt_m2: _to_summary(r_gt_m2),
+                pair_label_m1_m2: _to_summary(r_m1_m2),
+            }
+
             if img_m3_rgb is not None and metrics_gt_m3 is not None:
-                metrics_gt_m3 += calc_single_pair(img_gt_rgb, img_m3_rgb)
+                r_gt_m3 = calc_single_pair(img_gt_rgb, img_m3_rgb)
+                metrics_gt_m3 += r_gt_m3
+                material_metrics[pair_label_gt_m3] = _to_summary(r_gt_m3)
+
+            per_material.append(MaterialMetricItem(material=material, metrics=material_metrics))
             processed += 1
 
         if processed == 0:
@@ -272,24 +300,20 @@ class AnalysisService:
             averaged = values / processed
             return MetricSummary(psnr=float(averaged[0]), ssim=float(averaged[1]), delta_e=float(averaged[2]))
 
-        gt_label = request.gt_label.strip() or DEFAULT_SET_LABELS[request.gt_set]
-        method1_label = request.method1_label.strip() or DEFAULT_SET_LABELS[request.method1_set]
-        method2_label = request.method2_label.strip() or DEFAULT_SET_LABELS[request.method2_set]
-
         comparisons = [
-            EvaluationPairResult(label=self._comparison_title(gt_label, method1_label), metrics=summary(metrics_gt_m1)),
-            EvaluationPairResult(label=self._comparison_title(gt_label, method2_label), metrics=summary(metrics_gt_m2)),
-            EvaluationPairResult(label=self._comparison_title(method1_label, method2_label), metrics=summary(metrics_m1_m2)),
+            EvaluationPairResult(label=pair_label_gt_m1, metrics=summary(metrics_gt_m1)),
+            EvaluationPairResult(label=pair_label_gt_m2, metrics=summary(metrics_gt_m2)),
+            EvaluationPairResult(label=pair_label_m1_m2, metrics=summary(metrics_m1_m2)),
         ]
 
         if has_method3 and metrics_gt_m3 is not None:
-            method3_label = request.method3_label.strip() or DEFAULT_SET_LABELS[request.method3_set]
-            comparisons.append(EvaluationPairResult(label=self._comparison_title(gt_label, method3_label), metrics=summary(metrics_gt_m3)))
+            comparisons.append(EvaluationPairResult(label=pair_label_gt_m3, metrics=summary(metrics_gt_m3)))
 
         return EvaluationResponse(
             processed_count=processed,
             skipped=skipped,
             comparisons=comparisons,
+            per_material=per_material,
         )
 
     def generate_grid(self, request: GridRequest) -> GeneratedImageResponse:

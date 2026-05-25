@@ -243,10 +243,16 @@ export type EvaluationPairResult = {
   metrics: MetricSummary
 }
 
+export type MaterialMetricItem = {
+  material: string
+  metrics: Record<string, MetricSummary>
+}
+
 export type EvaluationResponse = {
   processed_count: number
   skipped: string[]
   comparisons: EvaluationPairResult[]
+  per_material: MaterialMetricItem[]
 }
 
 export type EvaluationRequest = {

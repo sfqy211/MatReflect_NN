@@ -32,10 +32,16 @@ class EvaluationPairResult(BaseModel):
     metrics: MetricSummary
 
 
+class MaterialMetricItem(BaseModel):
+    material: str
+    metrics: dict[str, MetricSummary]
+
+
 class EvaluationResponse(BaseModel):
     processed_count: int
     skipped: list[str] = Field(default_factory=list)
     comparisons: list[EvaluationPairResult] = Field(default_factory=list)
+    per_material: list[MaterialMetricItem] = Field(default_factory=list)
 
 
 class EvaluationRequest(BaseModel):

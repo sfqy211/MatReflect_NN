@@ -1,15 +1,15 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 
 import { useQueryClient } from '@tanstack/react-query'
 
 import { toBackendUrl } from '../lib/api'
 import { normalizeMaterialName, parseAssetName } from '../lib/fileNames'
-import type { AnalysisImageSet, FileListItem } from '../types/api'
+import type { AnalysisImageSet, FileListItem, MaterialMetricItem } from '../types/api'
+import { AnalysisResultTable } from './AnalysisResultTable'
 import { FeedbackPanel } from './FeedbackPanel'
 import { MaterialSelector } from './MaterialSelector'
 import { Badge } from './ui/Badge'
 import { Button } from './ui/Button'
-import { Card } from './ui/Card'
 import { CheckboxField } from './ui/CheckboxField'
 import { Field } from './ui/Field'
 import {
@@ -166,15 +166,121 @@ function AnalysisResultPane({
   )
 }
 
+type SortKey = 'material' | string
+type SortDir = 'asc' | 'desc'
+
+function PerMaterialTable({ perMaterial }: { perMaterial: MaterialMetricItem[] }) {
+  const [sortKey, setSortKey] = useState<SortKey>('material')
+  const [sortDir, setSortDir] = useState<SortDir>('asc')
+
+  const pairLabels = useMemo(() => {
+    const first = perMaterial[0]
+    return first ? Object.keys(first.metrics) : []
+  }, [perMaterial])
+
+  const toggleSort = (key: SortKey) => {
+    if (sortKey === key) {
+      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))
+    } else {
+      setSortKey(key)
+      setSortDir(key === 'material' ? 'asc' : 'desc')
+    }
+  }
+
+  const sorted = useMemo(() => {
+    const arr = [...perMaterial]
+    arr.sort((a, b) => {
+      let cmp: number
+      if (sortKey === 'material') {
+        cmp = a.material.localeCompare(b.material)
+      } else {
+        const [pairLabel, metricKey] = sortKey.split(':')
+        const am = a.metrics[pairLabel]
+        const bm = b.metrics[pairLabel]
+        const av = am ? (am as Record<string, number>)[metricKey] ?? 0 : 0
+        const bv = bm ? (bm as Record<string, number>)[metricKey] ?? 0 : 0
+        cmp = av - bv
+      }
+      return sortDir === 'asc' ? cmp : -cmp
+    })
+    return arr
+  }, [perMaterial, sortKey, sortDir])
+
+  const thStyle: React.CSSProperties = { textAlign: 'right', padding: '6px 8px', color: 'var(--text-muted)', fontWeight: 500, cursor: 'pointer', whiteSpace: 'nowrap', userSelect: 'none' }
+  const tdStyle: React.CSSProperties = { textAlign: 'right', padding: '6px 8px', fontFamily: 'monospace', fontSize: '0.8rem' }
+  const groupSep = '1px solid color-mix(in oklab, var(--border) 40%, transparent)'
+
+  const sortIndicator = (key: SortKey) => sortKey === key ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''
+
+  return (
+    <div style={{ overflow: 'auto', border: '1px solid var(--border)', borderRadius: 4 }}>
+      <strong style={{ display: 'block', padding: '8px 12px', fontSize: '0.9rem', borderBottom: '2px solid var(--border)' }}>
+        分材质评估结果
+      </strong>
+      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+        <thead>
+          <tr style={{ borderBottom: '2px solid var(--border)' }}>
+            <th style={{ ...thStyle, textAlign: 'left', position: 'sticky', left: 0, background: 'var(--surface)' }} onClick={() => toggleSort('material')}>
+              材质{sortIndicator('material')}
+            </th>
+            {pairLabels.map((label) => (
+              <th key={label} colSpan={3} style={{ ...thStyle, textAlign: 'center', borderLeft: groupSep }}>
+                {label}
+              </th>
+            ))}
+          </tr>
+          <tr style={{ borderBottom: '2px solid var(--border)' }}>
+            <th style={{ ...thStyle, textAlign: 'left', position: 'sticky', left: 0, background: 'var(--surface)' }} />
+            {pairLabels.map((label) => (
+              <React.Fragment key={label}>
+                <th style={thStyle} onClick={() => toggleSort(`${label}:psnr`)}>PSNR{sortIndicator(`${label}:psnr`)}</th>
+                <th style={thStyle} onClick={() => toggleSort(`${label}:ssim`)}>SSIM{sortIndicator(`${label}:ssim`)}</th>
+                <th style={thStyle} onClick={() => toggleSort(`${label}:delta_e`)}>DeltaE{sortIndicator(`${label}:delta_e`)}</th>
+              </React.Fragment>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {sorted.map((item) => (
+            <tr key={item.material} style={{ borderBottom: '1px solid color-mix(in oklab, var(--border) 40%, transparent)' }}>
+              <td style={{ ...tdStyle, textAlign: 'left', fontWeight: 500, position: 'sticky', left: 0, background: 'var(--surface)' }}>{item.material}</td>
+              {pairLabels.map((label) => {
+                const m = item.metrics[label]
+                return m ? (
+                  <React.Fragment key={label}>
+                    <td style={{ ...tdStyle, borderLeft: groupSep }}>{m.psnr.toFixed(2)}</td>
+                    <td style={tdStyle}>{m.ssim.toFixed(4)}</td>
+                    <td style={tdStyle}>{m.delta_e.toFixed(4)}</td>
+                  </React.Fragment>
+                ) : (
+                  <React.Fragment key={label}>
+                    <td style={{ ...tdStyle, borderLeft: groupSep }}>—</td>
+                    <td style={tdStyle}>—</td>
+                    <td style={tdStyle}>—</td>
+                  </React.Fragment>
+                )
+              })}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
 export function AnalysisWorkbench({ activeSubView, onSubViewChange: _onSubViewChange }: { activeSubView: AnalysisSubView; onSubViewChange: (view: AnalysisSubView) => void }) {
   const queryClient = useQueryClient()
 
   const [gtLabel, setGtLabel] = useState('GT / 参考值')
+  const [method1Enabled, setMethod1Enabled] = useState(true)
   const [method1Label, setMethod1Label] = useState('HyperBRDF 输出')
+  const [method2Enabled, setMethod2Enabled] = useState(true)
   const [method2Label, setMethod2Label] = useState('Neural-BRDF 输出')
+  const [method3Enabled, setMethod3Enabled] = useState(false)
   const [method3Label, setMethod3Label] = useState('HyperSNBRDF 输出')
   const [evaluationRangeMode, setEvaluationRangeMode] = useState<EvaluationRangeMode>('all')
   const [selectedEvaluationMaterials, setSelectedEvaluationMaterials] = useState<string[]>([])
+  const [evaluationMode, setEvaluationMode] = useState<'summary' | 'per_material'>('summary')
 
   const [compareSelectionMode, setCompareSelectionMode] = useState<CompareSelectionMode>('material')
   const [compareLeftSet, setCompareLeftSet] = useState<AnalysisImageSet>('brdfs')
@@ -255,18 +361,18 @@ export function AnalysisWorkbench({ activeSubView, onSubViewChange: _onSubViewCh
   const npyMaterialMap = useMemo(() => buildMaterialMap(npyItems), [npyItems])
   const snbrdfMaterialMap = useMemo(() => buildMaterialMap(snbrdfItems), [snbrdfItems])
 
-  const evaluationMaterials = useMemo(
-    () =>
-      Array.from(brdfMaterialMap.keys())
-        .filter((material) => fullbinMaterialMap.has(material) && npyMaterialMap.has(material) && snbrdfMaterialMap.has(material))
-        .sort(),
-    [brdfMaterialMap, fullbinMaterialMap, npyMaterialMap, snbrdfMaterialMap],
-  )
-
   const getItemsForSet = (set: AnalysisImageSet) =>
     set === 'brdfs' ? brdfItems : set === 'fullbin' ? fullbinItems : set === 'npy' ? npyItems : snbrdfItems
   const getMaterialMapForSet = (set: AnalysisImageSet) =>
     set === 'brdfs' ? brdfMaterialMap : set === 'fullbin' ? fullbinMaterialMap : set === 'npy' ? npyMaterialMap : snbrdfMaterialMap
+
+  const evaluationMaterials = useMemo(
+    () =>
+      Array.from(brdfMaterialMap.keys())
+        .filter((material) => (!method1Enabled || fullbinMaterialMap.has(material)) && (!method2Enabled || npyMaterialMap.has(material)) && (!method3Enabled || snbrdfMaterialMap.has(material)))
+        .sort(),
+    [brdfMaterialMap, method1Enabled, method2Enabled, method3Enabled, fullbinMaterialMap, npyMaterialMap, snbrdfMaterialMap],
+  )
 
   const compareLeftItems = useMemo(() => getItemsForSet(compareLeftSet), [brdfItems, compareLeftSet, fullbinItems, npyItems, snbrdfItems])
   const compareRightItems = useMemo(() => getItemsForSet(compareRightSet), [brdfItems, compareRightSet, fullbinItems, npyItems, snbrdfItems])
@@ -385,19 +491,29 @@ export function AnalysisWorkbench({ activeSubView, onSubViewChange: _onSubViewCh
           ? evaluationMaterials.filter((material) => TEST_SET_20.includes(material))
           : selectedEvaluationMaterials
 
+    // 按启用顺序映射到 method1/2/3
+    const enabledMethods: { imageSet: AnalysisImageSet; label: string }[] = []
+    if (method1Enabled) enabledMethods.push({ imageSet: 'fullbin', label: method1Label })
+    if (method2Enabled) enabledMethods.push({ imageSet: 'npy', label: method2Label })
+    if (method3Enabled) enabledMethods.push({ imageSet: 'snbrdf', label: method3Label })
+
+    const m0 = enabledMethods[0]
+    const m1 = enabledMethods[1]
+    const m2 = enabledMethods[2]
+
     await evaluateMutation.mutateAsync({
       gt_set: 'brdfs',
-      method1_set: 'fullbin',
-      method2_set: 'npy',
-      method3_set: 'snbrdf',
+      method1_set: m0?.imageSet ?? 'fullbin',
+      method2_set: m1?.imageSet ?? 'npy',
+      method3_set: m2?.imageSet ?? null,
       gt_dir: '',
       method1_dir: '',
       method2_dir: '',
       method3_dir: '',
       gt_label: gtLabel,
-      method1_label: method1Label,
-      method2_label: method2Label,
-      method3_label: method3Label,
+      method1_label: m0?.label ?? '',
+      method2_label: m1?.label ?? '',
+      method3_label: m2?.label ?? '',
       selected_materials: evaluationSelection,
     })
   }
@@ -466,15 +582,21 @@ export function AnalysisWorkbench({ activeSubView, onSubViewChange: _onSubViewCh
                   <Field label="GT 标签">
               <input value={gtLabel} onChange={(event) => setGtLabel(event.target.value)} />
             </Field>
-                  <Field label="方法一标签">
-              <input value={method1Label} onChange={(event) => setMethod1Label(event.target.value)} />
-            </Field>
-                  <Field label="方法二标签">
-              <input value={method2Label} onChange={(event) => setMethod2Label(event.target.value)} />
-            </Field>
-                  <Field label="方法三标签">
-              <input value={method3Label} onChange={(event) => setMethod3Label(event.target.value)} />
-            </Field>
+                  <label className="field" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <input type="checkbox" checked={method1Enabled} onChange={(event) => setMethod1Enabled(event.target.checked)} />
+                    <span>方法一</span>
+                    <input value={method1Label} onChange={(event) => setMethod1Label(event.target.value)} disabled={!method1Enabled} style={{ flex: 1 }} />
+                  </label>
+                  <label className="field" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <input type="checkbox" checked={method2Enabled} onChange={(event) => setMethod2Enabled(event.target.checked)} />
+                    <span>方法二</span>
+                    <input value={method2Label} onChange={(event) => setMethod2Label(event.target.value)} disabled={!method2Enabled} style={{ flex: 1 }} />
+                  </label>
+                  <label className="field" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <input type="checkbox" checked={method3Enabled} onChange={(event) => setMethod3Enabled(event.target.checked)} />
+                    <span>方法三</span>
+                    <input value={method3Label} onChange={(event) => setMethod3Label(event.target.value)} disabled={!method3Enabled} style={{ flex: 1 }} />
+                  </label>
                 </div>
 
                 {evaluationRangeMode === 'selected' ? (
@@ -498,9 +620,12 @@ export function AnalysisWorkbench({ activeSubView, onSubViewChange: _onSubViewCh
                   </div>
                 ) : null}
 
-                <div className="render-actions">
-                  <Button type="button"  onClick={() => void evaluate()} disabled={evaluateMutation.isPending}>
-                    开始评估
+                <div className="render-actions" style={{ gap: 8 }}>
+                  <Button type="button"  onClick={() => { setEvaluationMode('summary'); void evaluate() }} disabled={evaluateMutation.isPending}>
+                    整体评估
+                  </Button>
+                  <Button type="button"  onClick={() => { setEvaluationMode('per_material'); void evaluate() }} disabled={evaluateMutation.isPending}>
+                    分材质评估
                   </Button>
                 </div>
                 <p className="muted">评估所用图像目录统一读取设置页中的默认路径。</p>
@@ -722,15 +847,20 @@ export function AnalysisWorkbench({ activeSubView, onSubViewChange: _onSubViewCh
 
           <div className="resizable-pane resizable-pane--right">
             {activeSubView === 'evaluate' ? (
-              <div className="metric-grid">
-                {(evaluateMutation.data?.comparisons ?? []).map((comparison) => (
-                  <Card key={comparison.label} variant="metric">
-                    <strong>{comparison.label}</strong>
-                    <span>PSNR {comparison.metrics.psnr.toFixed(2)} dB</span>
-                    <span>SSIM {comparison.metrics.ssim.toFixed(4)}</span>
-                    <span>Delta E {comparison.metrics.delta_e.toFixed(4)}</span>
-                  </Card>
-                ))}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 16, flex: 1, minHeight: 0, overflow: 'auto' }}>
+                {evaluationMode === 'summary' ? (
+                  evaluateMutation.data?.comparisons?.length ? (
+                    <AnalysisResultTable comparisons={evaluateMutation.data.comparisons} />
+                  ) : (
+                    <FeedbackPanel title="暂无评估数据" message="请点击「整体评估」按钮生成结果。" tone="empty" compact />
+                  )
+                ) : (
+                  evaluateMutation.data?.per_material?.length ? (
+                    <PerMaterialTable perMaterial={evaluateMutation.data.per_material} />
+                  ) : (
+                    <FeedbackPanel title="暂无分材质数据" message="请点击「分材质评估」按钮生成结果。" tone="empty" compact />
+                  )
+                )}
               </div>
             ) : null}
 
