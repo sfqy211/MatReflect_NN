@@ -2,8 +2,24 @@ import { useMemo, useState } from 'react'
 
 import type { EvaluationPairResult } from '../types/api'
 
-type SortKey = 'label' | 'psnr' | 'ssim' | 'delta_e'
+type SortKey = 'label' | string
 type SortDir = 'asc' | 'desc'
+
+const METRIC_LABELS: Record<string, string> = {
+  psnr: 'PSNR (dB)',
+  ssim: 'SSIM',
+  delta_e: 'Delta E',
+  rmse: 'RMSE',
+  mae: 'MAE',
+}
+
+const METRIC_PRECISION: Record<string, number> = {
+  psnr: 2,
+  ssim: 4,
+  delta_e: 4,
+  rmse: 4,
+  mae: 4,
+}
 
 type AnalysisResultTableProps = {
   comparisons: EvaluationPairResult[]
@@ -13,6 +29,12 @@ type AnalysisResultTableProps = {
 export function AnalysisResultTable({ comparisons, onExportCsv }: AnalysisResultTableProps) {
   const [sortKey, setSortKey] = useState<SortKey>('label')
   const [sortDir, setSortDir] = useState<SortDir>('asc')
+
+  const metricKeys = useMemo(() => {
+    const first = comparisons[0]
+    if (!first) return []
+    return Object.keys(first.metrics).filter((k) => (first.metrics as Record<string, number | undefined>)[k] !== undefined)
+  }, [comparisons])
 
   const toggleSort = (key: SortKey) => {
     if (sortKey === key) {
@@ -27,11 +49,12 @@ export function AnalysisResultTable({ comparisons, onExportCsv }: AnalysisResult
     const arr = [...comparisons]
     arr.sort((a, b) => {
       let cmp: number
-      switch (sortKey) {
-        case 'label': cmp = a.label.localeCompare(b.label); break
-        case 'psnr': cmp = a.metrics.psnr - b.metrics.psnr; break
-        case 'ssim': cmp = a.metrics.ssim - b.metrics.ssim; break
-        case 'delta_e': cmp = a.metrics.delta_e - b.metrics.delta_e; break
+      if (sortKey === 'label') {
+        cmp = a.label.localeCompare(b.label)
+      } else {
+        const av = (a.metrics as Record<string, number | undefined>)[sortKey] ?? 0
+        const bv = (b.metrics as Record<string, number | undefined>)[sortKey] ?? 0
+        cmp = av - bv
       }
       return sortDir === 'asc' ? cmp : -cmp
     })
@@ -68,18 +91,24 @@ export function AnalysisResultTable({ comparisons, onExportCsv }: AnalysisResult
         <thead>
           <tr style={{ borderBottom: '2px solid var(--border)' }}>
             <th style={{ ...thStyle, textAlign: 'left' }} onClick={() => toggleSort('label')}>对比组{indicator('label')}</th>
-            <th style={thStyle} onClick={() => toggleSort('psnr')}>PSNR (dB){indicator('psnr')}</th>
-            <th style={thStyle} onClick={() => toggleSort('ssim')}>SSIM{indicator('ssim')}</th>
-            <th style={thStyle} onClick={() => toggleSort('delta_e')}>Delta E{indicator('delta_e')}</th>
+            {metricKeys.map((key) => (
+              <th key={key} style={thStyle} onClick={() => toggleSort(key)}>
+                {METRIC_LABELS[key] ?? key}{indicator(key)}
+              </th>
+            ))}
           </tr>
         </thead>
         <tbody>
           {sorted.map((comp) => (
             <tr key={comp.label} style={{ borderBottom: '1px solid color-mix(in oklab, var(--border) 40%, transparent)' }}>
               <td style={{ ...tdStyle, textAlign: 'left' }}>{comp.label}</td>
-              <td style={tdStyle}>{comp.metrics.psnr.toFixed(2)}</td>
-              <td style={tdStyle}>{comp.metrics.ssim.toFixed(4)}</td>
-              <td style={tdStyle}>{comp.metrics.delta_e.toFixed(4)}</td>
+              {metricKeys.map((key) => {
+                const val = (comp.metrics as Record<string, number | undefined>)[key]
+                const prec = METRIC_PRECISION[key] ?? 4
+                return (
+                  <td key={key} style={tdStyle}>{val !== undefined ? val.toFixed(prec) : '—'}</td>
+                )
+              })}
             </tr>
           ))}
         </tbody>

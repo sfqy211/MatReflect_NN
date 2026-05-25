@@ -63,18 +63,25 @@ def build_file_item(path: Path) -> FileListItem:
     )
 
 
-def calc_single_pair(img1: np.ndarray, img2: np.ndarray) -> np.ndarray:
-    psnr = metrics.peak_signal_noise_ratio(img1, img2, data_range=255)
-    if not np.isfinite(psnr):
-        psnr = 100.0  # 完全相同的图片，钳位到合理最大值
+def calc_single_pair(img1: np.ndarray, img2: np.ndarray) -> dict[str, float]:
+    img1_f = img1.astype(np.float64)
+    img2_f = img2.astype(np.float64)
+
+    mse = float(np.mean((img1_f - img2_f) ** 2))
+    psnr = 10.0 * np.log10(255.0 ** 2 / mse) if mse > 0 else 100.0
+    rmse = float(np.sqrt(mse))
+    mae = float(np.mean(np.abs(img1_f - img2_f)))
+
     try:
-        ssim = metrics.structural_similarity(img1, img2, data_range=255, channel_axis=2)
+        ssim = float(metrics.structural_similarity(img1, img2, data_range=255, channel_axis=2))
     except TypeError:
-        ssim = metrics.structural_similarity(img1, img2, data_range=255, multichannel=True)
+        ssim = float(metrics.structural_similarity(img1, img2, data_range=255, multichannel=True))
+
     lab1 = color.rgb2lab(img1)
     lab2 = color.rgb2lab(img2)
     delta_e = float(np.mean(color.deltaE_ciede2000(lab1, lab2)))
-    return np.array([psnr, ssim, delta_e], dtype=np.float64)
+
+    return {"psnr": psnr, "ssim": ssim, "delta_e": delta_e, "rmse": rmse, "mae": mae}
 
 
 class AnalysisService:
@@ -227,17 +234,21 @@ class AnalysisService:
         pair_label_m1_m2 = self._comparison_title(method1_label, method2_label)
         pair_label_gt_m3 = self._comparison_title(gt_label, request.method3_label.strip() or DEFAULT_SET_LABELS.get(request.method3_set or "snbrdf", "M3")) if has_method3 else None
 
+        all_metric_keys = ["psnr", "ssim", "delta_e", "rmse", "mae"]
+        selected_metrics = set(request.metrics) if request.metrics else {"psnr", "ssim", "delta_e"}
+
         materials = request.selected_materials or sorted(gt_index.keys())
-        metrics_gt_m1 = np.zeros(3, dtype=np.float64)
-        metrics_gt_m2 = np.zeros(3, dtype=np.float64)
-        metrics_m1_m2 = np.zeros(3, dtype=np.float64)
-        metrics_gt_m3 = np.zeros(3, dtype=np.float64) if has_method3 else None
+        accum_gt_m1: dict[str, float] = {k: 0.0 for k in all_metric_keys}
+        accum_gt_m2: dict[str, float] = {k: 0.0 for k in all_metric_keys}
+        accum_m1_m2: dict[str, float] = {k: 0.0 for k in all_metric_keys}
+        accum_gt_m3: dict[str, float] | None = {k: 0.0 for k in all_metric_keys} if has_method3 else None
         processed = 0
         skipped: list[str] = []
         per_material: list[MaterialMetricItem] = []
 
-        def _to_summary(arr: np.ndarray) -> MetricSummary:
-            return MetricSummary(psnr=float(arr[0]), ssim=float(arr[1]), delta_e=float(arr[2]))
+        def _filter_summary(accum: dict[str, float], count: int) -> MetricSummary:
+            avg = {k: v / count for k, v in accum.items()}
+            return MetricSummary(**{k: round(avg[k], 6) for k in selected_metrics})
 
         for material in materials:
             gt_path = gt_index.get(material)
@@ -275,20 +286,25 @@ class AnalysisService:
             r_gt_m2 = calc_single_pair(img_gt_rgb, img_m2_rgb)
             r_m1_m2 = calc_single_pair(img_m1_rgb, img_m2_rgb)
 
-            metrics_gt_m1 += r_gt_m1
-            metrics_gt_m2 += r_gt_m2
-            metrics_m1_m2 += r_m1_m2
+            for k in all_metric_keys:
+                accum_gt_m1[k] += r_gt_m1[k]
+                accum_gt_m2[k] += r_gt_m2[k]
+                accum_m1_m2[k] += r_m1_m2[k]
+
+            def _make_summary(r: dict[str, float]) -> MetricSummary:
+                return MetricSummary(**{k: round(r[k], 6) for k in selected_metrics})
 
             material_metrics: dict[str, MetricSummary] = {
-                pair_label_gt_m1: _to_summary(r_gt_m1),
-                pair_label_gt_m2: _to_summary(r_gt_m2),
-                pair_label_m1_m2: _to_summary(r_m1_m2),
+                pair_label_gt_m1: _make_summary(r_gt_m1),
+                pair_label_gt_m2: _make_summary(r_gt_m2),
+                pair_label_m1_m2: _make_summary(r_m1_m2),
             }
 
-            if img_m3_rgb is not None and metrics_gt_m3 is not None:
+            if img_m3_rgb is not None and accum_gt_m3 is not None:
                 r_gt_m3 = calc_single_pair(img_gt_rgb, img_m3_rgb)
-                metrics_gt_m3 += r_gt_m3
-                material_metrics[pair_label_gt_m3] = _to_summary(r_gt_m3)
+                for k in all_metric_keys:
+                    accum_gt_m3[k] += r_gt_m3[k]
+                material_metrics[pair_label_gt_m3] = _make_summary(r_gt_m3)
 
             per_material.append(MaterialMetricItem(material=material, metrics=material_metrics))
             processed += 1
@@ -296,18 +312,14 @@ class AnalysisService:
         if processed == 0:
             return EvaluationResponse(processed_count=0, skipped=skipped)
 
-        def summary(values: np.ndarray) -> MetricSummary:
-            averaged = values / processed
-            return MetricSummary(psnr=float(averaged[0]), ssim=float(averaged[1]), delta_e=float(averaged[2]))
-
         comparisons = [
-            EvaluationPairResult(label=pair_label_gt_m1, metrics=summary(metrics_gt_m1)),
-            EvaluationPairResult(label=pair_label_gt_m2, metrics=summary(metrics_gt_m2)),
-            EvaluationPairResult(label=pair_label_m1_m2, metrics=summary(metrics_m1_m2)),
+            EvaluationPairResult(label=pair_label_gt_m1, metrics=_filter_summary(accum_gt_m1, processed)),
+            EvaluationPairResult(label=pair_label_gt_m2, metrics=_filter_summary(accum_gt_m2, processed)),
+            EvaluationPairResult(label=pair_label_m1_m2, metrics=_filter_summary(accum_m1_m2, processed)),
         ]
 
-        if has_method3 and metrics_gt_m3 is not None:
-            comparisons.append(EvaluationPairResult(label=pair_label_gt_m3, metrics=summary(metrics_gt_m3)))
+        if has_method3 and accum_gt_m3 is not None:
+            comparisons.append(EvaluationPairResult(label=pair_label_gt_m3, metrics=_filter_summary(accum_gt_m3, processed)))
 
         return EvaluationResponse(
             processed_count=processed,

@@ -22,9 +22,11 @@ class AnalysisSource(BaseModel):
 
 
 class MetricSummary(BaseModel):
-    psnr: float
-    ssim: float
-    delta_e: float
+    psnr: float = 0.0
+    ssim: float = 0.0
+    delta_e: float = 0.0
+    rmse: float = 0.0
+    mae: float = 0.0
 
 
 class EvaluationPairResult(BaseModel):
@@ -58,6 +60,7 @@ class EvaluationRequest(BaseModel):
     method2_label: str = "NPY"
     method3_label: str = ""
     selected_materials: list[str] = Field(default_factory=list)
+    metrics: list[str] = Field(default_factory=lambda: ["psnr", "ssim", "delta_e"])
 
 
 class GridRequest(BaseModel):

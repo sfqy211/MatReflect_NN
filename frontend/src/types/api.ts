@@ -233,9 +233,11 @@ export type DeleteImageResponse = {
 }
 
 export type MetricSummary = {
-  psnr: number
-  ssim: number
-  delta_e: number
+  psnr?: number
+  ssim?: number
+  delta_e?: number
+  rmse?: number
+  mae?: number
 }
 
 export type EvaluationPairResult = {
@@ -269,6 +271,7 @@ export type EvaluationRequest = {
   method2_label: string
   method3_label?: string
   selected_materials: string[]
+  metrics?: string[]
 }
 
 export type GridRequest = {

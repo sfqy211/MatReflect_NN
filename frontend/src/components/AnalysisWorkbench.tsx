@@ -31,6 +31,14 @@ type EvaluationRangeMode = 'all' | 'selected' | 'preset20'
 type CompareSelectionMode = 'material' | 'custom'
 
 
+const AVAILABLE_METRICS = [
+  { key: 'psnr', label: 'PSNR' },
+  { key: 'ssim', label: 'SSIM' },
+  { key: 'delta_e', label: 'Delta E' },
+  { key: 'rmse', label: 'RMSE' },
+  { key: 'mae', label: 'MAE' },
+] as const
+
 const IMAGE_SET_LABELS: Record<AnalysisImageSet, string> = {
   brdfs: 'GT / 参考值',
   fullbin: 'HyperBRDF 输出',
@@ -169,13 +177,84 @@ function AnalysisResultPane({
 type SortKey = 'material' | string
 type SortDir = 'asc' | 'desc'
 
-function PerMaterialTable({ perMaterial }: { perMaterial: MaterialMetricItem[] }) {
+const PM_METRIC_LABELS: Record<string, string> = {
+  psnr: 'PSNR',
+  ssim: 'SSIM',
+  delta_e: 'DeltaE',
+  rmse: 'RMSE',
+  mae: 'MAE',
+}
+
+const PM_METRIC_PRECISION: Record<string, number> = {
+  psnr: 2,
+  ssim: 4,
+  delta_e: 4,
+  rmse: 4,
+  mae: 4,
+}
+
+function downloadCsv(filename: string, csvContent: string) {
+  const BOM = '﻿'
+  const blob = new Blob([BOM + csvContent], { type: 'text/csv;charset=utf-8;' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+function exportSummaryCsv(comparisons: import('../types/api').EvaluationPairResult[]) {
+  if (!comparisons.length) return
+  const first = comparisons[0]
+  const metricKeys = Object.keys(first.metrics).filter((k) => (first.metrics as Record<string, number | undefined>)[k] !== undefined)
+  const header = ['对比组', ...metricKeys.map((k) => PM_METRIC_LABELS[k] ?? k)]
+  const rows = comparisons.map((c) => [
+    c.label,
+    ...metricKeys.map((k) => {
+      const v = (c.metrics as Record<string, number | undefined>)[k]
+      return v !== undefined ? v.toFixed(PM_METRIC_PRECISION[k] ?? 4) : ''
+    }),
+  ])
+  downloadCsv('evaluation_summary.csv', [header, ...rows].map((r) => r.join(',')).join('\n'))
+}
+
+function exportPerMaterialCsv(perMaterial: MaterialMetricItem[]) {
+  if (!perMaterial.length) return
+  const first = perMaterial[0]
+  const pairLabels = Object.keys(first.metrics)
+  const firstPair = Object.values(first.metrics)[0]
+  const metricKeys = firstPair ? Object.keys(firstPair).filter((k) => (firstPair as Record<string, number | undefined>)[k] !== undefined) : []
+  const header = ['材质', ...pairLabels.flatMap((pl) => metricKeys.map((mk) => `${pl} - ${PM_METRIC_LABELS[mk] ?? mk}`))]
+  const rows = perMaterial.map((item) => [
+    item.material,
+    ...pairLabels.flatMap((pl) => {
+      const m = item.metrics[pl]
+      return metricKeys.map((mk) => {
+        if (!m) return ''
+        const v = (m as Record<string, number | undefined>)[mk]
+        return v !== undefined ? v.toFixed(PM_METRIC_PRECISION[mk] ?? 4) : ''
+      })
+    }),
+  ])
+  downloadCsv('evaluation_per_material.csv', [header, ...rows].map((r) => r.join(',')).join('\n'))
+}
+
+function PerMaterialTable({ perMaterial, onExportCsv }: { perMaterial: MaterialMetricItem[]; onExportCsv?: () => void }) {
   const [sortKey, setSortKey] = useState<SortKey>('material')
   const [sortDir, setSortDir] = useState<SortDir>('asc')
 
   const pairLabels = useMemo(() => {
     const first = perMaterial[0]
     return first ? Object.keys(first.metrics) : []
+  }, [perMaterial])
+
+  const metricKeys = useMemo(() => {
+    const first = perMaterial[0]
+    if (!first) return []
+    const firstPair = Object.values(first.metrics)[0]
+    if (!firstPair) return []
+    return Object.keys(firstPair).filter((k) => (firstPair as Record<string, number | undefined>)[k] !== undefined)
   }, [perMaterial])
 
   const toggleSort = (key: SortKey) => {
@@ -197,8 +276,8 @@ function PerMaterialTable({ perMaterial }: { perMaterial: MaterialMetricItem[] }
         const [pairLabel, metricKey] = sortKey.split(':')
         const am = a.metrics[pairLabel]
         const bm = b.metrics[pairLabel]
-        const av = am ? (am as Record<string, number>)[metricKey] ?? 0 : 0
-        const bv = bm ? (bm as Record<string, number>)[metricKey] ?? 0 : 0
+        const av = am ? (am as Record<string, number | undefined>)[metricKey] ?? 0 : 0
+        const bv = bm ? (bm as Record<string, number | undefined>)[metricKey] ?? 0 : 0
         cmp = av - bv
       }
       return sortDir === 'asc' ? cmp : -cmp
@@ -214,29 +293,45 @@ function PerMaterialTable({ perMaterial }: { perMaterial: MaterialMetricItem[] }
 
   return (
     <div style={{ overflow: 'auto', border: '1px solid var(--border)', borderRadius: 4 }}>
-      <strong style={{ display: 'block', padding: '8px 12px', fontSize: '0.9rem', borderBottom: '2px solid var(--border)' }}>
-        分材质评估结果
-      </strong>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', borderBottom: '2px solid var(--border)' }}>
+        <strong style={{ fontSize: '0.9rem' }}>分材质评估结果</strong>
+        {onExportCsv ? (
+          <button
+            type="button"
+            onClick={onExportCsv}
+            style={{
+              padding: '4px 12px',
+              fontSize: '0.8rem',
+              background: 'var(--surface-soft)',
+              border: '1px solid var(--border)',
+              borderRadius: 4,
+              cursor: 'pointer',
+              color: 'var(--text-muted)',
+            }}
+          >
+            导出 CSV
+          </button>
+        ) : null}
+      </div>
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
         <thead>
           <tr style={{ borderBottom: '2px solid var(--border)' }}>
-            <th style={{ ...thStyle, textAlign: 'left', position: 'sticky', left: 0, background: 'var(--surface)' }} onClick={() => toggleSort('material')}>
+            <th style={{ ...thStyle, textAlign: 'left', position: 'sticky', left: 0, background: 'var(--surface)' }} onClick={() => toggleSort('material')} rowSpan={2}>
               材质{sortIndicator('material')}
             </th>
             {pairLabels.map((label) => (
-              <th key={label} colSpan={3} style={{ ...thStyle, textAlign: 'center', borderLeft: groupSep }}>
+              <th key={label} colSpan={metricKeys.length} style={{ ...thStyle, textAlign: 'center', borderLeft: groupSep }}>
                 {label}
               </th>
             ))}
           </tr>
           <tr style={{ borderBottom: '2px solid var(--border)' }}>
-            <th style={{ ...thStyle, textAlign: 'left', position: 'sticky', left: 0, background: 'var(--surface)' }} />
             {pairLabels.map((label) => (
-              <React.Fragment key={label}>
-                <th style={thStyle} onClick={() => toggleSort(`${label}:psnr`)}>PSNR{sortIndicator(`${label}:psnr`)}</th>
-                <th style={thStyle} onClick={() => toggleSort(`${label}:ssim`)}>SSIM{sortIndicator(`${label}:ssim`)}</th>
-                <th style={thStyle} onClick={() => toggleSort(`${label}:delta_e`)}>DeltaE{sortIndicator(`${label}:delta_e`)}</th>
-              </React.Fragment>
+              metricKeys.map((mk) => (
+                <th key={`${label}:${mk}`} style={thStyle} onClick={() => toggleSort(`${label}:${mk}`)}>
+                  {PM_METRIC_LABELS[mk] ?? mk}{sortIndicator(`${label}:${mk}`)}
+                </th>
+              ))
             ))}
           </tr>
         </thead>
@@ -247,17 +342,19 @@ function PerMaterialTable({ perMaterial }: { perMaterial: MaterialMetricItem[] }
               {pairLabels.map((label) => {
                 const m = item.metrics[label]
                 return m ? (
-                  <React.Fragment key={label}>
-                    <td style={{ ...tdStyle, borderLeft: groupSep }}>{m.psnr.toFixed(2)}</td>
-                    <td style={tdStyle}>{m.ssim.toFixed(4)}</td>
-                    <td style={tdStyle}>{m.delta_e.toFixed(4)}</td>
-                  </React.Fragment>
+                  metricKeys.map((mk) => {
+                    const val = (m as Record<string, number | undefined>)[mk]
+                    const prec = PM_METRIC_PRECISION[mk] ?? 4
+                    return (
+                      <td key={`${label}:${mk}`} style={{ ...tdStyle, borderLeft: mk === metricKeys[0] ? groupSep : undefined }}>
+                        {val !== undefined ? val.toFixed(prec) : '—'}
+                      </td>
+                    )
+                  })
                 ) : (
-                  <React.Fragment key={label}>
-                    <td style={{ ...tdStyle, borderLeft: groupSep }}>—</td>
-                    <td style={tdStyle}>—</td>
-                    <td style={tdStyle}>—</td>
-                  </React.Fragment>
+                  metricKeys.map((mk) => (
+                    <td key={`${label}:${mk}`} style={{ ...tdStyle, borderLeft: mk === metricKeys[0] ? groupSep : undefined }}>—</td>
+                  ))
                 )
               })}
             </tr>
@@ -281,6 +378,7 @@ export function AnalysisWorkbench({ activeSubView, onSubViewChange: _onSubViewCh
   const [evaluationRangeMode, setEvaluationRangeMode] = useState<EvaluationRangeMode>('all')
   const [selectedEvaluationMaterials, setSelectedEvaluationMaterials] = useState<string[]>([])
   const [evaluationMode, setEvaluationMode] = useState<'summary' | 'per_material'>('summary')
+  const [selectedMetrics, setSelectedMetrics] = useState<string[]>(['psnr', 'ssim', 'delta_e'])
 
   const [compareSelectionMode, setCompareSelectionMode] = useState<CompareSelectionMode>('material')
   const [compareLeftSet, setCompareLeftSet] = useState<AnalysisImageSet>('brdfs')
@@ -515,6 +613,7 @@ export function AnalysisWorkbench({ activeSubView, onSubViewChange: _onSubViewCh
       method2_label: m1?.label ?? '',
       method3_label: m2?.label ?? '',
       selected_materials: evaluationSelection,
+      metrics: selectedMetrics,
     })
   }
 
@@ -597,6 +696,29 @@ export function AnalysisWorkbench({ activeSubView, onSubViewChange: _onSubViewCh
                     <span>方法三</span>
                     <input value={method3Label} onChange={(event) => setMethod3Label(event.target.value)} disabled={!method3Enabled} style={{ flex: 1 }} />
                   </label>
+                </div>
+
+                <div className="render-form-grid">
+                  <Field label="评估指标">
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px 16px' }}>
+                      {AVAILABLE_METRICS.map((m) => (
+                        <label key={m.key} style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
+                          <input
+                            type="checkbox"
+                            checked={selectedMetrics.includes(m.key)}
+                            onChange={(event) => {
+                              if (event.target.checked) {
+                                setSelectedMetrics((prev) => [...prev, m.key])
+                              } else {
+                                setSelectedMetrics((prev) => prev.filter((k) => k !== m.key))
+                              }
+                            }}
+                          />
+                          <span>{m.label}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </Field>
                 </div>
 
                 {evaluationRangeMode === 'selected' ? (
@@ -850,13 +972,19 @@ export function AnalysisWorkbench({ activeSubView, onSubViewChange: _onSubViewCh
               <div style={{ display: 'flex', flexDirection: 'column', gap: 16, flex: 1, minHeight: 0, overflow: 'auto' }}>
                 {evaluationMode === 'summary' ? (
                   evaluateMutation.data?.comparisons?.length ? (
-                    <AnalysisResultTable comparisons={evaluateMutation.data.comparisons} />
+                    <AnalysisResultTable
+                      comparisons={evaluateMutation.data.comparisons}
+                      onExportCsv={() => exportSummaryCsv(evaluateMutation.data!.comparisons)}
+                    />
                   ) : (
                     <FeedbackPanel title="暂无评估数据" message="请点击「整体评估」按钮生成结果。" tone="empty" compact />
                   )
                 ) : (
                   evaluateMutation.data?.per_material?.length ? (
-                    <PerMaterialTable perMaterial={evaluateMutation.data.per_material} />
+                    <PerMaterialTable
+                      perMaterial={evaluateMutation.data.per_material}
+                      onExportCsv={() => exportPerMaterialCsv(evaluateMutation.data!.per_material)}
+                    />
                   ) : (
                     <FeedbackPanel title="暂无分材质数据" message="请点击「分材质评估」按钮生成结果。" tone="empty" compact />
                   )
