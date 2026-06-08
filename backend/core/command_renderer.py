@@ -41,6 +41,7 @@ def resolve_template(template: str, context: dict) -> Optional[str]:
 
 
 _MISSING_SENTINEL = "\x00__MISSING__\x00"
+_FLAG_ONLY_SENTINEL = "\x00__FLAG_ONLY__\x00"
 
 
 def resolve_path(path: str, context: dict):
@@ -175,6 +176,11 @@ def _build_command(
         resolved = _resolve_arg(arg_def, context)
         if resolved is None:
             continue
+        if resolved == _FLAG_ONLY_SENTINEL:
+            # 纯布尔开关：仅追加 flag，不追加值
+            if arg_def.flag:
+                cmd.append(arg_def.flag)
+            continue
         if isinstance(resolved, list):
             # 多个值（merge 模式）
             if arg_def.flag:
@@ -198,7 +204,9 @@ def _resolve_arg(arg_def: OperationArgDef, context: dict):
     if arg_def.condition_source and not arg_def.source:
         cond_val = resolve_source(arg_def.condition_source, context)
         if cond_val and str(cond_val).lower() in ("true", "1", "yes"):
-            return arg_def.flag  # 仅返回 flag 字符串本身
+            if arg_def.is_flag:
+                return _FLAG_ONLY_SENTINEL  # 纯布尔开关，仅追加 flag
+            return arg_def.flag
         return None
 
     # 条件判断：condition_source 为假时跳过

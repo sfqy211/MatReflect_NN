@@ -28,10 +28,11 @@ class ModelParameter(BaseModel):
 
 class OperationArgDef(BaseModel):
     """命令行参数定义。
-    
+
     - flag 非空时作为 CLI flag 前缀（如 --outpath），空时作为位置参数。
     - source 指定变量路径：request.xxx / runtime.xxx / default_paths.xxx / item / item.stem / item.path
     - condition_source 指定一个布尔变量名，仅当其值为真时才添加此参数（用于 --keepon 类 flag）。
+    - is_flag 为 True 时表示纯布尔开关（如 --keepon），仅追加 flag 本身，不追加值参数。
     - default 在 source 值为空时使用。
     - raw_value 完全不经过变量解析，直接使用。
     """
@@ -40,6 +41,7 @@ class OperationArgDef(BaseModel):
     default: Any = None
     condition_source: str = ""
     raw_value: str = ""
+    is_flag: bool = False
 
 
 class PostActionDef(BaseModel):
