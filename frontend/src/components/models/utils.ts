@@ -6,7 +6,7 @@ import type {
   TrainModelItem,
 } from '../../types/api'
 
-export const DEFAULT_FULLBIN_OUTPUT = 'data/inputs/fullbin'
+export const DEFAULT_FULLBIN_OUTPUT = 'data/render-input/hyperbrdf'
 
 /** 转义字符串中的正则特殊字符 */
 export function escapeRegex(str: string): string {
@@ -56,7 +56,7 @@ function guessFieldLabel(key: string): string {
     merl_dir: '材质目录',
     output_dir: '输出目录',
     h5_output_dir: 'H5 输出目录',
-    npy_output_dir: 'NPY 输出目录',
+    nbrdf_render_dir: 'Neural-BRDF 渲染目录',
     checkpoint: 'Checkpoint 路径',
     model_path: '模型路径',
     conda_env: 'Conda 环境',
@@ -78,7 +78,7 @@ function guessFieldLabel(key: string): string {
     pt_dir: '潜向量目录',
     extract_dir: '提取输出目录',
     extract_output_dir: 'PT 输出目录',
-    fullbin_output_dir: 'FullBin 输出目录',
+    hyperbrdf_render_dir: 'HyperBRDF 渲染目录',
     h5_dir: 'Keras 权重目录',
     device: '训练设备',
     h5_output_dir_path: 'H5 输出目录',
@@ -220,6 +220,14 @@ function deriveFieldsFromBackendOp(op: BackendOperationDef): OperationField[] {
   return fields
 }
 
+/** 应该隐藏的目录字段 key（这些路径由系统固定，不在 UI 显示） */
+const HIDDEN_PATH_KEYS = new Set([
+  'merl_dir', 'output_dir', 'checkpoint_path',
+  'extract_output_dir', 'pt_dir',
+  'hyperbrdf_render_dir', 'nbrdf_render_dir', 'npy_output_dir',
+  'h5_output_dir', 'h5_dir',
+])
+
 /** 从后端 Dict 转换为前端 OperationDef[]，自动聚合 sub_operations 的字段 */
 function convertBackendOperations(
   backendOps: Record<string, BackendOperationDef>,
@@ -240,6 +248,13 @@ function convertBackendOperations(
             baseFields.push(subField)
           }
         }
+      }
+    }
+
+    // ── 标记隐藏字段 ──
+    for (const f of baseFields) {
+      if (HIDDEN_PATH_KEYS.has(f.key)) {
+        f.hidden = true
       }
     }
 
@@ -277,10 +292,19 @@ function fallbackOperations(model: TrainModelItem): OperationDef[] {
     options: key === 'dataset' ? ['MERL', 'EPFL'] : undefined,
   })
 
+  /** 固定路径字段（隐藏，提交时自动注入） */
+  const fixedPath = (key: string, value: string): OperationField => ({
+    key,
+    label: guessFieldLabel(key),
+    type: 'path',
+    default: value,
+    hidden: true,
+  })
+
   // ── Train ──
   if (model.supports_training) {
     const fields: OperationField[] = [
-      pathFor('merl_dir', 'data/inputs/binary'),
+      fixedPath('merl_dir', 'data/materials'),
       { key: 'dataset', label: '数据集', type: 'select', default: 'MERL', options: ['MERL', 'EPFL'] },
       { key: 'epochs', label: '训练轮数', type: 'int', default: 100, min: 1, max: 100000 },
       baseMaterialsField,
@@ -289,19 +313,19 @@ function fallbackOperations(model: TrainModelItem): OperationDef[] {
     if (model.adapter === 'neural-pytorch') {
       fields.push(
         { key: 'device', label: '训练设备', type: 'select', default: 'cpu', options: ['cpu', 'cuda'] },
-        pathFor('output_dir', 'data/inputs/npy'),
+        fixedPath('output_dir', 'data/render-input/neural-brdf'),
       )
     }
     if (model.adapter === 'neural-keras') {
       fields.push(
         { key: 'cuda_device', label: 'CUDA 设备', type: 'str', default: '0' },
-        { key: 'h5_output_dir', label: 'H5 输出目录', type: 'path', default: defaults.h5_output_dir ?? 'models/Neural-BRDF/data/merl_nbrdf' },
-        { key: 'npy_output_dir', label: 'NPY 输出目录', type: 'path', default: defaults.npy_output_dir ?? 'data/inputs/npy' },
+        fixedPath('h5_output_dir', 'models/Neural-BRDF/data/merl_nbrdf'),
+        fixedPath('nbrdf_render_dir', 'data/render-input/neural-brdf'),
       )
     }
-    if (model.adapter === 'hyper-family' || model.adapter === 'hypersnbrdf') {
+    if (model.adapter === 'hyper-family') {
       fields.push(
-        pathFor('output_dir', defaults.results_dir ?? ''),
+        fixedPath('output_dir', defaults.results_dir ?? 'models/HyperBRDF/results'),
         pathFor('conda_env', runtime.conda_env ?? ''),
         { key: 'sparse_samples', label: '稀疏采样点数', type: 'int', default: 4000, min: 1, max: 1000000 },
         { key: 'kl_weight', label: 'KL 权重', type: 'float', default: 0.1, min: 0, max: 100 },
@@ -309,6 +333,23 @@ function fallbackOperations(model: TrainModelItem): OperationDef[] {
         { key: 'lr', label: '学习率', type: 'float', default: 0.00005, min: 0, max: 1 },
         { key: 'train_subset', label: '训练材质数', type: 'int', default: 80, min: 0, max: 100 },
         { key: 'train_seed', label: '随机种子', type: 'int', default: 42, min: 0, max: 999999 },
+        { key: 'keepon', label: '继续训练', type: 'bool', default: false },
+      )
+    }
+    if (model.adapter === 'hypersnbrdf') {
+      fields.push(
+        fixedPath('output_dir', 'models/HyperSNBRDF/../output'),
+        pathFor('conda_env', runtime.conda_env ?? ''),
+        { key: 'epochs', label: '训练轮数', type: 'int', default: 10000, min: 1, max: 100000 },
+        { key: 'lr', label: '学习率', type: 'float', default: 0.00001, min: 0, max: 1 },
+        { key: 'siren_hid_features', label: 'SIREN 隐藏层特征数', type: 'int', default: 21, min: 1, max: 256 },
+        { key: 'train_sample_num', label: 'SetEncoder 采样数', type: 'int', default: 400000, min: 1, max: 5000000 },
+        { key: 'siren_sample_num', label: 'SIREN 采样数', type: 'int', default: 400000, min: 1, max: 5000000 },
+        { key: 'tonemap_num', label: 'Tone Mapping 参数', type: 'int', default: 1, min: 1, max: 10 },
+        { key: 'k1', label: 'MAE 权重 (k1)', type: 'float', default: 1.0, min: 0, max: 100 },
+        { key: 'kl', label: 'Latent 正则权重 (kl)', type: 'float', default: 0.01, min: 0, max: 100 },
+        { key: 'kw', label: 'Weight 正则权重 (kw)', type: 'float', default: 0.1, min: 0, max: 100 },
+        { key: 'seed', label: '随机种子', type: 'int', default: 1234794195, min: 0, max: 2147483647 },
         { key: 'keepon', label: '继续训练', type: 'bool', default: false },
       )
     }
@@ -328,8 +369,8 @@ function fallbackOperations(model: TrainModelItem): OperationDef[] {
       label: 'Keras→NPY 转换',
       form: {
         fields: [
-          { key: 'h5_dir', label: 'Keras 权重目录', type: 'path', default: defaults.h5_output_dir ?? '' },
-          { key: 'npy_output_dir', label: 'NPY 输出目录', type: 'path', default: defaults.npy_output_dir ?? '' },
+          fixedPath('h5_dir', 'models/Neural-BRDF/data/merl_nbrdf'),
+          fixedPath('nbrdf_render_dir', 'data/render-input/neural-brdf'),
           pathFor('conda_env', runtime.conda_env ?? ''),
           { key: 'selected_h5_files', label: 'Keras 权重文件', type: 'file_picker', default: [], file_source: 'h5_files', file_filter: ['.h5'] },
         ],
@@ -340,9 +381,9 @@ function fallbackOperations(model: TrainModelItem): OperationDef[] {
   // ── Extract ──
   if (model.supports_extract) {
     const fields: OperationField[] = [
-      pathFor('merl_dir', 'data/inputs/binary'),
-      pathFor('checkpoint', defaults.checkpoint ?? ''),
-      { key: 'extract_output_dir', label: 'PT 输出目录', type: 'path', default: defaults.extract_dir ?? '' },
+      fixedPath('merl_dir', 'data/materials'),
+      fixedPath('checkpoint', defaults.checkpoint ?? 'models/HyperBRDF/results/test/MERL/checkpoint.pt'),
+      fixedPath('extract_output_dir', defaults.extract_dir ?? 'models/HyperBRDF/results/extracted_pts'),
       pathFor('conda_env', runtime.conda_env ?? ''),
       { key: 'dataset', label: '数据集', type: 'select', default: 'MERL', options: ['MERL', 'EPFL'] },
       { key: 'sparse_samples', label: '稀疏采样点数', type: 'int', default: 4000, min: 1, max: 1000000 },
@@ -355,8 +396,8 @@ function fallbackOperations(model: TrainModelItem): OperationDef[] {
   // ── Decode ──
   if (model.supports_decode) {
     const fields: OperationField[] = [
-      { key: 'pt_dir', label: '潜向量目录', type: 'path', default: defaults.extract_dir ?? '' },
-      { key: 'fullbin_output_dir', label: 'FullBin 输出目录', type: 'path', default: DEFAULT_FULLBIN_OUTPUT },
+      fixedPath('pt_dir', defaults.extract_dir ?? 'models/HyperBRDF/results/extracted_pts'),
+      fixedPath('hyperbrdf_render_dir', DEFAULT_FULLBIN_OUTPUT),
       pathFor('conda_env', runtime.conda_env ?? ''),
       { key: 'cuda_device', label: 'CUDA 设备', type: 'str', default: '0' },
       { key: 'dataset', label: '数据集', type: 'select', default: 'MERL', options: ['MERL', 'EPFL'] },
@@ -367,12 +408,15 @@ function fallbackOperations(model: TrainModelItem): OperationDef[] {
 
   // ── Reconstruct ──
   if (model.supports_reconstruction) {
+    const outputDir = model.adapter === 'neural-pytorch'
+      ? 'data/render-input/neural-brdf'
+      : 'data/render-input/hyperbrdf'
     const fields: OperationField[] = [
-      pathFor('merl_dir', 'data/inputs/binary'),
+      fixedPath('merl_dir', 'data/materials'),
       { key: 'dataset', label: '数据集', type: 'select', default: 'MERL', options: ['MERL', 'EPFL'] },
       pathFor('conda_env', runtime.conda_env ?? ''),
-      pathFor('output_dir', ''),
-      pathFor('checkpoint', defaults.checkpoint ?? ''),
+      fixedPath('output_dir', outputDir),
+      fixedPath('checkpoint', defaults.checkpoint ?? 'models/HyperBRDF/results/test/MERL/checkpoint.pt'),
       baseMaterialsField,
     ]
     if (model.adapter === 'neural-pytorch') {

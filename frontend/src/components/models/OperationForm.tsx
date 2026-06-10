@@ -36,8 +36,20 @@ export function OperationForm({
   previewLabel = '预览命令',
 }: OperationFormProps) {
   const fields = operation.form?.fields ?? []
+  const visibleFields = fields.filter((f) => !f.hidden)
 
-  if (fields.length === 0) {
+  /** 合并所有字段默认值（含隐藏字段）到提交参数 */
+  const mergeDefaults = (vals: Record<string, unknown>): Record<string, unknown> => {
+    const merged = { ...vals }
+    for (const f of fields) {
+      if (merged[f.key] === undefined || merged[f.key] === null || merged[f.key] === '') {
+        merged[f.key] = f.default
+      }
+    }
+    return merged
+  }
+
+  if (visibleFields.length === 0) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         <FeedbackPanel
@@ -47,10 +59,10 @@ export function OperationForm({
           compact
         />
         <div className="render-actions">
-          <Button type="button" variant="primary" onClick={() => onExecute(values)} disabled={isExecuting}>
+          <Button type="button" variant="primary" onClick={() => onExecute(mergeDefaults(values))} disabled={isExecuting}>
             {isExecuting ? '执行中...' : executeLabel}
           </Button>
-          <Button type="button" onClick={() => onPreview(values)} disabled={isPreviewing}>
+          <Button type="button" onClick={() => onPreview(mergeDefaults(values))} disabled={isPreviewing}>
             {isPreviewing ? '生成中...' : previewLabel}
           </Button>
         </div>
@@ -60,7 +72,7 @@ export function OperationForm({
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-      {fields.map((field) => {
+      {visibleFields.map((field) => {
         const fieldValue = values[field.key] ?? field.default
         return (
           <OperationFieldInput
@@ -74,10 +86,10 @@ export function OperationForm({
         )
       })}
       <div className="render-actions">
-        <Button type="button" variant="primary" onClick={() => onExecute(values)} disabled={isExecuting}>
+        <Button type="button" variant="primary" onClick={() => onExecute(mergeDefaults(values))} disabled={isExecuting}>
           {isExecuting ? '执行中...' : executeLabel}
         </Button>
-        <Button type="button" onClick={() => onPreview(values)} disabled={isPreviewing}>
+        <Button type="button" onClick={() => onPreview(mergeDefaults(values))} disabled={isPreviewing}>
           {isPreviewing ? '生成中...' : previewLabel}
         </Button>
       </div>
@@ -145,7 +157,7 @@ function OperationFieldInput({ field, value, onChange, fileItems, fileError }: O
           </Field>
           {items.length === 0 && !fileError && (
             <span className="muted" style={{ fontSize: '0.8rem' }}>
-              请先设置对应的材质目录路径
+              目录中暂无匹配文件，请检查数据目录是否正确。
             </span>
           )}
         </>
@@ -207,6 +219,8 @@ function OperationFieldInput({ field, value, onChange, fileItems, fileError }: O
             value={String(value ?? field.default ?? '')}
             onChange={(e) => onChange(e.target.value)}
             placeholder={field.placeholder ?? '输入路径...'}
+            readOnly={field.readonly}
+            style={field.readonly ? { backgroundColor: 'var(--bg-secondary, #f5f5f5)', color: 'var(--text-secondary, #888)', cursor: 'not-allowed' } : undefined}
           />
         </Field>
       )
