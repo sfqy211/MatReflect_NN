@@ -60,7 +60,7 @@ export function useMaterialsDirectory(search: string) {
     queryKey: ['train-materials', search],
     queryFn: () =>
       apiPost<FileListResponse>('/fs/list', {
-        path_key: 'inputs_binary',
+        path_key: 'materials',
         page: 1,
         page_size: 200,
         suffix: ['.binary'],

@@ -220,15 +220,15 @@ function SettingsCanvas({
   const [projectRoot, setProjectRoot] = useState("");
   const [mitsubaExe, setMitsubaExe] = useState("");
   const [mtsutilExe, setMtsutilExe] = useState("");
-  const [binaryInputDir, setBinaryInputDir] = useState("");
-  const [npyInputDir, setNpyInputDir] = useState("");
-  const [fullbinInputDir, setFullbinInputDir] = useState("");
-  const [brdfOutputDir, setBrdfOutputDir] = useState("");
-  const [npyOutputDir, setNpyOutputDir] = useState("");
-  const [fullbinOutputDir, setFullbinOutputDir] = useState("");
-  const [snbrdfOutputDir, setSnbrdfOutputDir] = useState("");
-  const [gridsOutputDir, setGridsOutputDir] = useState("");
-  const [comparisonsOutputDir, setComparisonsOutputDir] = useState("");
+  const [materialsDir, setMaterialsDir] = useState("");
+  const [nbrdfRenderInputDir, setNbrdfRenderInputDir] = useState("");
+  const [hyperbrdfRenderInputDir, setHyperbrdfRenderInputDir] = useState("");
+  const [merlRenderDir, setMerlRenderDir] = useState("");
+  const [nbrdfRenderDir, setNbrdfRenderDir] = useState("");
+  const [hyperbrdfRenderDir, setHyperbrdfRenderDir] = useState("");
+  const [snbrdfRenderDir, setSnbrdfRenderDir] = useState("");
+  const [gridsDir, setGridsDir] = useState("");
+  const [comparisonsDir, setComparisonsDir] = useState("");
   const [compileCmd, setCompileCmd] = useState("");
   const [compileCondaEnv, setCompileCondaEnv] = useState("");
   const [compileLabel, setCompileLabel] = useState("");
@@ -253,15 +253,15 @@ function SettingsCanvas({
     setProjectRoot(savedSettings.project_root);
     setMitsubaExe(savedSettings.mitsuba_exe);
     setMtsutilExe(savedSettings.mtsutil_exe);
-    setBinaryInputDir(savedSettings.binary_input_dir);
-    setNpyInputDir(savedSettings.npy_input_dir);
-    setFullbinInputDir(savedSettings.fullbin_input_dir);
-    setBrdfOutputDir(savedSettings.brdf_output_dir);
-    setNpyOutputDir(savedSettings.npy_output_dir);
-    setFullbinOutputDir(savedSettings.fullbin_output_dir);
-    setSnbrdfOutputDir(savedSettings.snbrdf_output_dir);
-    setGridsOutputDir(savedSettings.grids_output_dir);
-    setComparisonsOutputDir(savedSettings.comparisons_output_dir);
+    setMaterialsDir(savedSettings.materials_dir);
+    setNbrdfRenderInputDir(savedSettings.nbrdf_render_input_dir);
+    setHyperbrdfRenderInputDir(savedSettings.hyperbrdf_render_input_dir);
+    setMerlRenderDir(savedSettings.merl_render_dir);
+    setNbrdfRenderDir(savedSettings.nbrdf_render_dir);
+    setHyperbrdfRenderDir(savedSettings.hyperbrdf_render_dir);
+    setSnbrdfRenderDir(savedSettings.snbrdf_render_dir);
+    setGridsDir(savedSettings.grids_dir);
+    setComparisonsDir(savedSettings.comparisons_dir);
     setCompileCmd(savedSettings.compile_cmd);
     setCompileCondaEnv(savedSettings.conda_env);
     setCompileLabel(savedSettings.preset_label);
@@ -333,15 +333,15 @@ function SettingsCanvas({
     project_root: projectRoot.trim(),
     mitsuba_exe: mitsubaExe.trim(),
     mtsutil_exe: mtsutilExe.trim(),
-    binary_input_dir: binaryInputDir.trim(),
-    npy_input_dir: npyInputDir.trim(),
-    fullbin_input_dir: fullbinInputDir.trim(),
-    brdf_output_dir: brdfOutputDir.trim(),
-    npy_output_dir: npyOutputDir.trim(),
-    fullbin_output_dir: fullbinOutputDir.trim(),
-    snbrdf_output_dir: snbrdfOutputDir.trim(),
-    grids_output_dir: gridsOutputDir.trim(),
-    comparisons_output_dir: comparisonsOutputDir.trim(),
+    materials_dir: materialsDir.trim(),
+    nbrdf_render_input_dir: nbrdfRenderInputDir.trim(),
+    hyperbrdf_render_input_dir: hyperbrdfRenderInputDir.trim(),
+    merl_render_dir: merlRenderDir.trim(),
+    nbrdf_render_dir: nbrdfRenderDir.trim(),
+    hyperbrdf_render_dir: hyperbrdfRenderDir.trim(),
+    snbrdf_render_dir: snbrdfRenderDir.trim(),
+    grids_dir: gridsDir.trim(),
+    comparisons_dir: comparisonsDir.trim(),
     preset_label: compileLabel.trim(),
     conda_env: compileCondaEnv.trim(),
     compile_cmd: compileCmd.trim(),
@@ -365,15 +365,15 @@ function SettingsCanvas({
     setProjectRoot(savedSettings.project_root);
     setMitsubaExe(savedSettings.mitsuba_exe);
     setMtsutilExe(savedSettings.mtsutil_exe);
-    setBinaryInputDir(savedSettings.binary_input_dir);
-    setNpyInputDir(savedSettings.npy_input_dir);
-    setFullbinInputDir(savedSettings.fullbin_input_dir);
-    setBrdfOutputDir(savedSettings.brdf_output_dir);
-    setNpyOutputDir(savedSettings.npy_output_dir);
-    setFullbinOutputDir(savedSettings.fullbin_output_dir);
-    setSnbrdfOutputDir(savedSettings.snbrdf_output_dir);
-    setGridsOutputDir(savedSettings.grids_output_dir);
-    setComparisonsOutputDir(savedSettings.comparisons_output_dir);
+    setMaterialsDir(savedSettings.materials_dir);
+    setNbrdfRenderInputDir(savedSettings.nbrdf_render_input_dir);
+    setHyperbrdfRenderInputDir(savedSettings.hyperbrdf_render_input_dir);
+    setMerlRenderDir(savedSettings.merl_render_dir);
+    setNbrdfRenderDir(savedSettings.nbrdf_render_dir);
+    setHyperbrdfRenderDir(savedSettings.hyperbrdf_render_dir);
+    setSnbrdfRenderDir(savedSettings.snbrdf_render_dir);
+    setGridsDir(savedSettings.grids_dir);
+    setComparisonsDir(savedSettings.comparisons_dir);
     setCompileCmd(savedSettings.compile_cmd);
     setCompileCondaEnv(savedSettings.conda_env);
     setCompileLabel(savedSettings.preset_label);
@@ -444,15 +444,15 @@ function SettingsCanvas({
     setProjectRoot(response.settings.project_root);
     setMitsubaExe(response.settings.mitsuba_exe);
     setMtsutilExe(response.settings.mtsutil_exe);
-    setBinaryInputDir(response.settings.binary_input_dir);
-    setNpyInputDir(response.settings.npy_input_dir);
-    setFullbinInputDir(response.settings.fullbin_input_dir);
-    setBrdfOutputDir(response.settings.brdf_output_dir);
-    setNpyOutputDir(response.settings.npy_output_dir);
-    setFullbinOutputDir(response.settings.fullbin_output_dir);
-    setSnbrdfOutputDir(response.settings.snbrdf_output_dir);
-    setGridsOutputDir(response.settings.grids_output_dir);
-    setComparisonsOutputDir(response.settings.comparisons_output_dir);
+    setMaterialsDir(response.settings.materials_dir);
+    setNbrdfRenderInputDir(response.settings.nbrdf_render_input_dir);
+    setHyperbrdfRenderInputDir(response.settings.hyperbrdf_render_input_dir);
+    setMerlRenderDir(response.settings.merl_render_dir);
+    setNbrdfRenderDir(response.settings.nbrdf_render_dir);
+    setHyperbrdfRenderDir(response.settings.hyperbrdf_render_dir);
+    setSnbrdfRenderDir(response.settings.snbrdf_render_dir);
+    setGridsDir(response.settings.grids_dir);
+    setComparisonsDir(response.settings.comparisons_dir);
     setCompileCmd(response.settings.compile_cmd);
     setCompileCondaEnv(response.settings.conda_env);
     setCompileLabel(response.settings.preset_label);
@@ -614,65 +614,65 @@ function SettingsCanvas({
             </Field>
             <Field label="GT 参考材质">
               <input
-                value={binaryInputDir}
-                onChange={(event) => setBinaryInputDir(event.target.value)}
+                value={materialsDir}
+                onChange={(event) => setMaterialsDir(event.target.value)}
                 placeholder="data\\inputs\\binary"
               />
             </Field>
             <Field label="Neural-BRDF 权重">
               <input
-                value={npyInputDir}
-                onChange={(event) => setNpyInputDir(event.target.value)}
+                value={nbrdfRenderInputDir}
+                onChange={(event) => setNbrdfRenderInputDir(event.target.value)}
                 placeholder="data\\inputs\\npy"
               />
             </Field>
             <Field label="HyperBRDF 权重">
               <input
-                value={fullbinInputDir}
-                onChange={(event) => setFullbinInputDir(event.target.value)}
+                value={hyperbrdfRenderInputDir}
+                onChange={(event) => setHyperbrdfRenderInputDir(event.target.value)}
                 placeholder="data\\inputs\\fullbin"
               />
             </Field>
             <Field label="GT 渲染输出">
               <input
-                value={brdfOutputDir}
-                onChange={(event) => setBrdfOutputDir(event.target.value)}
+                value={merlRenderDir}
+                onChange={(event) => setMerlRenderDir(event.target.value)}
                 placeholder="data\\outputs\\binary"
               />
             </Field>
             <Field label="Neural-BRDF 渲染输出">
               <input
-                value={npyOutputDir}
-                onChange={(event) => setNpyOutputDir(event.target.value)}
+                value={nbrdfRenderDir}
+                onChange={(event) => setNbrdfRenderDir(event.target.value)}
                 placeholder="data\\outputs\\npy"
               />
             </Field>
             <Field label="HyperBRDF 渲染输出">
               <input
-                value={fullbinOutputDir}
-                onChange={(event) => setFullbinOutputDir(event.target.value)}
+                value={hyperbrdfRenderDir}
+                onChange={(event) => setHyperbrdfRenderDir(event.target.value)}
                 placeholder="data\\outputs\\fullbin"
               />
             </Field>
             <Field label="HyperSNBRDF 渲染输出">
               <input
-                value={snbrdfOutputDir}
-                onChange={(event) => setSnbrdfOutputDir(event.target.value)}
+                value={snbrdfRenderDir}
+                onChange={(event) => setSnbrdfRenderDir(event.target.value)}
                 placeholder="data\\outputs\\snbrdf"
               />
             </Field>
             <Field label="网格输出">
               <input
-                value={gridsOutputDir}
-                onChange={(event) => setGridsOutputDir(event.target.value)}
+                value={gridsDir}
+                onChange={(event) => setGridsDir(event.target.value)}
                 placeholder="data\\outputs\\grids"
               />
             </Field>
             <Field label="对比输出">
               <input
-                value={comparisonsOutputDir}
+                value={comparisonsDir}
                 onChange={(event) =>
-                  setComparisonsOutputDir(event.target.value)
+                  setComparisonsDir(event.target.value)
                 }
                 placeholder="data\\outputs\\comparisons"
               />

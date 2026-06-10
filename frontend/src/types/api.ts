@@ -67,15 +67,15 @@ export type SystemSettings = {
   project_root: string
   mitsuba_exe: string
   mtsutil_exe: string
-  binary_input_dir: string
-  npy_input_dir: string
-  fullbin_input_dir: string
-  brdf_output_dir: string
-  npy_output_dir: string
-  fullbin_output_dir: string
-  snbrdf_output_dir: string
-  grids_output_dir: string
-  comparisons_output_dir: string
+  materials_dir: string
+  nbrdf_render_input_dir: string
+  hyperbrdf_render_input_dir: string
+  merl_render_dir: string
+  nbrdf_render_dir: string
+  hyperbrdf_render_dir: string
+  snbrdf_render_dir: string
+  grids_dir: string
+  comparisons_dir: string
   preset_label: string
   conda_env: string
   compile_cmd: string
@@ -467,6 +467,10 @@ export type OperationField = {
   options?: string[] | null
   placeholder?: string | null
   required?: boolean
+  /** 路径字段是否只读（自动加载，不可编辑） */
+  readonly?: boolean
+  /** 字段是否隐藏（不在 UI 显示，提交时自动注入默认值） */
+  hidden?: boolean
   /** 仅 file_picker 类型：文件扩展名过滤，如 ['.binary'] */
   file_filter?: string[] | null
   /** 仅 file_picker 类型：文件来源标识，由前端分发层匹配对应的数据源 */

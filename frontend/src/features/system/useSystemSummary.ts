@@ -24,7 +24,7 @@ export function useRenderGallery() {
     queryKey: ['render-gallery'],
     queryFn: () =>
       apiPost<FileListResponse>('/fs/list', {
-        path_key: 'render_outputs_binary_png',
+        path_key: 'renders_merl_png',
         page: 1,
         page_size: 8,
         suffix: ['.png'],

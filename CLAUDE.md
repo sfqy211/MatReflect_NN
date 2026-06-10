@@ -99,7 +99,7 @@ pip install -r backend/requirements.txt
 |----------|---------|---------|
 | `MATREFLECT_PROJECT_ROOT` | Auto-detected parent of `backend/` | Project root for all path resolution |
 | `MATREFLECT_RUNTIME_ROOT` | `{PROJECT_ROOT}/backend/runtime` | Task JSON files, logs |
-| `MATREFLECT_OUTPUTS_ROOT` | `{PROJECT_ROOT}/data/outputs` | Render results, grids, comparisons |
+| `MATREFLECT_OUTPUTS_ROOT` | `{PROJECT_ROOT}/data/renders` | Render results |
 | `VITE_API_BASE` | `/api/v1` | Frontend API base URL (set in `frontend/.env`) |
 
 ## Frontend API Pattern
@@ -144,9 +144,13 @@ When changing naming rules, check all of:
 - `models/` — Local model pool (Neural-BRDF, HyperBRDF, etc.)
 - `scene/assets/` — Mitsuba scene assets (each scene in a subdirectory with `scene.xml`)
 - `references/` — Read-only reference area
-- `data/inputs/binary/` — MERL `.binary` files
-- `data/inputs/npy/` — Neural-BRDF `.npy` weights
-- `data/inputs/fullbin/` — FullBin `.fullbin` files
-- `data/outputs/` — Render results (exr/png), grids, comparisons
+- `data/materials/` — Raw MERL `.binary` measurement files
+- `data/model-outputs/` — Model training intermediate artifacts (checkpoints, extracted `.pt`)
+- `data/render-input/` — Render-ready files produced by training/decoding
+  - `neural-brdf/` — Neural-BRDF `.npy` weights
+  - `hyperbrdf/` — HyperBRDF decoded `.fullbin` files
+  - `hypersnbrdf/` — HyperSNBRDF binary data
+- `data/renders/` — Render results organized by model (`merl/`, `neural-brdf/`, `hyperbrdf/`, `hypersnbrdf/`), each with `exr/` and `png/`
+- `data/analysis/` — Analysis results (`grids/`, `comparisons/`)
 - `backend/runtime/` — Tasks, logs, temporary XML files
 - `mitsuba/dist/` — Built Mitsuba executable

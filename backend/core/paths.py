@@ -28,18 +28,19 @@ def get_mitsuba_paths():
 
 
 SAFE_PATHS = {
-    "render_outputs_binary_png": PROJECT_ROOT / "data" / "outputs" / "binary" / "png",
-    "render_outputs_fullbin_png": PROJECT_ROOT / "data" / "outputs" / "fullbin" / "png",
-    "render_outputs_npy_png": PROJECT_ROOT / "data" / "outputs" / "npy" / "png",
-    "analysis_grids": PROJECT_ROOT / "data" / "outputs" / "grids",
-    "analysis_comparisons": PROJECT_ROOT / "data" / "outputs" / "comparisons",
+    "renders_merl_png": PROJECT_ROOT / "data" / "renders" / "merl" / "png",
+    "renders_hyperbrdf_png": PROJECT_ROOT / "data" / "renders" / "hyperbrdf" / "png",
+    "renders_neural_brdf_png": PROJECT_ROOT / "data" / "renders" / "neural-brdf" / "png",
+    "renders_hypersnbrdf_png": PROJECT_ROOT / "data" / "renders" / "hypersnbrdf" / "png",
+    "analysis_grids": PROJECT_ROOT / "data" / "analysis" / "grids",
+    "analysis_comparisons": PROJECT_ROOT / "data" / "analysis" / "comparisons",
     "train_hyper_extracted_pts": PROJECT_ROOT / "models" / "HyperBRDF" / "results" / "extracted_pts",
-    "render_outputs_binary_exr": PROJECT_ROOT / "data" / "outputs" / "binary" / "exr",
-    "render_outputs_fullbin_exr": PROJECT_ROOT / "data" / "outputs" / "fullbin" / "exr",
-    "render_outputs_npy_exr": PROJECT_ROOT / "data" / "outputs" / "npy" / "exr",
-    "inputs_binary": PROJECT_ROOT / "data" / "inputs" / "binary",
-    "inputs_fullbin": PROJECT_ROOT / "data" / "inputs" / "fullbin",
-    "inputs_npy": PROJECT_ROOT / "data" / "inputs" / "npy",
+    "renders_merl_exr": PROJECT_ROOT / "data" / "renders" / "merl" / "exr",
+    "renders_hyperbrdf_exr": PROJECT_ROOT / "data" / "renders" / "hyperbrdf" / "exr",
+    "renders_neural_brdf_exr": PROJECT_ROOT / "data" / "renders" / "neural-brdf" / "exr",
+    "materials": PROJECT_ROOT / "data" / "materials",
+    "render_input_hyperbrdf": PROJECT_ROOT / "data" / "render-input" / "hyperbrdf",
+    "render_input_neural_brdf": PROJECT_ROOT / "data" / "render-input" / "neural-brdf",
     "scene_xml": PROJECT_ROOT / "scene" / "assets",
 }
 

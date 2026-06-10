@@ -98,12 +98,12 @@ class AnalysisService:
             return (raw_path if raw_path.is_absolute() else project_root / raw_path).resolve(strict=False)
 
         return {
-            "brdfs": resolve_path(settings.brdf_output_dir) / "png",
-            "fullbin": resolve_path(settings.fullbin_output_dir) / "png",
-            "npy": resolve_path(settings.npy_output_dir) / "png",
-            "snbrdf": resolve_path(settings.snbrdf_output_dir) / "png",
-            "grids": resolve_path(settings.grids_output_dir),
-            "comparisons": resolve_path(settings.comparisons_output_dir),
+            "brdfs": resolve_path(settings.merl_render_dir) / "png",
+            "fullbin": resolve_path(settings.hyperbrdf_render_dir) / "png",
+            "npy": resolve_path(settings.nbrdf_render_dir) / "png",
+            "snbrdf": resolve_path(settings.snbrdf_render_dir) / "png",
+            "grids": resolve_path(settings.grids_dir),
+            "comparisons": resolve_path(settings.comparisons_dir),
         }
 
     def _dir_for(self, image_set: AnalysisImageSet) -> Path:

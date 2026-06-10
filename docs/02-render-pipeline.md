@@ -50,7 +50,7 @@
 
 ## FullBin / Binary 特殊逻辑
 
-`fullbin` 模式下，若文件尺寸匹配标准 MERL `.binary`（`12 + 90*90*180*3*8` 字节），会自动改用 `merl` 插件渲染。即 `data/inputs/fullbin/` 中混入的 `.binary` 文件仍按 MERL 路径渲染。
+`fullbin` 模式下，若文件尺寸匹配标准 MERL `.binary`（`12 + 90*90*180*3*8` 字节），会自动改用 `merl` 插件渲染。即 `data/render-input/hyperbrdf/` 中混入的 `.binary` 文件仍按 MERL 路径渲染。
 
 ## 输出命名
 

@@ -162,7 +162,7 @@ export function TrainTab(props: TrainTabProps) {
               selectedItems={selectedMaterials}
               onSelectionChange={setSelectedMaterials}
               error={materialsQueryError}
-              emptyMessage="请检查 data/inputs/binary 下是否存在 .binary 文件。"
+              emptyMessage="请检查 data/materials 下是否存在 .binary 文件。"
               searchPlaceholder="搜索 MERL 材质"
               formatName={normalizeBinaryName}
               presets={[

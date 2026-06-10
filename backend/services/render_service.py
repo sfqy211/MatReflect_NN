@@ -40,8 +40,8 @@ TEMP_XML_ROOT.mkdir(parents=True, exist_ok=True)
 
 NEURAL_BRDF_DIR = PROJECT_ROOT / "models" / "Neural-BRDF"
 HYPER_BRDF_DIR = PROJECT_ROOT / "models" / "HyperBRDF"
-DATA_INPUTS_NPY = PROJECT_ROOT / "data" / "inputs" / "npy"
-DATA_INPUTS_FULLBIN = PROJECT_ROOT / "data" / "inputs" / "fullbin"
+DATA_INPUTS_NPY = PROJECT_ROOT / "data" / "render-input" / "neural-brdf"
+DATA_INPUTS_FULLBIN = PROJECT_ROOT / "data" / "render-input" / "hyperbrdf"
 BINARY_TO_NBRDF_DIR = NEURAL_BRDF_DIR / "binary_to_nbrdf"
 PYTORCH_SCRIPT = BINARY_TO_NBRDF_DIR / "pytorch_code" / "train_NBRDF_pytorch.py"
 
@@ -281,34 +281,34 @@ class RenderService:
     def _input_dir(self, render_mode: RenderMode) -> Path:
         settings = load_system_settings()
         configured = {
-            "brdfs": settings.binary_input_dir,
-            "fullbin": settings.fullbin_input_dir,
-            "npy": settings.npy_input_dir,
-            "snbrdf": settings.snbrdf_output_dir,
+            "brdfs": settings.materials_dir,
+            "fullbin": settings.hyperbrdf_render_input_dir,
+            "npy": settings.nbrdf_render_input_dir,
+            "snbrdf": settings.snbrdf_render_dir,
         }[render_mode]
         raw_path = Path(configured).expanduser()
         resolved = (raw_path if raw_path.is_absolute() else Path(settings.project_root).resolve() / raw_path).resolve(strict=False)
         if render_mode == "snbrdf":
-            resolved = resolved / "binary"
+            resolved = resolved / "weights"
         return resolved
 
     def _output_dir(self, render_mode: RenderMode) -> Path:
         settings = load_system_settings()
         configured = {
-            "brdfs": settings.brdf_output_dir,
-            "fullbin": settings.fullbin_output_dir,
-            "npy": settings.npy_output_dir,
-            "snbrdf": settings.snbrdf_output_dir,
+            "brdfs": settings.merl_render_dir,
+            "fullbin": settings.hyperbrdf_render_dir,
+            "npy": settings.nbrdf_render_dir,
+            "snbrdf": settings.snbrdf_render_dir,
         }[render_mode]
         raw_path = Path(configured).expanduser()
         return (raw_path if raw_path.is_absolute() else Path(settings.project_root).resolve() / raw_path).resolve(strict=False)
 
     def _output_path_key(self, render_mode: RenderMode) -> str:
         return {
-            "brdfs": "render_outputs_binary_png",
-            "fullbin": "render_outputs_fullbin_png",
-            "npy": "render_outputs_npy_png",
-            "snbrdf": "render_outputs_snbrdf_png",
+            "brdfs": "renders_merl_png",
+            "fullbin": "renders_hyperbrdf_png",
+            "npy": "renders_neural_brdf_png",
+            "snbrdf": "renders_hypersnbrdf_png",
         }[render_mode]
 
     def _project_config(self, project_variant: TrainProjectVariant) -> dict[str, Union[Path, str]]:
