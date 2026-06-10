@@ -21,8 +21,8 @@
         {"key": "device", "label": "训练设备", "type": "select", "default": "cpu", "options": ["cpu", "cuda"]}
       ],
       "default_paths": {
-        "materials_dir": "data/inputs/binary",
-        "output_dir": "data/inputs/npy"
+        "materials_dir": "data/materials",
+        "output_dir": "data/render-input/neural-brdf"
       },
       "runtime": {
         "conda_env": "nbrdf-train",
@@ -39,7 +39,7 @@
           "input_dir_source": "request.merl_dir",
           "args": [
             {"source": "item.path"},
-            {"flag": "--outpath", "source": "request.output_dir"},
+            {"flag": "--outpath", "source": "request.output_dir", "default": "data/render-input/neural-brdf"},
             {"flag": "--epochs", "source": "request.epochs", "default": 100},
             {"flag": "--device", "source": "request.device", "default": "cpu"}
           ]
@@ -53,7 +53,7 @@
           "input_dir_source": "request.merl_dir",
           "args": [
             {"source": "item.path"},
-            {"flag": "--outpath", "source": "request.output_dir"},
+            {"flag": "--outpath", "source": "request.output_dir", "default": "data/render-input/neural-brdf"},
             {"flag": "--epochs", "source": "request.neural_epochs", "default": 100},
             {"flag": "--device", "source": "request.neural_device", "default": "cpu"}
           ]
@@ -80,9 +80,9 @@
         {"key": "cuda_device", "label": "CUDA 设备", "type": "str", "default": "0"}
       ],
       "default_paths": {
-        "materials_dir": "data/inputs/binary",
+        "materials_dir": "data/materials",
         "h5_output_dir": "models/Neural-BRDF/data/merl_nbrdf",
-        "npy_output_dir": "data/inputs/npy"
+        "npy_output_dir": "data/render-input/neural-brdf"
       },
       "runtime": {
         "conda_env": "nbrdf-train",
@@ -121,7 +121,7 @@
           "merge_inputs": true,
           "args": [
             {"source": "item.path"},
-            {"flag": "--destdir", "source": "request.npy_output_dir"}
+            {"flag": "--destdir", "source": "request.npy_output_dir", "default": "data/render-input/neural-brdf"}
           ]
         }
       }
@@ -153,7 +153,7 @@
         {"key": "keepon", "label": "继续训练", "type": "bool", "default": false}
       ],
       "default_paths": {
-        "materials_dir": "data/inputs/binary",
+        "materials_dir": "data/materials",
         "results_dir": "models/HyperBRDF/results",
         "extract_dir": "models/HyperBRDF/results/extracted_pts",
         "checkpoint": "models/HyperBRDF/results/test/MERL/checkpoint.pt"
@@ -171,8 +171,8 @@
           "description": "在 MERL 数据集上训练 HyperBRDF 模型",
           "script": "models/HyperBRDF/main.py",
           "args": [
-            {"flag": "--destdir", "source": "request.output_dir"},
-            {"flag": "--binary", "source": "request.merl_dir"},
+            {"flag": "--destdir", "source": "request.output_dir", "default": "models/HyperBRDF/results"},
+            {"flag": "--binary", "source": "request.merl_dir", "default": "data/materials"},
             {"flag": "--dataset", "source": "request.dataset", "default": "MERL"},
             {"flag": "--epochs", "source": "request.epochs", "default": 100},
             {"flag": "--sparse_samples", "source": "request.sparse_samples", "default": 4000},
@@ -191,9 +191,9 @@
           "loop_source": "request.selected_materials",
           "input_dir_source": "request.merl_dir",
           "args": [
-            {"flag": "--model", "source": "request.checkpoint_path"},
+            {"flag": "--model", "source": "request.checkpoint_path", "default": "models/HyperBRDF/results/test/MERL/checkpoint.pt"},
             {"flag": "--binary", "source": "item.path"},
-            {"flag": "--destdir", "source": "request.output_dir"},
+            {"flag": "--destdir", "source": "request.output_dir", "default": "models/HyperBRDF/results/extracted_pts"},
             {"flag": "--dataset", "source": "request.dataset", "default": "MERL"},
             {"flag": "--sparse_samples", "source": "request.sparse_samples", "default": 4000}
           ]
@@ -206,7 +206,7 @@
           "input_dir_source": "request.pt_dir",
           "args": [
             {"source": "item.path"},
-            {"source": "request.output_dir"},
+            {"source": "request.output_dir", "default": "data/render-input/hyperbrdf"},
             {"flag": "--dataset", "source": "request.dataset", "default": "MERL"},
             {"flag": "--cuda_device", "source": "request.cuda_device", "default": "0"}
           ]
@@ -228,7 +228,7 @@
       "description": "HyperNetwork + SIREN 神经 BRDF 表示模型，从 MERL BRDF 数据集学习材质反射特性。",
       "supports_training": true,
       "supports_extract": false,
-      "supports_decode": false,
+      "supports_decode": true,
       "supports_runs": false,
       "supports_reconstruction": false,
       "model_dir": "models/HyperSNBRDF",
@@ -248,7 +248,7 @@
         {"key": "seed", "label": "随机种子", "type": "int", "default": 1234794195, "min": 0, "max": 2147483647}
       ],
       "default_paths": {
-        "train_materials_dir": "data/merl_train_78",
+        "train_materials_dir": "data/materials",
         "output_dir": "models/HyperSNBRDF/../output"
       },
       "runtime": {
@@ -272,8 +272,23 @@
             {"flag": "--kl", "source": "request.kl", "default": 0.01},
             {"flag": "--kw", "source": "request.kw", "default": 0.1},
             {"flag": "--seed", "source": "request.seed", "default": 1234794195},
-            {"flag": "--output_dir", "source": "request.output_dir", "default": ""},
+            {"flag": "--output_dir", "source": "request.output_dir", "default": "models/HyperSNBRDF/../output"},
             {"flag": "--keepon", "condition_source": "request.keepon", "is_flag": true}
+          ]
+        },
+        "decode": {
+          "label": "解码",
+          "description": "将训练好的 .pth checkpoint 解码为 MERL .binary 文件",
+          "script": "models/HyperSNBRDF/decode_to_binary.py",
+          "args": [
+            {"flag": "--model_dir", "source": "request.checkpoint_path"},
+            {"flag": "--merl_dir", "source": "request.merl_dir", "default": "data/materials"},
+            {"flag": "--output_dir", "source": "request.output_dir", "default": "data/render-input/hypersnbrdf"},
+            {"flag": "--gpu", "source": "request.gpu", "default": "cuda:0"},
+            {"flag": "--siren_hid_features", "source": "request.siren_hid_features", "default": 21},
+            {"flag": "--tonemap_num", "source": "request.tonemap_num", "default": 1},
+            {"flag": "--sample_num", "source": "request.train_sample_num", "default": 400000},
+            {"flag": "--siren_sample_num", "source": "request.siren_sample_num", "default": 400000}
           ]
         }
       }
