@@ -398,6 +398,7 @@ export function AnalysisWorkbench({ activeSubView, onSubViewChange: _onSubViewCh
   const [comparisonOutputName, setComparisonOutputName] = useState('merged_comparison.png')
   const [comparisonShowLabel, setComparisonShowLabel] = useState(true)
   const [comparisonShowFilename, setComparisonShowFilename] = useState(true)
+  const [comparisonScalePercent, setComparisonScalePercent] = useState('50')
   const [selectedComparisonMaterials, setSelectedComparisonMaterials] = useState<string[]>([])
   const [selectedGridOutputPath, setSelectedGridOutputPath] = useState<string | null>(null)
   const [selectedComparisonOutputPath, setSelectedComparisonOutputPath] = useState<string | null>(null)
@@ -638,6 +639,7 @@ export function AnalysisWorkbench({ activeSubView, onSubViewChange: _onSubViewCh
       selected_materials: selectedComparisonMaterials,
       show_label: comparisonShowLabel,
       show_filename: comparisonShowFilename,
+      scale_percent: Number(comparisonScalePercent) || 50,
       output_dir: '',
       output_name: comparisonOutputName,
     })
@@ -937,6 +939,9 @@ export function AnalysisWorkbench({ activeSubView, onSubViewChange: _onSubViewCh
                 <div className="render-form-grid">
                   <Field label="输出文件名">
               <input value={comparisonOutputName} onChange={(event) => setComparisonOutputName(event.target.value)} />
+            </Field>
+                  <Field label="缩放比例 (%)">
+              <input type="number" value={comparisonScalePercent} onChange={(event) => setComparisonScalePercent(event.target.value)} />
             </Field>
                 </div>
 

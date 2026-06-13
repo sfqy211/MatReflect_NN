@@ -85,6 +85,7 @@ class ComparisonRequest(BaseModel):
     selected_materials: list[str] = Field(default_factory=list)
     show_label: bool = True
     show_filename: bool = True
+    scale_percent: int = Field(default=50, ge=10, le=200)
     output_dir: str = ""
     output_name: str = "merged_comparison.png"
 

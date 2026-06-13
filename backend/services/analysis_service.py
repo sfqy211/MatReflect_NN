@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import math
 import re
+import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -30,6 +31,32 @@ from backend.models.analysis import (
 )
 from backend.models.common import FileListItem
 from backend.services.file_service import build_preview_url, resolve_workspace_path
+
+
+_FONT_CANDIDATES = (
+    ["msyh.ttc", "msyhbd.ttc", "simhei.ttf", "simsun.ttc"]
+    if sys.platform == "win32"
+    else ["NotoSansCJK-Regular.ttc", "NotoSansCJK.otf", "DroidSansFallbackFull.ttf"]
+)
+
+
+def _load_font(size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
+    """Load a font that supports CJK characters, falling back to default."""
+    if sys.platform == "win32":
+        fonts_dir = Path("C:/Windows/Fonts")
+        for name in _FONT_CANDIDATES:
+            try:
+                return ImageFont.truetype(str(fonts_dir / name), size)
+            except OSError:
+                continue
+    else:
+        for name in _FONT_CANDIDATES:
+            for prefix in ("/usr/share/fonts", "/usr/local/share/fonts"):
+                try:
+                    return ImageFont.truetype(f"{prefix}/{name}", size)
+                except OSError:
+                    continue
+    return ImageFont.load_default()
 
 
 DEFAULT_SET_LABELS: dict[AnalysisImageSet, str] = {
@@ -347,10 +374,7 @@ class AnalysisService:
         height = rows * (cell_h + text_height) + (rows + 1) * request.padding
         grid_img = Image.new("RGB", (width, height), color=(255, 255, 255))
         draw = ImageDraw.Draw(grid_img)
-        try:
-            font = ImageFont.truetype("arial.ttf", 14)
-        except OSError:
-            font = ImageFont.load_default()
+        font = _load_font(14)
 
         for idx, file_path in enumerate(files):
             with Image.open(file_path) as image:
@@ -392,18 +416,26 @@ class AnalysisService:
         if not materials:
             raise ValueError("No materials available for comparison generation.")
 
-        try:
-            font = ImageFont.truetype("arial.ttf", 20)
-            title_font = ImageFont.truetype("arial.ttf", 24)
-        except OSError:
-            font = ImageFont.load_default()
-            title_font = font
+        scale = request.scale_percent / 100.0
+        font = _load_font(round(20 * scale))
+        title_font = _load_font(round(36 * scale))
 
         processed_rows: list[Image.Image] = []
         skipped: list[str] = []
-        padding = 10
-        header_height = 40 if request.show_label else 0
-        name_width = 60 if request.show_filename else 0
+        row_pad = round(2 * scale)
+        header_height = 28 if request.show_label else 0
+
+        # Calculate name_width from the longest material name (before rotation)
+        if request.show_filename and materials:
+            tmp = Image.new("RGBA", (1, 1))
+            tmp_draw = ImageDraw.Draw(tmp)
+            max_th = max(
+                tmp_draw.textbbox((0, 0), m.upper(), font=title_font)[3]
+                for m in materials
+            )
+            name_width = max_th + 16
+        else:
+            name_width = 0
 
         for material in materials:
             current_paths: list[Path] = []
@@ -418,24 +450,41 @@ class AnalysisService:
                 continue
 
             current_images = [Image.open(path) for path in current_paths]
-            width, height = current_images[0].size
-            for idx in range(1, len(current_images)):
-                current_images[idx] = current_images[idx].resize((width, height), Image.LANCZOS)
+            orig_w, orig_h = current_images[0].size
+            cell_w = round(orig_w * scale)
+            cell_h = round(orig_h * scale)
+            for idx in range(len(current_images)):
+                current_images[idx] = current_images[idx].resize((cell_w, cell_h), Image.LANCZOS)
 
-            row_w = name_width + width * len(current_images) + padding * (len(current_images) + 1)
-            row_h = height + padding * 2
+            # Images are flush against each other (no horizontal gap)
+            row_w = name_width + cell_w * len(current_images)
+            row_h = cell_h + row_pad * 2
             row_img = Image.new("RGB", (row_w, row_h), (255, 255, 255))
 
             if request.show_filename:
-                text_img = Image.new("RGBA", (220, 60), (255, 255, 255, 0))
+                label = material.upper()
+                # Scale font down if rotated text would exceed row height
+                fit_font = title_font
+                for try_size in range(title_font.size, 6, -2):
+                    test_font = _load_font(try_size)
+                    test_bbox = test_font.getbbox(label)
+                    if test_bbox[2] - test_bbox[0] + 12 <= row_h:
+                        fit_font = test_font
+                        break
+                bbox = fit_font.getbbox(label)
+                tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
+                # Use generous padding to avoid clipping from font internal margins
+                pad = 12
+                cw, ch = tw + pad * 2, th + pad * 2
+                text_img = Image.new("RGBA", (cw, ch), (255, 255, 255, 0))
                 text_draw = ImageDraw.Draw(text_img)
-                text_draw.text((0, 0), material, font=title_font, fill=(0, 0, 0))
+                text_draw.text((pad, pad), label, font=fit_font, fill=(0, 0, 0))
                 rotated = text_img.rotate(90, expand=True)
                 row_img.paste(rotated, ((name_width - rotated.width) // 2, (row_h - rotated.height) // 2), rotated)
 
             for idx, image in enumerate(current_images):
-                x = name_width + padding + idx * (width + padding)
-                row_img.paste(image, (x, padding))
+                x = name_width + idx * cell_w
+                row_img.paste(image, (x, row_pad))
                 image.close()
             processed_rows.append(row_img)
 
@@ -448,16 +497,17 @@ class AnalysisService:
         current_y = 0
 
         if request.show_label:
-            header = Image.new("RGB", (total_width, header_height), (255, 255, 255))
+            header_font = _load_font(14)
+            header = Image.new("RGB", (total_width, header_height), (240, 240, 240))
             draw = ImageDraw.Draw(header)
-            sample_width = processed_rows[0].width - name_width - padding * (len(valid_columns) + 1)
+            sample_width = processed_rows[0].width - name_width
             col_width = sample_width // len(valid_columns) if valid_columns else 0
             for idx, (label, _directory) in enumerate(valid_columns):
-                bbox = draw.textbbox((0, 0), label, font=title_font)
+                bbox = draw.textbbox((0, 0), label, font=header_font)
                 text_w = bbox[2] - bbox[0]
-                text_x = name_width + padding + idx * (col_width + padding) + (col_width - text_w) / 2
+                text_x = name_width + idx * col_width + (col_width - text_w) / 2
                 text_y = (header_height - (bbox[3] - bbox[1])) / 2
-                draw.text((text_x, text_y), label, fill=(0, 0, 0), font=title_font)
+                draw.text((text_x, text_y), label, fill=(0, 0, 0), font=header_font)
             merged.paste(header, (0, 0))
             current_y += header_height
 

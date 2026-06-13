@@ -296,6 +296,7 @@ export type ComparisonRequest = {
   selected_materials: string[]
   show_label: boolean
   show_filename: boolean
+  scale_percent: number
   output_dir: string
   output_name: string
 }
