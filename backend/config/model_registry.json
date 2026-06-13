@@ -245,7 +245,8 @@
         {"key": "k1", "label": "MAE 权重 (k1)", "type": "float", "default": 1.0, "min": 0, "max": 100},
         {"key": "kl", "label": "Latent 正则权重 (kl)", "type": "float", "default": 0.01, "min": 0, "max": 100},
         {"key": "kw", "label": "Weight 正则权重 (kw)", "type": "float", "default": 0.1, "min": 0, "max": 100},
-        {"key": "seed", "label": "随机种子", "type": "int", "default": 1234794195, "min": 0, "max": 2147483647}
+        {"key": "seed", "label": "随机种子", "type": "int", "default": 1234794195, "min": 0, "max": 2147483647},
+        {"key": "merl_dir", "label": "材质目录", "type": "path", "default": "data/materials"}
       ],
       "default_paths": {
         "train_materials_dir": "data/materials",
@@ -262,6 +263,7 @@
           "description": "在 MERL 数据集上训练 HyperSNBRDF 模型",
           "script": "models/HyperSNBRDF/main.py",
           "args": [
+            {"flag": "--train_merl_data_dir", "source": "request.merl_dir", "default": "data/materials/", "is_path": true},
             {"flag": "--epochs", "source": "request.epochs", "default": 10000},
             {"flag": "--lr", "source": "request.lr", "default": 1e-5},
             {"flag": "--siren_hid_features", "source": "request.siren_hid_features", "default": 21},

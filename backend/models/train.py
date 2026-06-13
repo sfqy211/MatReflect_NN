@@ -17,7 +17,7 @@ TrainModelAdapter = Literal["neural-pytorch", "neural-keras", "hyper-family", "h
 class ModelParameter(BaseModel):
     key: str
     label: str
-    type: Literal["int", "float", "str", "bool", "select"] = "str"
+    type: Literal["int", "float", "str", "bool", "select", "path"] = "str"
     default: Any = None
     min: Optional[float] = None
     max: Optional[float] = None

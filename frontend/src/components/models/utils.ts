@@ -119,6 +119,8 @@ function guessDefault(key: string): unknown {
     selected_h5_files: [],
     selected_pts: [],
     pt_dir: 'models/HyperBRDF/results/extracted_pts',
+    merl_dir: 'data/materials',
+    checkpoint_path: 'models/output/checkpoint',
   }
   return key in defaults ? defaults[key] : ''
 }
@@ -223,7 +225,7 @@ function deriveFieldsFromBackendOp(op: BackendOperationDef): OperationField[] {
 
 /** 应该隐藏的目录字段 key（这些路径由系统固定，不在 UI 显示） */
 const HIDDEN_PATH_KEYS = new Set([
-  'merl_dir', 'output_dir', 'checkpoint_path',
+  'output_dir',
   'extract_output_dir',
   'hyperbrdf_render_dir', 'nbrdf_render_dir', 'npy_output_dir',
   'h5_output_dir', 'h5_dir',
@@ -396,15 +398,30 @@ function fallbackOperations(model: TrainModelItem): OperationDef[] {
 
   // ── Decode ──
   if (model.supports_decode) {
-    const fields: OperationField[] = [
-      { key: 'pt_dir', label: '潜向量目录', type: 'path', default: defaults.extract_dir ?? 'models/HyperBRDF/results/extracted_pts' },
-      fixedPath('hyperbrdf_render_dir', DEFAULT_FULLBIN_OUTPUT),
-      pathFor('conda_env', runtime.conda_env ?? ''),
-      { key: 'cuda_device', label: 'CUDA 设备', type: 'str', default: '0' },
-      { key: 'dataset', label: '数据集', type: 'select', default: 'MERL', options: ['MERL', 'EPFL'] },
-      { key: 'selected_pts', label: '潜向量文件', type: 'file_picker', default: [], file_source: 'pt_files', file_filter: ['.pt'] },
-    ]
-    ops.push({ key: 'decode', label: '潜向量解码', form: { fields } })
+    if (model.adapter === 'hypersnbrdf') {
+      const fields: OperationField[] = [
+        { key: 'checkpoint_path', label: 'Checkpoint 目录', type: 'path', default: 'models/output/checkpoint' },
+        fixedPath('merl_dir', 'data/materials'),
+        fixedPath('output_dir', 'data/render-input/hypersnbrdf'),
+        pathFor('conda_env', runtime.conda_env ?? ''),
+        { key: 'gpu', label: 'GPU 设备', type: 'str', default: 'cuda:0' },
+        { key: 'siren_hid_features', label: 'SIREN 隐藏层特征数', type: 'int', default: 21, min: 1, max: 256 },
+        { key: 'tonemap_num', label: 'Tone Mapping 参数', type: 'int', default: 1, min: 1, max: 10 },
+        { key: 'train_sample_num', label: 'SetEncoder 采样数', type: 'int', default: 400000, min: 1, max: 5000000 },
+        { key: 'siren_sample_num', label: 'SIREN 采样数', type: 'int', default: 400000, min: 1, max: 5000000 },
+      ]
+      ops.push({ key: 'decode', label: '解码', form: { fields } })
+    } else {
+      const fields: OperationField[] = [
+        { key: 'pt_dir', label: '潜向量目录', type: 'path', default: defaults.extract_dir ?? 'models/HyperBRDF/results/extracted_pts' },
+        fixedPath('hyperbrdf_render_dir', DEFAULT_FULLBIN_OUTPUT),
+        pathFor('conda_env', runtime.conda_env ?? ''),
+        { key: 'cuda_device', label: 'CUDA 设备', type: 'str', default: '0' },
+        { key: 'dataset', label: '数据集', type: 'select', default: 'MERL', options: ['MERL', 'EPFL'] },
+        { key: 'selected_pts', label: '潜向量文件', type: 'file_picker', default: [], file_source: 'pt_files', file_filter: ['.pt'] },
+      ]
+      ops.push({ key: 'decode', label: '潜向量解码', form: { fields } })
+    }
   }
 
   // ── Reconstruct ──
