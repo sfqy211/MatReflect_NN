@@ -280,7 +280,7 @@ export type GridRequest = {
   output_dir: string
   output_name: string
   show_names: boolean
-  cell_width: number
+  scale_percent: number
   padding: number
   selected_materials: string[]
 }

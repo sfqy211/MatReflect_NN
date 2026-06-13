@@ -69,7 +69,7 @@ class GridRequest(BaseModel):
     output_dir: str = ""
     output_name: str = "merged_grid.png"
     show_names: bool = True
-    cell_width: int = Field(default=256, ge=64, le=1024)
+    scale_percent: int = Field(default=50, ge=10, le=200)
     padding: int = Field(default=10, ge=0, le=100)
     selected_materials: list[str] = Field(default_factory=list)
 

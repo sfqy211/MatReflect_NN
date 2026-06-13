@@ -75,6 +75,10 @@ export async function apiPut<T>(path: string, body: unknown): Promise<T> {
   return response.json() as Promise<T>
 }
 
+export async function revealInExplorer(filePath: string): Promise<void> {
+  await apiPost('/fs/reveal-in-explorer', { path: filePath })
+}
+
 async function buildErrorMessage(response: Response, method: string, path: string) {
   let detail = ''
 

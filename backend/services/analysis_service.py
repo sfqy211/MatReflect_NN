@@ -325,7 +325,7 @@ class AnalysisService:
     def generate_grid(self, request: GridRequest) -> GeneratedImageResponse:
         source_dir = self._resolve_directory(request.image_set, request.source_dir)
         source_index = self._material_index_from_dir(source_dir)
-        selected = request.selected_materials or list(source_index.keys())
+        selected = sorted(request.selected_materials) if request.selected_materials else sorted(source_index.keys())
         files = [source_index[material] for material in selected if material in source_index]
         if not files:
             raise ValueError("No images available for grid generation.")
@@ -333,11 +333,18 @@ class AnalysisService:
         cols = math.ceil(math.sqrt(len(files)))
         rows = math.ceil(len(files) / cols)
         text_height = 30 if request.show_names else 0
+
+        # Resize first image to get exact cell dimensions
         with Image.open(files[0]) as sample:
-            aspect = sample.height / sample.width
-        cell_height = int(request.cell_width * aspect)
-        width = cols * request.cell_width + (cols + 1) * request.padding
-        height = rows * (cell_height + text_height) + (rows + 1) * request.padding
+            src_w, src_h = sample.size
+            scale = request.scale_percent / 100.0
+            cell_w = round(src_w * scale)
+            cell_h = round(src_h * scale)
+            resized_first = sample.resize((cell_w, cell_h), Image.LANCZOS)
+            cell_w, cell_h = resized_first.size
+
+        width = cols * cell_w + (cols + 1) * request.padding
+        height = rows * (cell_h + text_height) + (rows + 1) * request.padding
         grid_img = Image.new("RGB", (width, height), color=(255, 255, 255))
         draw = ImageDraw.Draw(grid_img)
         try:
@@ -347,11 +354,11 @@ class AnalysisService:
 
         for idx, file_path in enumerate(files):
             with Image.open(file_path) as image:
-                resized = image.resize((request.cell_width, cell_height), Image.LANCZOS)
+                resized = image.resize((cell_w, cell_h), Image.LANCZOS)
                 col = idx % cols
                 row = idx // cols
-                x = request.padding + col * (request.cell_width + request.padding)
-                y = request.padding + row * (cell_height + text_height + request.padding)
+                x = request.padding + col * (cell_w + request.padding)
+                y = request.padding + row * (cell_h + text_height + request.padding)
                 grid_img.paste(resized, (x, y))
                 if request.show_names:
                     name_text = normalize_material_name(file_path.name)
@@ -359,8 +366,8 @@ class AnalysisService:
                         name_text = name_text[:22] + "..."
                     bbox = draw.textbbox((0, 0), name_text, font=font)
                     text_w = bbox[2] - bbox[0]
-                    text_x = x + (request.cell_width - text_w) / 2
-                    text_y = y + cell_height + 5
+                    text_x = x + (cell_w - text_w) / 2
+                    text_y = y + cell_h + 5
                     draw.text((text_x, text_y), name_text, fill=(0, 0, 0), font=font)
 
         output_dir = self._resolve_directory("grids", request.output_dir)
@@ -378,7 +385,7 @@ class AnalysisService:
 
         indexes = {label: self._material_index_from_dir(directory) for label, directory in valid_columns}
         if request.selected_materials:
-            materials = request.selected_materials
+            materials = sorted(request.selected_materials)
         else:
             common = set.intersection(*(set(index.keys()) for index in indexes.values())) if indexes else set()
             materials = sorted(common)

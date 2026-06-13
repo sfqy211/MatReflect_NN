@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react'
 
 import { useQueryClient } from '@tanstack/react-query'
 
-import { toBackendUrl } from '../lib/api'
+import { revealInExplorer, toBackendUrl } from '../lib/api'
 import { normalizeMaterialName, parseAssetName } from '../lib/fileNames'
 import type { AnalysisImageSet, FileListItem, MaterialMetricItem } from '../types/api'
 import { AnalysisResultTable } from './AnalysisResultTable'
@@ -84,95 +84,6 @@ function buildMaterialMap(items: FileListItem[]) {
 
 
 type AnalysisSubView = 'evaluate' | 'compare' | 'grid' | 'compare-grid'
-
-function AnalysisResultPane({
-  title,
-  items,
-  selectedPath,
-  onSelect,
-  emptyTitle,
-  emptyMessage,
-}: {
-  title: string
-  items: FileListItem[]
-  selectedPath: string | null
-  onSelect: (path: string) => void
-  emptyTitle: string
-  emptyMessage: string
-}) {
-  const [fullscreenImage, setFullscreenImage] = useState<string | null>(null)
-  const selectedItem = items.find((item) => item.path === selectedPath) ?? items[0] ?? null
-
-  useEffect(() => {
-    if (!selectedItem) {
-      return
-    }
-    if (selectedItem.path !== selectedPath) {
-      onSelect(selectedItem.path)
-    }
-  }, [onSelect, selectedItem, selectedPath])
-
-  if (!selectedItem) {
-    return <FeedbackPanel title={emptyTitle} message={emptyMessage} tone="empty" compact />
-  }
-
-  const parsedSelected = parseAssetName(selectedItem.name)
-
-  return (
-    <div className="analysis-result-shell">
-      {fullscreenImage ? (
-        <div className="fullscreen-modal" onClick={() => setFullscreenImage(null)} title="点击关闭">
-          <img src={fullscreenImage} alt="Detailed preview" className="fullscreen-modal__image" />
-        </div>
-      ) : null}
-
-      <div className="analysis-result-stage">
-        <div className="panel-head">
-          <h2>{title}</h2>
-          <p>
-            {parsedSelected.materialName}
-            {parsedSelected.timestampDisplay ? ` · ${parsedSelected.timestampDisplay}` : ''}
-          </p>
-        </div>
-        <div className="analysis-output-wrapper">
-          <img
-            src={toBackendUrl(selectedItem.preview_url)}
-            alt={selectedItem.name}
-            className="analysis-output-image analysis-output-image--interactive"
-            onClick={() => {
-              const url = toBackendUrl(selectedItem.preview_url)
-              if (url) {
-                setFullscreenImage(url)
-              }
-            }}
-          />
-        </div>
-      </div>
-
-      <div className="analysis-history-list">
-        {items.map((item) => {
-          const parsed = parseAssetName(item.name)
-          return (
-            <button
-              key={item.path}
-              type="button"
-              className={item.path === selectedItem.path ? 'analysis-history-card analysis-history-card--active' : 'analysis-history-card'}
-              onClick={() => onSelect(item.path)}
-            >
-              <div className="analysis-history-card__thumb">
-                {item.preview_url ? <img src={toBackendUrl(item.preview_url)} alt={item.name} className="analysis-history-card__image" /> : null}
-              </div>
-              <div className="analysis-history-card__meta">
-                <strong>{parsed.materialName}</strong>
-                {parsed.timestampDisplay ? <span>{parsed.timestampDisplay}</span> : null}
-              </div>
-            </button>
-          )
-        })}
-      </div>
-    </div>
-  )
-}
 
 type SortKey = 'material' | string
 type SortDir = 'asc' | 'desc'
@@ -365,6 +276,89 @@ function PerMaterialTable({ perMaterial, onExportCsv }: { perMaterial: MaterialM
   )
 }
 
+function bustUrl(url: string | null | undefined, modifiedAt: string): string | undefined {
+  const base = toBackendUrl(url)
+  if (!base) return undefined
+  return `${base}?t=${encodeURIComponent(modifiedAt)}`
+}
+
+function GridResultView({
+  items,
+  selectedPath,
+  onSelect,
+  isPending,
+  error,
+  title = '网格拼图结果',
+  emptyTitle = '等待生成',
+  emptyMessage = '配置完成后点击「生成网格图」。',
+}: {
+  items: FileListItem[]
+  selectedPath: string | null
+  onSelect: (path: string) => void
+  isPending: boolean
+  error: Error | null
+  title?: string
+  emptyTitle?: string
+  emptyMessage?: string
+}) {
+  const [fullscreenImage, setFullscreenImage] = useState<string | null>(null)
+  const selectedItem = items.find((item) => item.path === selectedPath) ?? items[0] ?? null
+
+  useEffect(() => {
+    if (selectedItem && selectedItem.path !== selectedPath) {
+      onSelect(selectedItem.path)
+    }
+  }, [onSelect, selectedItem, selectedPath])
+
+  const imageUrl = selectedItem ? bustUrl(selectedItem.preview_url, selectedItem.modified_at) : undefined
+
+  return (
+    <div className="analysis-result-shell" style={{ flexDirection: 'column' }}>
+      {fullscreenImage ? (
+        <div className="fullscreen-modal" onClick={() => setFullscreenImage(null)} title="点击关闭">
+          <img src={fullscreenImage} alt="Detailed preview" className="fullscreen-modal__image" />
+        </div>
+      ) : null}
+
+      {error instanceof Error ? <FeedbackPanel title="生成失败" message={error.message} tone="error" compact /> : null}
+      {isPending && !selectedItem ? <p className="muted">正在生成...</p> : null}
+
+      {selectedItem ? (
+        <>
+          <div className="panel-head">
+            <h2>{title}</h2>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <Button
+                type="button"
+                onClick={() => {
+                  if (selectedItem.path) void revealInExplorer(selectedItem.path)
+                }}
+              >
+                打开目录
+              </Button>
+            </div>
+          </div>
+          <div className="analysis-output-wrapper">
+            <img
+              src={imageUrl}
+              alt={selectedItem.name}
+              className="analysis-output-image analysis-output-image--interactive"
+              onClick={() => {
+                if (imageUrl) setFullscreenImage(imageUrl)
+              }}
+            />
+          </div>
+          <p className="muted" style={{ fontSize: '0.78rem', padding: '0 12px' }}>
+            {selectedItem.name} · 再次生成将自动覆盖此文件
+          </p>
+        </>
+      ) : (
+        !isPending && <FeedbackPanel title={emptyTitle} message={emptyMessage} tone="empty" compact />
+      )}
+    </div>
+  )
+}
+
 export function AnalysisWorkbench({ activeSubView, onSubViewChange: _onSubViewChange }: { activeSubView: AnalysisSubView; onSubViewChange: (view: AnalysisSubView) => void }) {
   const queryClient = useQueryClient()
 
@@ -391,8 +385,8 @@ export function AnalysisWorkbench({ activeSubView, onSubViewChange: _onSubViewCh
   const [gridSet, setGridSet] = useState<AnalysisImageSet>('brdfs')
   const [gridOutputName, setGridOutputName] = useState('merged_grid.png')
   const [gridShowNames, setGridShowNames] = useState(true)
-  const [gridCellWidth, setGridCellWidth] = useState(256)
-  const [gridPadding, setGridPadding] = useState(10)
+  const [gridScalePercent, setGridScalePercent] = useState('50')
+  const [gridPadding, setGridPadding] = useState('10')
   const [selectedGridMaterials, setSelectedGridMaterials] = useState<string[]>([])
 
   const [comparisonColumns, setComparisonColumns] = useState<ComparisonColumnDraft[]>([
@@ -624,8 +618,8 @@ export function AnalysisWorkbench({ activeSubView, onSubViewChange: _onSubViewCh
       output_dir: '',
       output_name: gridOutputName,
       show_names: gridShowNames,
-      cell_width: gridCellWidth,
-      padding: gridPadding,
+      scale_percent: Number(gridScalePercent) || 50,
+      padding: Number(gridPadding) || 10,
       selected_materials: selectedGridMaterials,
     })
     await queryClient.invalidateQueries({ queryKey: ['analysis-images', 'grids'] })
@@ -892,11 +886,11 @@ export function AnalysisWorkbench({ activeSubView, onSubViewChange: _onSubViewCh
                   <Field label="输出文件名">
               <input value={gridOutputName} onChange={(event) => setGridOutputName(event.target.value)} />
             </Field>
-                  <Field label="单图宽度">
-              <input type="number" value={gridCellWidth} onChange={(event) => setGridCellWidth(Number(event.target.value) || 256)} />
+                  <Field label="缩放比例 (%)">
+              <input type="number" value={gridScalePercent} onChange={(event) => setGridScalePercent(event.target.value)} />
             </Field>
                   <Field label="间距">
-              <input type="number" value={gridPadding} onChange={(event) => setGridPadding(Number(event.target.value) || 10)} />
+              <input type="number" value={gridPadding} onChange={(event) => setGridPadding(event.target.value)} />
             </Field>
                 </div>
                 <CheckboxField 
@@ -1042,37 +1036,26 @@ export function AnalysisWorkbench({ activeSubView, onSubViewChange: _onSubViewCh
             ) : null}
 
             {activeSubView === 'grid' ? (
-              <>
-                {gridMutation.error instanceof Error ? <FeedbackPanel title="网格拼图生成失败" message={gridMutation.error.message} tone="error" compact /> : null}
-                {gridMutation.isPending && gridItems.length === 0 ? <p className="muted">正在生成网格拼图...</p> : null}
-                {!gridMutation.isPending || gridItems.length > 0 ? (
-                  <AnalysisResultPane
-                    title="网格拼图结果"
-                    items={gridItems}
-                    selectedPath={selectedGridOutputPath}
-                    onSelect={setSelectedGridOutputPath}
-                    emptyTitle="等待生成"
-                    emptyMessage="配置完成后点击“生成网格图”。"
-                  />
-                ) : null}
-              </>
+              <GridResultView
+                items={gridItems}
+                selectedPath={selectedGridOutputPath}
+                onSelect={setSelectedGridOutputPath}
+                isPending={gridMutation.isPending}
+                error={gridMutation.error}
+              />
             ) : null}
 
             {activeSubView === 'compare-grid' ? (
-              <>
-                {comparisonMutation.error instanceof Error ? <FeedbackPanel title="对比拼图生成失败" message={comparisonMutation.error.message} tone="error" compact /> : null}
-                {comparisonMutation.isPending && comparisonItems.length === 0 ? <p className="muted">正在生成对比拼图...</p> : null}
-                {!comparisonMutation.isPending || comparisonItems.length > 0 ? (
-                  <AnalysisResultPane
-                    title="对比拼图结果"
-                    items={comparisonItems}
-                    selectedPath={selectedComparisonOutputPath}
-                    onSelect={setSelectedComparisonOutputPath}
-                    emptyTitle="等待生成"
-                    emptyMessage="配置完成后点击“生成对比拼图”。"
-                  />
-                ) : null}
-              </>
+              <GridResultView
+                items={comparisonItems}
+                selectedPath={selectedComparisonOutputPath}
+                onSelect={setSelectedComparisonOutputPath}
+                isPending={comparisonMutation.isPending}
+                error={comparisonMutation.error}
+                title="对比拼图结果"
+                emptyTitle="等待生成"
+                emptyMessage="配置完成后点击「生成对比拼图」。"
+              />
             ) : null}
           </div>
         </div>
