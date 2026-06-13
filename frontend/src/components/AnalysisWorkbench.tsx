@@ -867,7 +867,6 @@ export function AnalysisWorkbench({ activeSubView, onSubViewChange: _onSubViewCh
                           : '当前启用列之间没有公共材质，请检查输出结果或调整启用列。'
                       }
                       presets={[
-                        { label: '选前 20 个', filter: (items) => items.slice(0, 20).map((i) => i.name) },
                         { label: '预设 20', filter: (items) => items.filter((item) => TEST_SET_20.includes(item.name)).map((item) => item.name) },
                       ]}
                     />
