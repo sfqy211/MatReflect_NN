@@ -44,6 +44,20 @@ _MISSING_SENTINEL = "\x00__MISSING__\x00"
 _FLAG_ONLY_SENTINEL = "\x00__FLAG_ONLY__\x00"
 
 
+def _resolve_path_value(value: Any, is_path: bool) -> Any:
+    """如果 is_path=True 且值为相对路径，转为 PROJECT_ROOT 绝对路径。"""
+    if not is_path or value is None:
+        return value
+    s = str(value)
+    # 仅对包含路径分隔符或点号的值做路径解析，避免误将纯数字等转为路径
+    if not any(c in s for c in ("/", "\\", ".")):
+        return s
+    p = Path(s)
+    if p.is_absolute():
+        return s
+    return str((PROJECT_ROOT / p).resolve())
+
+
 def resolve_path(path: str, context: dict):
     """按点分路径从 context 中取值。
     
@@ -185,11 +199,11 @@ def _build_command(
             # 多个值（merge 模式）
             if arg_def.flag:
                 cmd.append(arg_def.flag)
-            cmd.extend(str(v) for v in resolved)
+            cmd.extend(str(_resolve_path_value(v, arg_def.is_path)) for v in resolved)
         else:
             if arg_def.flag:
                 cmd.append(arg_def.flag)
-            cmd.append(str(resolved))
+            cmd.append(str(_resolve_path_value(resolved, arg_def.is_path)))
 
     return cmd
 

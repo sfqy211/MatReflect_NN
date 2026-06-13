@@ -35,6 +35,7 @@ class OperationArgDef(BaseModel):
     - is_flag 为 True 时表示纯布尔开关（如 --keepon），仅追加 flag 本身，不追加值参数。
     - default 在 source 值为空时使用。
     - raw_value 完全不经过变量解析，直接使用。
+    - is_path 为 True 时表示该参数值是文件系统路径，渲染时会将相对路径转为 PROJECT_ROOT 绝对路径。
     """
     flag: str = ""
     source: str = ""
@@ -42,6 +43,7 @@ class OperationArgDef(BaseModel):
     condition_source: str = ""
     raw_value: str = ""
     is_flag: bool = False
+    is_path: bool = False
 
 
 class PostActionDef(BaseModel):
