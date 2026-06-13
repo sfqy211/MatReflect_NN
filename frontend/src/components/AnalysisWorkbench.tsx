@@ -670,87 +670,90 @@ export function AnalysisWorkbench({ activeSubView, onSubViewChange: _onSubViewCh
                   <h3>量化评估</h3>
                 </div>
 
-                <div className="render-form-grid">
+                <div className="eval-group">
+                  <span className="eval-group__title">基本设置</span>
                   <Field label="评估范围">
-              <select value={evaluationRangeMode} onChange={(event) => setEvaluationRangeMode(event.target.value as EvaluationRangeMode)}>
+                    <select value={evaluationRangeMode} onChange={(event) => setEvaluationRangeMode(event.target.value as EvaluationRangeMode)}>
                       <option value="all">全部材质</option>
                       <option value="selected">手动选择</option>
                       <option value="preset20">预设 20 材质</option>
                     </select>
-            </Field>
+                  </Field>
                   <Field label="GT 标签">
-              <input value={gtLabel} onChange={(event) => setGtLabel(event.target.value)} />
-            </Field>
-                  <label className="field" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <input type="checkbox" checked={method1Enabled} onChange={(event) => setMethod1Enabled(event.target.checked)} />
-                    <span>方法一</span>
-                    <input value={method1Label} onChange={(event) => setMethod1Label(event.target.value)} disabled={!method1Enabled} style={{ flex: 1 }} />
-                  </label>
-                  <label className="field" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <input type="checkbox" checked={method2Enabled} onChange={(event) => setMethod2Enabled(event.target.checked)} />
-                    <span>方法二</span>
-                    <input value={method2Label} onChange={(event) => setMethod2Label(event.target.value)} disabled={!method2Enabled} style={{ flex: 1 }} />
-                  </label>
-                  <label className="field" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <input type="checkbox" checked={method3Enabled} onChange={(event) => setMethod3Enabled(event.target.checked)} />
-                    <span>方法三</span>
-                    <input value={method3Label} onChange={(event) => setMethod3Label(event.target.value)} disabled={!method3Enabled} style={{ flex: 1 }} />
-                  </label>
-                </div>
-
-                <div className="render-form-grid">
-                  <Field label="评估指标">
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px 16px' }}>
-                      {AVAILABLE_METRICS.map((m) => (
-                        <label key={m.key} style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
-                          <input
-                            type="checkbox"
-                            checked={selectedMetrics.includes(m.key)}
-                            onChange={(event) => {
-                              if (event.target.checked) {
-                                setSelectedMetrics((prev) => [...prev, m.key])
-                              } else {
-                                setSelectedMetrics((prev) => prev.filter((k) => k !== m.key))
-                              }
-                            }}
-                          />
-                          <span>{m.label}</span>
-                        </label>
-                      ))}
-                    </div>
+                    <input value={gtLabel} onChange={(event) => setGtLabel(event.target.value)} />
                   </Field>
                 </div>
 
+                <div className="eval-group">
+                  <span className="eval-group__title">对比方法</span>
+                  <div className="eval-method-row">
+                    <input className="eval-method-row__check" type="checkbox" checked={method1Enabled} onChange={(event) => setMethod1Enabled(event.target.checked)} />
+                    <span className="eval-method-row__name">方法一</span>
+                    <input className="eval-method-row__label" value={method1Label} onChange={(event) => setMethod1Label(event.target.value)} disabled={!method1Enabled} />
+                  </div>
+                  <div className="eval-method-row">
+                    <input className="eval-method-row__check" type="checkbox" checked={method2Enabled} onChange={(event) => setMethod2Enabled(event.target.checked)} />
+                    <span className="eval-method-row__name">方法二</span>
+                    <input className="eval-method-row__label" value={method2Label} onChange={(event) => setMethod2Label(event.target.value)} disabled={!method2Enabled} />
+                  </div>
+                  <div className="eval-method-row">
+                    <input className="eval-method-row__check" type="checkbox" checked={method3Enabled} onChange={(event) => setMethod3Enabled(event.target.checked)} />
+                    <span className="eval-method-row__name">方法三</span>
+                    <input className="eval-method-row__label" value={method3Label} onChange={(event) => setMethod3Label(event.target.value)} disabled={!method3Enabled} />
+                  </div>
+                </div>
+
+                <div className="eval-group">
+                  <span className="eval-group__title">评估指标</span>
+                  <div className="eval-metrics-grid">
+                    {AVAILABLE_METRICS.map((m) => (
+                      <label key={m.key}>
+                        <input
+                          type="checkbox"
+                          checked={selectedMetrics.includes(m.key)}
+                          onChange={(event) => {
+                            if (event.target.checked) {
+                              setSelectedMetrics((prev) => [...prev, m.key])
+                            } else {
+                              setSelectedMetrics((prev) => prev.filter((k) => k !== m.key))
+                            }
+                          }}
+                        />
+                        <span>{m.label}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
                 {evaluationRangeMode === 'selected' ? (
-                  <div className="render-form-grid">
-                    <Field label="评估材质">
-              <MaterialSelector
-                        title="选择评估材质"
-                        items={evaluationMaterials}
-                        selectedItems={selectedEvaluationMaterials}
-                        onSelectionChange={setSelectedEvaluationMaterials}
-                        multiSelect={true}
-                        emptyMessage="当前没有可用于量化评估的公共材质。"
-                        presets={[
-                          {
-                            label: '预设 20',
-                            filter: (items) => items.filter((item) => TEST_SET_20.includes(item.name)).map((item) => item.name),
-                          },
-                        ]}
-                      />
-            </Field>
+                  <div className="eval-group">
+                    <span className="eval-group__title">选择材质</span>
+                    <MaterialSelector
+                      title="选择评估材质"
+                      items={evaluationMaterials}
+                      selectedItems={selectedEvaluationMaterials}
+                      onSelectionChange={setSelectedEvaluationMaterials}
+                      multiSelect={true}
+                      emptyMessage="当前没有可用于量化评估的公共材质。"
+                      presets={[
+                        {
+                          label: '预设 20',
+                          filter: (items) => items.filter((item) => TEST_SET_20.includes(item.name)).map((item) => item.name),
+                        },
+                      ]}
+                    />
                   </div>
                 ) : null}
 
                 <div className="render-actions" style={{ gap: 8 }}>
-                  <Button type="button"  onClick={() => { setEvaluationMode('summary'); void evaluate() }} disabled={evaluateMutation.isPending}>
+                  <Button type="button" onClick={() => { setEvaluationMode('summary'); void evaluate() }} disabled={evaluateMutation.isPending}>
                     整体评估
                   </Button>
-                  <Button type="button"  onClick={() => { setEvaluationMode('per_material'); void evaluate() }} disabled={evaluateMutation.isPending}>
+                  <Button type="button" onClick={() => { setEvaluationMode('per_material'); void evaluate() }} disabled={evaluateMutation.isPending}>
                     分材质评估
                   </Button>
                 </div>
-                <p className="muted">评估所用图像目录统一读取设置页中的默认路径。</p>
+                <p className="muted" style={{ fontSize: '0.78rem' }}>评估所用图像目录统一读取设置页中的默认路径。</p>
                 
                 {evaluateMutation.data ? (
                   <p className="muted" style={{ marginTop: '12px' }}>
