@@ -108,7 +108,7 @@
               "description": "归档 h5/json/lossplot 到 h5_output_dir",
               "patterns": ["*.h5", "*.json", "lossplot_*.png"],
               "source_dir_source": "cwd",
-              "dest_dir_source": "request.h5_output_dir"
+              "dest_dir_source": "default_paths.h5_output_dir"
             }
           ]
         },

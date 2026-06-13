@@ -120,6 +120,7 @@ function guessDefault(key: string): unknown {
     selected_pts: [],
     pt_dir: 'models/HyperBRDF/results/extracted_pts',
     merl_dir: 'data/materials',
+    h5_dir: 'models/Neural-BRDF/data/merl_nbrdf',
     checkpoint_path: 'models/output/checkpoint',
   }
   return key in defaults ? defaults[key] : ''
