@@ -156,7 +156,7 @@
         "materials_dir": "data/materials",
         "results_dir": "models/HyperBRDF/results",
         "extract_dir": "models/HyperBRDF/results/extracted_pts",
-        "checkpoint": "models/HyperBRDF/results/test/MERL/checkpoint.pt"
+        "checkpoint": "models/HyperBRDF/results/MERL/checkpoint.pt"
       },
       "runtime": {
         "conda_env": "hyperbrdf",
@@ -191,7 +191,7 @@
           "loop_source": "request.selected_materials",
           "input_dir_source": "request.merl_dir",
           "args": [
-            {"flag": "--model", "source": "request.checkpoint_path", "default": "models/HyperBRDF/results/test/MERL/checkpoint.pt", "is_path": true},
+            {"flag": "--model", "source": "request.checkpoint_path", "default": "models/HyperBRDF/results/MERL/checkpoint.pt", "is_path": true},
             {"flag": "--binary", "source": "item.path", "is_path": true},
             {"flag": "--destdir", "source": "request.output_dir", "default": "models/HyperBRDF/results/extracted_pts", "is_path": true},
             {"flag": "--dataset", "source": "request.dataset", "default": "MERL"},

@@ -107,6 +107,9 @@ def _resolve_item_path(context: dict) -> Optional[str]:
         return None
     if input_dir_source:
         dir_val = resolve_path(input_dir_source, context)
+        if not dir_val or (isinstance(dir_val, str) and not dir_val.strip()):
+            # input_dir_source 解析为空时，回退到 model.default_paths.materials_dir
+            dir_val = model.default_paths.get("materials_dir", "") if model.default_paths else ""
         if dir_val:
             base_path = Path(str(dir_val))
             if not base_path.is_absolute():
@@ -333,7 +336,7 @@ def render_commands(
                 continue
             if arg_def.flag:
                 cmd.append(arg_def.flag)
-            cmd.append(str(resolved))
+            cmd.append(str(_resolve_path_value(resolved, arg_def.is_path)))
 
         commands.append({
             "command": cmd,

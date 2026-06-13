@@ -382,7 +382,7 @@ function fallbackOperations(model: TrainModelItem): OperationDef[] {
   if (model.supports_extract) {
     const fields: OperationField[] = [
       fixedPath('merl_dir', 'data/materials'),
-      fixedPath('checkpoint', defaults.checkpoint ?? 'models/HyperBRDF/results/test/MERL/checkpoint.pt'),
+      fixedPath('checkpoint', defaults.checkpoint ?? 'models/HyperBRDF/results/MERL/checkpoint.pt'),
       fixedPath('extract_output_dir', defaults.extract_dir ?? 'models/HyperBRDF/results/extracted_pts'),
       pathFor('conda_env', runtime.conda_env ?? ''),
       { key: 'dataset', label: '数据集', type: 'select', default: 'MERL', options: ['MERL', 'EPFL'] },
@@ -416,7 +416,7 @@ function fallbackOperations(model: TrainModelItem): OperationDef[] {
       { key: 'dataset', label: '数据集', type: 'select', default: 'MERL', options: ['MERL', 'EPFL'] },
       pathFor('conda_env', runtime.conda_env ?? ''),
       fixedPath('output_dir', outputDir),
-      fixedPath('checkpoint', defaults.checkpoint ?? 'models/HyperBRDF/results/test/MERL/checkpoint.pt'),
+      fixedPath('checkpoint', defaults.checkpoint ?? 'models/HyperBRDF/results/MERL/checkpoint.pt'),
       baseMaterialsField,
     ]
     if (model.adapter === 'neural-pytorch') {
