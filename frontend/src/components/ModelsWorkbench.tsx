@@ -347,6 +347,11 @@ export function ModelsWorkbench() {
           next[opKey] = { ...next[opKey], dataset: run.dataset === 'EPFL' ? 'EPFL' : 'MERL' }
         }
       }
+      // 同步 decode 的 pt_dir：与 extract 的 extract_output_dir 保持一致
+      const extractOutputDir = next.extract?.extract_output_dir
+      if (extractOutputDir && next.decode) {
+        next.decode = { ...next.decode, pt_dir: extractOutputDir }
+      }
       return next
     })
   }

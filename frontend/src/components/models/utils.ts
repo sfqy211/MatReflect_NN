@@ -118,6 +118,7 @@ function guessDefault(key: string): unknown {
     selected_materials: [],
     selected_h5_files: [],
     selected_pts: [],
+    pt_dir: 'models/HyperBRDF/results/extracted_pts',
   }
   return key in defaults ? defaults[key] : ''
 }
@@ -223,7 +224,7 @@ function deriveFieldsFromBackendOp(op: BackendOperationDef): OperationField[] {
 /** 应该隐藏的目录字段 key（这些路径由系统固定，不在 UI 显示） */
 const HIDDEN_PATH_KEYS = new Set([
   'merl_dir', 'output_dir', 'checkpoint_path',
-  'extract_output_dir', 'pt_dir',
+  'extract_output_dir',
   'hyperbrdf_render_dir', 'nbrdf_render_dir', 'npy_output_dir',
   'h5_output_dir', 'h5_dir',
 ])
@@ -396,7 +397,7 @@ function fallbackOperations(model: TrainModelItem): OperationDef[] {
   // ── Decode ──
   if (model.supports_decode) {
     const fields: OperationField[] = [
-      fixedPath('pt_dir', defaults.extract_dir ?? 'models/HyperBRDF/results/extracted_pts'),
+      { key: 'pt_dir', label: '潜向量目录', type: 'path', default: defaults.extract_dir ?? 'models/HyperBRDF/results/extracted_pts' },
       fixedPath('hyperbrdf_render_dir', DEFAULT_FULLBIN_OUTPUT),
       pathFor('conda_env', runtime.conda_env ?? ''),
       { key: 'cuda_device', label: 'CUDA 设备', type: 'str', default: '0' },
