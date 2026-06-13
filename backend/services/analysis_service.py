@@ -231,7 +231,6 @@ class AnalysisService:
         method2_label = request.method2_label.strip() or DEFAULT_SET_LABELS[request.method2_set]
         pair_label_gt_m1 = self._comparison_title(gt_label, method1_label)
         pair_label_gt_m2 = self._comparison_title(gt_label, method2_label)
-        pair_label_m1_m2 = self._comparison_title(method1_label, method2_label)
         pair_label_gt_m3 = self._comparison_title(gt_label, request.method3_label.strip() or DEFAULT_SET_LABELS.get(request.method3_set or "snbrdf", "M3")) if has_method3 else None
 
         all_metric_keys = ["psnr", "ssim", "delta_e", "rmse", "mae"]
@@ -240,7 +239,6 @@ class AnalysisService:
         materials = request.selected_materials or sorted(gt_index.keys())
         accum_gt_m1: dict[str, float] = {k: 0.0 for k in all_metric_keys}
         accum_gt_m2: dict[str, float] = {k: 0.0 for k in all_metric_keys}
-        accum_m1_m2: dict[str, float] = {k: 0.0 for k in all_metric_keys}
         accum_gt_m3: dict[str, float] | None = {k: 0.0 for k in all_metric_keys} if has_method3 else None
         processed = 0
         skipped: list[str] = []
@@ -284,12 +282,10 @@ class AnalysisService:
 
             r_gt_m1 = calc_single_pair(img_gt_rgb, img_m1_rgb)
             r_gt_m2 = calc_single_pair(img_gt_rgb, img_m2_rgb)
-            r_m1_m2 = calc_single_pair(img_m1_rgb, img_m2_rgb)
 
             for k in all_metric_keys:
                 accum_gt_m1[k] += r_gt_m1[k]
                 accum_gt_m2[k] += r_gt_m2[k]
-                accum_m1_m2[k] += r_m1_m2[k]
 
             def _make_summary(r: dict[str, float]) -> MetricSummary:
                 return MetricSummary(**{k: round(r[k], 6) for k in selected_metrics})
@@ -297,7 +293,6 @@ class AnalysisService:
             material_metrics: dict[str, MetricSummary] = {
                 pair_label_gt_m1: _make_summary(r_gt_m1),
                 pair_label_gt_m2: _make_summary(r_gt_m2),
-                pair_label_m1_m2: _make_summary(r_m1_m2),
             }
 
             if img_m3_rgb is not None and accum_gt_m3 is not None:
@@ -315,7 +310,6 @@ class AnalysisService:
         comparisons = [
             EvaluationPairResult(label=pair_label_gt_m1, metrics=_filter_summary(accum_gt_m1, processed)),
             EvaluationPairResult(label=pair_label_gt_m2, metrics=_filter_summary(accum_gt_m2, processed)),
-            EvaluationPairResult(label=pair_label_m1_m2, metrics=_filter_summary(accum_m1_m2, processed)),
         ]
 
         if has_method3 and accum_gt_m3 is not None:
